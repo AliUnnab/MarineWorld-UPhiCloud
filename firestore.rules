@@ -1,0 +1,95 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isCompanyMember(companyId) {
+      return true;
+    }
+
+    function isCompanyOwner(companyId) {
+      return true;
+    }
+
+    function isCompanyAdmin(companyId) {
+      return true;
+    }
+
+    function isCompanyManager(companyId) {
+      return true;
+    }
+
+    function isCompanyOperations(companyId) {
+      return true;
+    }
+
+    function isCompanySales(companyId) {
+      return true;
+    }
+
+    // Default match for all documents & subcollections
+    match /users/{uid} {
+      allow read, write: if true;
+
+      match /{allSubcollections=**} {
+        allow read, write: if true;
+      }
+    }
+
+    match /businessIds/{businessId} {
+      allow read, write: if true;
+    }
+
+    match /platforms/{platformId} {
+      allow read, write: if true;
+    }
+
+    match /sectors/{sectorId} {
+      allow read, write: if true;
+    }
+
+    match /sectorCities/{sectorCityId} {
+      allow read, write: if true;
+    }
+
+    match /properties/{propertyId} {
+      allow read, write: if true;
+    }
+
+    match /reservationIntents/{intentId} {
+      allow read, write: if true;
+    }
+
+    match /commercialOffers/{offerId} {
+      allow read, write: if true;
+    }
+
+    match /commercialAgreements/{agreementId} {
+      allow read, write: if true;
+    }
+
+    match /companies/{companyId} {
+      allow read, write: if true;
+
+      match /{allSubcollections=**} {
+        allow read, write: if true;
+      }
+    }
+
+    match /companyAnalytics/{companyId}/events/{eventId} {
+      allow read, write: if true;
+    }
+
+    match /aiInteractions/{interactionId} {
+      allow read, write: if true;
+    }
+
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}

@@ -1,0 +1,174 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  --color-canvas: #FAFAFC;
+  --color-graphite: #111113;
+  --color-stone: #4A4A52;
+  --color-mute: #8E8E93;
+  --color-line: rgba(17, 17, 19, 0.12);
+  --color-linesoft: rgba(17, 17, 19, 0.06);
+  --color-mist: #F1F1F3;
+  --color-soft: #EEF1FF;
+  --color-royal: #3A4FE0;
+  --color-electric: #6B7CFF;
+  --color-success: #10B981;
+  --color-success-soft: #ECFDF5;
+  --color-warning: #F59E0B;
+  --color-warning-soft: #FFFBEB;
+
+  --radius-card-lg: 20px;
+  --radius-card-md: 14px;
+  --radius-card-sm: 10px;
+  --radius-icon: 10px;
+}
+
+@layer utilities {
+  .digi-container {
+    width: 100%;
+    max-width: 1280px;
+    margin-left: auto;
+    margin-right: auto;
+    padding-left: 1.25rem;
+    padding-right: 1.25rem;
+  }
+  @media (min-width: 768px) {
+    .digi-container {
+      padding-left: 2rem;
+      padding-right: 2rem;
+    }
+  }
+
+  .text-display {
+    font-size: clamp(32px, 4.5vw, 56px);
+    font-weight: 600;
+    line-height: 1.05;
+    letter-spacing: -0.035em;
+  }
+
+  .text-h2 {
+    font-size: clamp(26px, 3.2vw, 42px);
+    font-weight: 600;
+    line-height: 1.1;
+    letter-spacing: -0.03em;
+  }
+
+  .text-h3 {
+    font-size: clamp(18px, 1.8vw, 24px);
+    font-weight: 600;
+    line-height: 1.2;
+    letter-spacing: -0.02em;
+  }
+
+  .text-lead {
+    font-size: clamp(15px, 1.35vw, 18px);
+    line-height: 1.55;
+  }
+
+  .text-body {
+    font-size: 14px;
+    line-height: 1.6;
+  }
+
+  .eyebrow {
+    font-family: var(--font-sans);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  .rounded-card-lg {
+    border-radius: var(--radius-card-lg);
+  }
+  .rounded-card-md {
+    border-radius: var(--radius-card-md);
+  }
+  .rounded-card-sm {
+    border-radius: var(--radius-card-sm);
+  }
+  .rounded-icon {
+    border-radius: var(--radius-icon);
+  }
+
+  .ease-digi {
+    transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+}
+
+/* Animations */
+@keyframes breathe {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(1.4); }
+}
+
+@keyframes pulseRing {
+  0% { transform: scale(0.9); opacity: 0.8; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+
+@keyframes dashLine {
+  to { stroke-dashoffset: -20; }
+}
+
+@keyframes tickerScroll {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+.breathe {
+  animation: breathe 2.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.pulse-ring {
+  animation: pulseRing 2s cubic-bezier(0, 0.2, 0.8, 1) infinite;
+  transform-origin: center;
+}
+
+.dash-line {
+  stroke-dasharray: 4 4;
+  animation: dashLine 1s linear infinite;
+}
+
+.ticker-track {
+  display: flex;
+  width: max-content;
+  animation: tickerScroll 30s linear infinite;
+}
+
+.ticker:hover .ticker-track {
+  animation-play-state: paused;
+}
+
+/* Scroll reveal helper */
+.reveal {
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1), transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.reveal.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Subtle blueprint grid backgrounds */
+.bg-blueprint {
+  background-image: radial-gradient(rgba(17, 17, 19, 0.07) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+.bg-blueprint-dark {
+  background-image: radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+/* Ken burns subtle image hover/animation */
+.kenburns {
+  transition: transform 12s cubic-bezier(0.16, 1, 0.3, 1);
+}
+figure:hover .kenburns {
+  transform: scale(1.05);
+}

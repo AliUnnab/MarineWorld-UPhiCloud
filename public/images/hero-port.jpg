@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800" width="1200" height="800">
+  <defs>
+    <linearGradient id="sky" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#2a3848"/>
+      <stop offset="60%" stop-color="#4a5d6e"/>
+      <stop offset="100%" stop-color="#8c9baa"/>
+    </linearGradient>
+    <linearGradient id="water" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#1a2533"/>
+      <stop offset="100%" stop-color="#0d131d"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="550" fill="url(#sky)"/>
+  <rect y="550" width="1200" height="250" fill="url(#water)"/>
+  <!-- Distant Mountains / Coastline -->
+  <path d="M0,550 Q300,500 600,530 T1200,520 L1200,550 L0,550 Z" fill="#202c38" opacity="0.7"/>
+  <!-- Shipyard Drydock Silhouette & Vessels -->
+  <polygon points="450,420 500,320 540,320 520,420" fill="#18202a"/>
+  <rect x="520" y="300" width="160" height="150" fill="#1c2633"/>
+  <polygon points="520,300 600,220 680,300" fill="#151e28"/>
+  <!-- Cranes -->
+  <path d="M200,550 L250,220 L270,220 L310,550 Z" fill="#111822"/>
+  <path d="M260,220 L480,140 L480,160 L280,240 Z" fill="#111822"/>
+  <line x1="260" y1="220" x2="180" y2="280" stroke="#111822" stroke-width="4"/>
+  <line x1="380" y1="175" x2="380" y2="400" stroke="#0e131b" stroke-width="2"/>
+  
+  <path d="M780,550 L820,180 L840,180 L870,550 Z" fill="#111822"/>
+  <path d="M830,180 L1050,110 L1050,130 L850,200 Z" fill="#111822"/>
+  <line x1="950" y1="140" x2="950" y2="420" stroke="#0e131b" stroke-width="2"/>
+
+  <!-- Ship Hull in Dock -->
+  <path d="M420,560 L500,450 L700,450 L780,560 Z" fill="#141c26"/>
+  <rect x="540" y="380" width="120" height="70" fill="#232e3a"/>
+  <rect x="560" y="340" width="80" height="40" fill="#2b3948"/>
+
+  <!-- Water Reflections -->
+  <ellipse cx="600" cy="620" rx="350" ry="8" fill="#4a5d6e" opacity="0.15"/>
+  <ellipse cx="300" cy="640" rx="200" ry="5" fill="#6b7cff" opacity="0.1"/>
+  <ellipse cx="850" cy="630" rx="220" ry="6" fill="#3a4fe0" opacity="0.12"/>
+</svg>

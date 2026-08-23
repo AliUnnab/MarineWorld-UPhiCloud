@@ -1,0 +1,485 @@
+{
+  "entities": {
+    "PlatformEntity": {
+      "title": "Platform Entity",
+      "description": "Global platform entity record.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "code": { "type": "string" },
+        "name": { "type": "string" },
+        "displayName": { "type": "string" },
+        "canonicalDomain": { "type": "string" },
+        "status": { "type": "string", "enum": ["ACTIVE", "INACTIVE"] }
+      },
+      "required": ["id", "code", "name", "canonicalDomain", "status"]
+    },
+    "SectorEntity": {
+      "title": "Sector Entity",
+      "description": "Global sector classification record.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "platformId": { "type": "string" },
+        "code": { "type": "string" },
+        "slug": { "type": "string" },
+        "name": { "type": "string" },
+        "displayName": { "type": "string" }
+      },
+      "required": ["id", "platformId", "code", "slug", "name"]
+    },
+    "SectorCityEntity": {
+      "title": "Sector City Hub",
+      "description": "Specialized sector city digital twin hub.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "platformId": { "type": "string" },
+        "sectorId": { "type": "string" },
+        "slug": { "type": "string" },
+        "name": { "type": "string" },
+        "canonicalDomain": { "type": "string" }
+      },
+      "required": ["id", "platformId", "sectorId", "slug", "name", "canonicalDomain"]
+    },
+    "UserEntity": {
+      "title": "User Profile Entity",
+      "description": "User domain profile document.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "emailVerified": { "type": "boolean" },
+        "profileStatus": { "type": "string", "enum": ["ACTIVE", "SUSPENDED", "INACTIVE"] },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["uid", "profileStatus"]
+    },
+    "BusinessIdEntity": {
+      "title": "Business ID Registry Entity",
+      "description": "Global MarineWorld Business ID registry record.",
+      "type": "object",
+      "properties": {
+        "businessId": { "type": "string" },
+        "companyId": { "type": "string" },
+        "organizationType": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["businessId", "companyId", "organizationType"]
+    },
+    "CompanyEntity": {
+      "title": "Company Entity",
+      "description": "Canonical company tenant organization.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "platformId": { "type": "string" },
+        "sectorId": { "type": "string" },
+        "primarySectorCityId": { "type": "string" },
+        "slug": { "type": "string" },
+        "legalName": { "type": "string" },
+        "displayName": { "type": "string" },
+        "status": { "type": "string", "enum": ["ACTIVE", "PENDING_VERIFICATION", "SUSPENDED", "INACTIVE", "DELETED"] },
+        "verificationTier": { "type": "string", "enum": ["UNVERIFIED", "COMMERCIAL_VERIFIED", "ENTERPRISE_GOLD", "GOVERNMENT_AUDITED"] },
+        "visibility": { "type": "string", "enum": ["PUBLIC", "PRIVATE"] }
+      },
+      "required": ["id", "platformId", "sectorId", "primarySectorCityId", "legalName", "status", "verificationTier"]
+    },
+    "CompanyMemberEntity": {
+      "title": "Company Member",
+      "description": "Company membership and RBAC role assignment.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "companyId": { "type": "string" },
+        "role": { "type": "string", "enum": ["OWNER", "ADMIN", "MANAGER", "OPERATIONS", "SALES", "MEMBER"] },
+        "status": { "type": "string", "enum": ["ACTIVE", "INVITED", "SUSPENDED"] },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["userId", "companyId", "role", "status"]
+    },
+    "CompanyNodeEntity": {
+      "title": "Company Operational Node",
+      "description": "Company physical or digital operational facility.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "companyId": { "type": "string" },
+        "nodeType": { "type": "string", "enum": ["HEADQUARTERS", "SHIPYARD", "OFFSHORE_HUB", "WAREHOUSE", "SALES_OFFICE", "R_D_CENTER", "SERVICE_CENTER"] },
+        "name": { "type": "string" },
+        "isHeadquarters": { "type": "boolean" },
+        "visibility": { "type": "string", "enum": ["PUBLIC", "PRIVATE"] }
+      },
+      "required": ["id", "companyId", "nodeType", "name"]
+    },
+    "ProductEntity": {
+      "title": "Product Entity",
+      "description": "Commercial product offering in company catalog.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "companyId": { "type": "string" },
+        "name": { "type": "string" },
+        "slug": { "type": "string" },
+        "status": { "type": "string", "enum": ["ACTIVE", "DRAFT", "ARCHIVED"] },
+        "visibility": { "type": "string", "enum": ["PUBLIC", "PRIVATE"] }
+      },
+      "required": ["id", "companyId", "name", "status"]
+    },
+    "ServiceEntity": {
+      "title": "Service Entity",
+      "description": "Commercial service offering in company catalog.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "companyId": { "type": "string" },
+        "name": { "type": "string" },
+        "slug": { "type": "string" },
+        "status": { "type": "string", "enum": ["ACTIVE", "DRAFT", "ARCHIVED"] },
+        "visibility": { "type": "string", "enum": ["PUBLIC", "PRIVATE"] }
+      },
+      "required": ["id", "companyId", "name", "status"]
+    },
+    "ConnectEntity": {
+      "title": "Connect Interaction",
+      "description": "B2B inquiry, RFQ, or commercial interaction record.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "companyId": { "type": "string" },
+        "fromUserId": { "type": "string" },
+        "fromCompanyId": { "type": "string" },
+        "toCompanyId": { "type": "string" },
+        "type": { "type": "string", "enum": ["RFQ", "INQUIRY", "PARTNERSHIP_REQUEST", "PROCUREMENT_BID"] },
+        "subject": { "type": "string" },
+        "message": { "type": "string" },
+        "status": { "type": "string", "enum": ["NEW", "IN_PROGRESS", "RESOLVED", "CLOSED"] }
+      },
+      "required": ["id", "companyId", "fromUserId", "toCompanyId", "type", "subject", "message", "status"]
+    },
+    "BusinessTwinModel": {
+      "title": "Business Twin Model",
+      "description": "Projected digital business twin profile.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "companyId": { "type": "string" },
+        "overallCompleteness": { "type": "number" },
+        "verificationStatus": { "type": "string" },
+        "visibility": { "type": "string", "enum": ["PUBLIC", "PRIVATE"] }
+      },
+      "required": ["id", "companyId", "overallCompleteness", "verificationStatus"]
+    },
+    "CompanyAnalyticsEvent": {
+      "title": "Company Analytics Event",
+      "description": "Company-scoped telemetry metric event log.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "companyId": { "type": "string" },
+        "eventType": { "type": "string" },
+        "userId": { "type": "string" },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["id", "companyId", "eventType", "timestamp"]
+    },
+    "AIInteractionEntity": {
+      "title": "AI Interaction Log",
+      "description": "Grounded AI interaction audit log.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "companyId": { "type": "string" },
+        "query": { "type": "string" },
+        "answer": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "userId", "companyId", "query", "answer", "createdAt"]
+    },
+    "DocumentEntity": {
+      "title": "Document Entity",
+      "description": "Canonical Company Data Space document record.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "companyId": { "type": "string" },
+        "businessId": { "type": "string" },
+        "title": { "type": "string" },
+        "documentType": { "type": "string" },
+        "status": { "type": "string", "enum": ["ACTIVE", "ARCHIVED", "DELETED"] },
+        "visibility": { "type": "string", "enum": ["PUBLIC", "PRIVATE"] },
+        "groundingStatus": { "type": "string", "enum": ["GROUNDED", "DISABLED", "NOT_INDEXED"] }
+      },
+      "required": ["id", "companyId", "businessId", "title", "status", "visibility"]
+    },
+    "FileEntity": {
+      "title": "File Entity",
+      "description": "Canonical Company Data Space file metadata record.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "companyId": { "type": "string" },
+        "businessId": { "type": "string" },
+        "name": { "type": "string" },
+        "mimeType": { "type": "string" },
+        "sizeBytes": { "type": "number" },
+        "storageReference": { "type": "string" },
+        "visibility": { "type": "string", "enum": ["PUBLIC", "PRIVATE"] }
+      },
+      "required": ["id", "companyId", "businessId", "name", "mimeType", "storageReference"]
+    },
+    "ExternalSourceConnection": {
+      "title": "External Source Connection",
+      "description": "External data connector config.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "companyId": { "type": "string" },
+        "businessId": { "type": "string" },
+        "provider": { "type": "string" },
+        "status": { "type": "string" }
+      },
+      "required": ["id", "companyId", "businessId", "provider", "status"]
+    },
+    "ExternalResource": {
+      "title": "External Resource",
+      "description": "External resource item registered in company data space.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "companyId": { "type": "string" },
+        "businessId": { "type": "string" },
+        "name": { "type": "string" }
+      },
+      "required": ["id", "companyId", "businessId", "name"]
+    },
+    "SubscriptionEntity": {
+      "title": "Company Subscription Entity",
+      "description": "Canonical company subscription status and period tracking.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "companyId": { "type": "string" },
+        "businessId": { "type": "string" },
+        "planId": { "type": "string" },
+        "planCode": { "type": "string" },
+        "status": { "type": "string", "enum": ["ACTIVE", "PAST_DUE", "CANCELED", "EXPIRED", "UNPAID", "SUSPENDED"] },
+        "currentPeriodStart": { "type": "string" },
+        "currentPeriodEnd": { "type": "string" },
+        "cancelAtPeriodEnd": { "type": "boolean" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "companyId", "businessId", "planId", "planCode", "status", "createdAt"]
+    },
+    "SubscriptionIntentEntity": {
+      "title": "Subscription Intent Entity",
+      "description": "Commercial subscription intent and billing transaction state.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "companyId": { "type": "string" },
+        "businessId": { "type": "string" },
+        "planId": { "type": "string" },
+        "amount": { "type": "number" },
+        "currency": { "type": "string" },
+        "status": { "type": "string", "enum": ["PENDING", "SUCCEEDED", "FAILED", "REFUNDED"] },
+        "paymentReference": { "type": "string" },
+        "billingInterval": { "type": "string", "enum": ["MONTHLY", "ANNUAL"] },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "companyId", "businessId", "planId", "amount", "currency", "status", "createdAt"]
+    },
+    "InquiryRecordEntity": {
+      "title": "Canonical Inquiry Entity",
+      "description": "Canonical B2B commercial inquiry, RFQ, and official offer document.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "companyId": { "type": "string" },
+        "companySlug": { "type": "string" },
+        "companyName": { "type": "string" },
+        "requesterId": { "type": "string" },
+        "requesterName": { "type": "string" },
+        "requesterEmail": { "type": "string" },
+        "requesterCompany": { "type": "string" },
+        "productId": { "type": "string" },
+        "productSlug": { "type": "string" },
+        "productName": { "type": "string" },
+        "serviceId": { "type": "string" },
+        "serviceSlug": { "type": "string" },
+        "serviceName": { "type": "string" },
+        "sectorId": { "type": "string" },
+        "sectorCityId": { "type": "string" },
+        "subject": { "type": "string" },
+        "message": { "type": "string" },
+        "status": { "type": "string", "enum": ["NEW", "OPEN", "IN_PROGRESS", "WAITING_FOR_REQUESTER", "WAITING_FOR_COMPANY", "RESOLVED", "CLOSED", "ARCHIVED"] },
+        "priority": { "type": "string", "enum": ["LOW", "NORMAL", "HIGH", "URGENT"] },
+        "source": { "type": "string", "enum": ["COMPANY", "PRODUCT", "SERVICE", "SECTOR_CITY", "DIRECTORY", "NETWORK"] },
+        "contactMethod": { "type": "string" },
+        "assignedTo": { "type": "string" },
+        "inquiryKind": { "type": "string", "enum": ["INQUIRY", "OFFICIAL_OFFER", "TECHNICAL_RFQ"] },
+        "offeringReference": { "type": "string" },
+        "canonicalUrl": { "type": "string" },
+        "quantityOrScope": { "type": "string" },
+        "deliveryLocation": { "type": "string" },
+        "deliveryPort": { "type": "string" },
+        "incoterms": { "type": "string" },
+        "engineeringRequirements": { "type": "string" },
+        "commercialRequirements": { "type": "string" },
+        "deliveryTimeline": { "type": "string" },
+        "warrantyRequirements": { "type": "string" },
+        "commercialInquiryId": { "type": "string" },
+        "officialOfferRequestId": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "companyId", "requesterId", "subject", "message", "status", "priority", "source", "createdAt", "updatedAt"]
+    },
+    "InquiryMessageEntity": {
+      "title": "Inquiry Message Subcollection Entity",
+      "description": "Individual thread message belonging to a canonical inquiry.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "inquiryId": { "type": "string" },
+        "senderId": { "type": "string" },
+        "senderName": { "type": "string" },
+        "senderRole": { "type": "string", "enum": ["REQUESTER", "COMPANY_MEMBER"] },
+        "body": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "senderId", "senderName", "senderRole", "body", "createdAt"]
+    },
+    "InquiryNotificationEntity": {
+      "title": "Commercial Notification Entity",
+      "description": "Notification event for inquiries and commercial messages.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "type": "string", "enum": ["NEW_INQUIRY", "COMPANY_REPLIED", "REQUESTER_REPLIED", "OFFER_REQUESTED", "STATUS_CHANGED"] },
+        "recipientEmail": { "type": "string" },
+        "recipientName": { "type": "string" },
+        "sourceRule": { "type": "string" },
+        "subject": { "type": "string" },
+        "preview": { "type": "string" },
+        "inquiryReference": { "type": "string" },
+        "offeringName": { "type": "string" },
+        "canonicalUrl": { "type": "string" },
+        "sentAt": { "type": "string" }
+      },
+      "required": ["id", "type", "recipientEmail", "recipientName", "subject", "sentAt"]
+    }
+  },
+  "firestore": {
+    "/users/{uid}": {
+      "schema": { "$ref": "#/entities/UserEntity" },
+      "description": "User domain profile document"
+    },
+    "/users/{uid}/inquiries/{inquiryId}": {
+      "schema": { "$ref": "#/entities/InquiryRecordEntity" },
+      "description": "User submitted inquiries registry"
+    },
+    "/users/{uid}/notifications/{notificationId}": {
+      "schema": { "$ref": "#/entities/InquiryNotificationEntity" },
+      "description": "User commercial notification events"
+    },
+    "/businessIds/{businessId}": {
+      "schema": { "$ref": "#/entities/BusinessIdEntity" },
+      "description": "Global MarineWorld Business ID registry"
+    },
+    "/platforms/{platformId}": {
+      "schema": { "$ref": "#/entities/PlatformEntity" },
+      "description": "Global platform entity record"
+    },
+    "/sectors/{sectorId}": {
+      "schema": { "$ref": "#/entities/SectorEntity" },
+      "description": "Global sector classification record"
+    },
+    "/sectorCities/{sectorCityId}": {
+      "schema": { "$ref": "#/entities/SectorCityEntity" },
+      "description": "Specialized sector city digital twin hub"
+    },
+    "/companies/{companyId}": {
+      "schema": { "$ref": "#/entities/CompanyEntity" },
+      "description": "Canonical company tenant organization"
+    },
+    "/companies/{companyId}/members/{userId}": {
+      "schema": { "$ref": "#/entities/CompanyMemberEntity" },
+      "description": "Company membership roles"
+    },
+    "/companies/{companyId}/memberships/{uid}": {
+      "schema": { "$ref": "#/entities/CompanyMemberEntity" },
+      "description": "Company membership entity record"
+    },
+    "/companies/{companyId}/inquiries/{inquiryId}": {
+      "schema": { "$ref": "#/entities/InquiryRecordEntity" },
+      "description": "Canonical tenant commercial inquiries and RFQs"
+    },
+    "/companies/{companyId}/inquiries/{inquiryId}/messages/{messageId}": {
+      "schema": { "$ref": "#/entities/InquiryMessageEntity" },
+      "description": "Individual messages in canonical inquiry conversation"
+    },
+    "/companies/{companyId}/notifications/{notificationId}": {
+      "schema": { "$ref": "#/entities/InquiryNotificationEntity" },
+      "description": "Company commercial notification events"
+    },
+    "/companies/{companyId}/subscriptions/{subscriptionId}": {
+      "schema": { "$ref": "#/entities/SubscriptionEntity" },
+      "description": "Company canonical subscription status and period document"
+    },
+    "/companies/{companyId}/subscriptionIntents/{intentId}": {
+      "schema": { "$ref": "#/entities/SubscriptionIntentEntity" },
+      "description": "Company commercial subscription intent document"
+    },
+    "/companies/{companyId}/nodes/{nodeId}": {
+      "schema": { "$ref": "#/entities/CompanyNodeEntity" },
+      "description": "Company operational nodes"
+    },
+    "/companies/{companyId}/products/{productId}": {
+      "schema": { "$ref": "#/entities/ProductEntity" },
+      "description": "Company catalog products"
+    },
+    "/companies/{companyId}/services/{serviceId}": {
+      "schema": { "$ref": "#/entities/ServiceEntity" },
+      "description": "Company catalog services"
+    },
+    "/companies/{companyId}/connect/{connectId}": {
+      "schema": { "$ref": "#/entities/ConnectEntity" },
+      "description": "Company commercial interactions"
+    },
+    "/companies/{companyId}/businessTwin/{twinId}": {
+      "schema": { "$ref": "#/entities/BusinessTwinModel" },
+      "description": "Company business twin projection"
+    },
+    "/companyAnalytics/{companyId}/events/{eventId}": {
+      "schema": { "$ref": "#/entities/CompanyAnalyticsEvent" },
+      "description": "Company analytics telemetry events"
+    },
+    "/aiInteractions/{interactionId}": {
+      "schema": { "$ref": "#/entities/AIInteractionEntity" },
+      "description": "Grounded AI interaction audit log"
+    },
+    "/companies/{companyId}/documents/{documentId}": {
+      "schema": { "$ref": "#/entities/DocumentEntity" },
+      "description": "Company Data Space documents"
+    },
+    "/companies/{companyId}/files/{fileId}": {
+      "schema": { "$ref": "#/entities/FileEntity" },
+      "description": "Company Data Space files metadata"
+    },
+    "/companies/{companyId}/externalSources/{sourceId}": {
+      "schema": { "$ref": "#/entities/ExternalSourceConnection" },
+      "description": "Company Data Space external source connections"
+    },
+    "/companies/{companyId}/externalResources/{resourceId}": {
+      "schema": { "$ref": "#/entities/ExternalResource" },
+      "description": "Company Data Space external resources"
+    }
+  }
+}
