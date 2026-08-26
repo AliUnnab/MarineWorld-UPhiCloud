@@ -12,7 +12,6 @@ import {
   Layers,
   ExternalLink,
   MessageSquare,
-  Sparkles,
   ShieldCheck,
   Compass,
   ArrowUpRight,
@@ -175,8 +174,8 @@ export function CompanyHeader({
                     )}
 
                     {/* Immutable MarineWorld ID Badge */}
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-900 text-blue-400 border border-slate-700 px-3 py-1 text-[11px] font-mono font-bold tracking-wider shadow-2xs">
-                      <Lock className="h-3 w-3 text-blue-400 shrink-0" />
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-900 text-slate-300 border border-slate-700 px-3 py-1 text-[11px] font-mono font-bold tracking-wider shadow-2xs">
+                      <Lock className="h-3 w-3 text-slate-300 shrink-0" />
                       <span>{digitalIdInfo.mwCompanyDigitalId}</span>
                     </span>
 
@@ -203,7 +202,7 @@ export function CompanyHeader({
                 <button
                   type="button"
                   onClick={() => onSelectModule?.("connect")}
-                  className="px-6 py-3.5 rounded-xl bg-royal text-white hover:bg-blue-600 font-bold text-xs tracking-wider transition-colors flex items-center justify-center gap-2.5 shadow-sm"
+                  className="px-6 py-3.5 rounded-xl bg-royal text-white hover:bg-royal font-bold text-xs tracking-wider transition-colors flex items-center justify-center gap-2.5 shadow-sm"
                 >
                   <MessageSquare className="w-4 h-4" />
                   <span>CONNECT / EXPLORE COMPANY</span>
@@ -214,8 +213,8 @@ export function CompanyHeader({
                   onClick={() => onSelectModule?.("business-twin")}
                   className="px-5 py-3.5 rounded-xl bg-slate-900 text-white hover:bg-slate-800 font-bold text-xs tracking-wider transition-colors flex items-center justify-center gap-2.5 shadow-sm"
                 >
-                  <Sparkles className="w-4 h-4 text-electric" />
-                  <span>BUSINESS TWIN</span>
+                  <Cpu className="w-4 h-4 text-electric" />
+                  <span>COMPANY AI</span>
                 </button>
               </div>
             </div>
@@ -257,7 +256,7 @@ export function CompanyHeader({
 
               <div className="absolute bottom-4 left-4 right-4 flex flex-col sm:flex-row sm:items-end justify-between gap-3 text-white">
                 <div>
-                  <span className="text-[10px] font-mono text-blue-300 font-bold uppercase tracking-widest block">
+                  <span className="text-[10px] font-mono text-slate-300 font-bold uppercase tracking-widest block">
                     CANONICAL ENTITY CREDENTIAL
                   </span>
                   <div className="text-lg md:text-xl font-mono font-black text-white tracking-wider mt-0.5 flex items-center gap-2">

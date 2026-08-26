@@ -1,5 +1,5 @@
-import { useEffect, useState, useRef } from "react";
-import type { CompanyProfile, SectorCity, IndustryDomainEntity } from "@/lib/types";
+import { useEffect, useState, useRef, useMemo } from "react";
+import type { CompanyProfile, SectorCity, IndustryDomainEntity, SectorConfig } from "@/lib/types";
 import { DigiContainer } from "@/components/digione/primitives";
 import {
   resolveAccessContext,
@@ -11,13 +11,15 @@ import {
   subscribeAuthState,
 } from "@/lib/services/securityService";
 import { resolveMarineWorldCompanyDigitalId } from "@/lib/services/companyIdentityService";
+import { getEnrolledOrganizationForCompany } from "@/lib/services/ecosystemOrganizationService";
 import { getBusinessTwin } from "@/lib/businessTwinStore";
+import { isCompanyFlagship, isCompanyAnchor, getCompaniesInCity, getSectorConfig } from "@/lib/registry";
+import { SectorCityAdvisorDrawer } from "@/components/sector/SectorCityAdvisorDrawer";
 import {
   ChevronDown,
   Building2,
   LogOut,
   ArrowRight,
-  Sparkles,
   User,
   Compass,
   LayoutDashboard,
@@ -29,6 +31,8 @@ import {
   Link2,
   Share2,
   CheckCircle2,
+  Radio,
+  ShieldCheck,
 } from "lucide-react";
 import type { AccessContext } from "@/lib/types";
 
@@ -36,6 +40,7 @@ export function CompanySovereignHeader({
   company,
   primaryCity,
   parentDomain,
+  config,
   activeModule = "overview",
   selectedProductName,
   selectedServiceName,
@@ -48,6 +53,7 @@ export function CompanySovereignHeader({
   company: CompanyProfile;
   primaryCity?: SectorCity;
   parentDomain?: IndustryDomainEntity;
+  config?: SectorConfig;
   activeModule?: string;
   selectedProductName?: string;
   selectedServiceName?: string;
@@ -59,10 +65,13 @@ export function CompanySovereignHeader({
 }) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [logoError, setLogoError] = useState(false);
+  const [isAdvisorOpen, setIsAdvisorOpen] = useState(false);
   const [accessContext, setAccessContext] = useState<AccessContext>(() =>
     resolveAccessContext()
   );
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const activeConfig = useMemo(() => config || getSectorConfig("marine"), [config]);
 
   const refreshContext = () => {
     setAccessContext(resolveAccessContext());
@@ -101,8 +110,23 @@ export function CompanySovereignHeader({
     accessContext.isAuthenticated && accessContext.authenticatedUserId !== null;
   const activeOrg = accessContext.activeOrganization;
 
-  const citySlug = primaryCity?.slug ?? "shipyard";
-  const cityDomain = (primaryCity?.domain ?? primaryCity?.id ?? "supplychain").toUpperCase();
+  const resolvedCity: SectorCity | undefined = useMemo(() => {
+    if (primaryCity) return primaryCity;
+    const targetCityId = company.sectorCityIds?.[0] || (company as any).primarySectorCityId || company.city;
+    return (
+      activeConfig.explorer?.cities?.find(
+        (c) => c.id.toLowerCase() === targetCityId?.toLowerCase() || c.slug.toLowerCase() === targetCityId?.toLowerCase()
+      ) || activeConfig.explorer?.cities?.[0]
+    );
+  }, [primaryCity, company, activeConfig]);
+
+  const cityCompanies = useMemo(() => {
+    if (!resolvedCity) return [];
+    return getCompaniesInCity(activeConfig, resolvedCity.id || resolvedCity.slug);
+  }, [activeConfig, resolvedCity]);
+
+  const citySlug = resolvedCity?.slug ?? primaryCity?.slug ?? "shipyard";
+  const cityDomain = (resolvedCity?.domain ?? primaryCity?.domain ?? primaryCity?.id ?? "supplychain").toUpperCase();
   const formattedSectorCity = cityDomain.endsWith(".CITY") ? cityDomain : `${cityDomain}.CITY`;
 
   const companyHref = `/companies/${company.slug ?? company.id}`;
@@ -113,6 +137,8 @@ export function CompanySovereignHeader({
   const logoSrc = company.logoUrl || (company as any).logo || null;
   const companyShortName = displayName.toUpperCase();
   const isVerified = String(company.verificationStatus || "VERIFIED").toLowerCase().includes("verified");
+  const isFlagship = isCompanyFlagship(company);
+  const isAnchor = isCompanyAnchor(company);
 
   const digitalIdInfo = resolveMarineWorldCompanyDigitalId({
     companyIdOrSlug: company.id,
@@ -176,24 +202,65 @@ export function CompanySovereignHeader({
   ];
 
   const isModuleActive = (id: string) => {
-    if (id === "overview") return ["company", "overview", "corporate"].includes(activeModule);
+    if (id === "overview") return ["company", "overview"].includes(activeModule);
     if (id === "offerings") return ["offerings", "showroom", "solutions", "products", "services"].includes(activeModule);
     if (id === "presence") return ["presence", "sector-city", "network"].includes(activeModule);
+    if (id === "identity") return ["identity", "corporate", "governance"].includes(activeModule);
     if (id === "business-twin") return ["business-twin", "chat", "ai"].includes(activeModule);
     if (id === "connect") return activeModule === "connect";
     return false;
   };
 
+  const queryParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : new URLSearchParams();
+  const isFromHub = queryParams.get("fromHub") === "true";
+  const returnTab = queryParams.get("returnTab") || "members";
+  const returnOrgId = queryParams.get("orgId") || (activeOrg as any)?.id;
+  const returnUrl = returnOrgId
+    ? `/ecosystem/dashboard?orgId=${returnOrgId}&tab=${returnTab}`
+    : `/ecosystem/dashboard?tab=${returnTab}`;
+
+  const enrolledOrg = getEnrolledOrganizationForCompany(company.id || company.slug || "");
+
   const navItems = [
     { id: "overview", label: "Overview", icon: LayoutDashboard },
     { id: "offerings", label: "Offerings", icon: Package, count: offeringsCount > 0 ? offeringsCount : undefined },
     { id: "presence", label: "Presence", icon: Globe2 },
-    { id: "business-twin", label: "Business Twin", icon: Cpu },
+    { id: "identity", label: "Identity", icon: ShieldCheck },
     { id: "connect", label: "Connect", icon: Link2 },
   ];
 
   return (
     <header className="sticky top-0 z-50 font-sans shadow-xs">
+      {/* ========================================================================= */}
+      {/* ECOSYSTEM HUB RETURN BANNER (Admin return control when coming from Hub)   */}
+      {/* ========================================================================= */}
+      {(isFromHub ||
+        accessContext.contextType === "ECOSYSTEM_ORGANIZATION" ||
+        (activeOrg &&
+          ["ASSOCIATION", "CHAMBER", "FEDERATION", "INSTITUTION", "PUBLIC_ORGANIZATION"].includes(
+            (activeOrg as any).organizationType
+          ))) && (
+        <div className="bg-slate-900 text-white px-4 py-2 border-b border-slate-800 shadow-xs flex items-center justify-between font-sans z-50">
+          <div className="flex items-center gap-2 text-xs font-bold truncate">
+            <Building2 className="w-4 h-4 text-slate-300 shrink-0" />
+            <span className="text-slate-300">ECOSYSTEM MEMBER PREVIEW:</span>
+            <span className="text-white truncate">Viewing {displayName}</span>
+            <span className="text-slate-400 font-normal hidden sm:inline">
+              as {(activeOrg as any)?.organizationName || (activeOrg as any)?.displayName || enrolledOrg?.name || "Ecosystem Representative"}
+            </span>
+          </div>
+
+          <a
+            id="btn-top-return-to-ecosystem"
+            href={returnUrl}
+            className="px-3.5 py-1.5 rounded-lg bg-royal hover:bg-royal-light text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 shadow-2xs"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            <span>Return to Ecosystem Hub ({returnTab})</span>
+          </a>
+        </div>
+      )}
+
       {/* ========================================================================= */}
       {/* LAYER 1 — PLATFORM CHROME (TOP)                                           */}
       {/* Quiet, neutral, thin strip for platform network provenance & accounts   */}
@@ -204,6 +271,22 @@ export function CompanySovereignHeader({
             
             {/* Left: Back to City & Platform Network Provenance Breadcrumb */}
             <div className="flex items-center gap-2 sm:gap-3 overflow-hidden py-1">
+              {(accessContext.contextType === "ECOSYSTEM_ORGANIZATION" ||
+                (activeOrg &&
+                  ["ASSOCIATION", "CHAMBER", "FEDERATION", "INSTITUTION", "PUBLIC_ORGANIZATION"].includes(
+                    (activeOrg as any).organizationType
+                  ))) && (
+                <a
+                  id="btn-sovereign-back-to-ecosystem"
+                  href="/ecosystem/dashboard?tab=members"
+                  className="inline-flex items-center gap-1 rounded-md border border-royal/30 bg-royal/5 hover:bg-royal/10 px-2.5 py-0.5 text-[10.5px] font-sans font-bold text-royal-dark transition shrink-0 shadow-2xs"
+                  title="Return to Ecosystem Hub Members"
+                >
+                  <ArrowLeft className="w-3 h-3 text-royal shrink-0" />
+                  <span>Return to Ecosystem Hub</span>
+                </a>
+              )}
+
               <a
                 id="btn-sovereign-back-to-city"
                 href={`/cities/${citySlug}`}
@@ -238,72 +321,26 @@ export function CompanySovereignHeader({
               </nav>
             </div>
 
-            {/* Right: Platform Visitor Controls & Sign In / Enter */}
+            {/* Right: Platform Controls (Sign In + Enter) */}
             <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
               {!isAuthenticated ? (
-                <div className="flex items-center gap-1.5">
-                  {/* Guest Visitor Dropdown */}
-                  <div className="relative" ref={dropdownRef}>
-                    <button
-                      type="button"
-                      id="btn-sovereign-visitor-menu"
-                      onClick={() => setDropdownOpen((v) => !v)}
-                      className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white hover:bg-slate-50 px-2 sm:px-2.5 py-1 text-[11px] font-semibold text-slate-700 shadow-2xs transition"
-                    >
-                      <Compass className="w-3 h-3 text-slate-500 shrink-0" />
-                      <span className="hidden sm:inline">Visitor</span>
-                      <ChevronDown className="w-2.5 h-2.5 text-stone shrink-0" />
-                    </button>
-
-                    {dropdownOpen && (
-                      <div
-                        id="dropdown-sovereign-visitor-menu"
-                        className="absolute right-0 top-full mt-1.5 w-60 rounded-xl border border-line bg-white p-3 shadow-xl z-50 space-y-2 animate-in fade-in slide-in-from-top-1 duration-150"
-                      >
-                        <div className="p-2 bg-slate-50 rounded-lg space-y-1">
-                          <div className="text-xs font-bold text-graphite">Public Visitor</div>
-                          <div className="text-[11px] text-stone leading-tight">
-                            Explore MarineWorld.City verified enterprise operating surfaces.
-                          </div>
-                        </div>
-                        <div className="pt-1 border-t border-line/60 space-y-1">
-                          <a
-                            id="btn-sovereign-signin"
-                            href="/login/personal"
-                            onClick={() => setDropdownOpen(false)}
-                            className="w-full text-left px-2 py-1.5 rounded-md text-xs font-semibold text-royal hover:bg-royal/5 flex items-center justify-between transition"
-                          >
-                            <span>Personal Sign In</span>
-                            <ArrowRight className="w-3 h-3" />
-                          </a>
-                          <a
-                            id="btn-sovereign-create-company"
-                            href="/company/onboarding"
-                            onClick={() => setDropdownOpen(false)}
-                            className="w-full text-left px-2 py-1.5 rounded-md text-xs font-semibold text-slate-700 hover:bg-slate-100 flex items-center justify-between transition"
-                          >
-                            <span>Create Company</span>
-                            <Sparkles className="w-3 h-3 text-royal" />
-                          </a>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
+                <div className="flex items-center gap-2">
                   <a
                     id="btn-sovereign-header-signin"
                     href="/login/personal"
-                    className="inline-flex h-7 sm:h-7.5 items-center justify-center rounded-full border border-slate-200 bg-white hover:bg-slate-50 px-2.5 sm:px-3 text-[11px] font-bold tracking-wide text-graphite shadow-2xs transition-all duration-200"
+                    className="inline-flex h-7 sm:h-7.5 items-center justify-center gap-1 rounded-full border border-slate-200 bg-white hover:bg-slate-50 hover:border-royal/40 px-2.5 sm:px-3 text-[11px] font-semibold text-slate-800 shadow-2xs transition-all duration-200"
                   >
-                    <span>SIGN IN</span>
+                    <User className="w-3 h-3 text-slate-500" />
+                    <span>Sign In</span>
                   </a>
 
                   <a
                     id="btn-sovereign-header-enter"
                     href="/gateway"
-                    className="inline-flex h-7 sm:h-7.5 items-center justify-center rounded-full bg-royal hover:bg-blue-700 px-3 sm:px-3.5 text-[11px] font-bold tracking-wide text-white shadow-2xs transition-all duration-200"
+                    className="inline-flex h-7 sm:h-7.5 items-center justify-center gap-1 rounded-full bg-royal hover:bg-royal-dark px-3 sm:px-3.5 text-[11px] font-bold tracking-wide text-white shadow-2xs transition-all duration-200"
                   >
-                    <span>ENTER</span>
+                    <span>GATEWAY</span>
+                    <ArrowRight className="w-2.5 h-2.5 text-white/80" />
                   </a>
                 </div>
               ) : accessContext.contextType === "VISITOR" || !activeOrg ? (
@@ -345,20 +382,28 @@ export function CompanySovereignHeader({
 
                       <div className="pt-2 border-t border-line/60 space-y-1">
                         <a
-                          href="/visitor/dashboard"
+                          href="/workspace"
                           onClick={() => setDropdownOpen(false)}
                           className="w-full text-left px-2.5 py-2 rounded-lg text-xs font-medium text-graphite hover:bg-slate-50 flex items-center gap-2 transition"
                         >
                           <LayoutDashboard className="w-3.5 h-3.5 text-slate-500" />
-                          <span>Visitor Dashboard</span>
+                          <span>My Workspace</span>
                         </a>
                         <a
-                          href="/visitor/dashboard?tab=saved-companies"
+                          href="/saved/companies"
                           onClick={() => setDropdownOpen(false)}
                           className="w-full text-left px-2.5 py-2 rounded-lg text-xs font-medium text-graphite hover:bg-slate-50 flex items-center gap-2 transition"
                         >
                           <Bookmark className="w-3.5 h-3.5 text-slate-500" />
                           <span>Saved Companies</span>
+                        </a>
+                        <a
+                          href="/workspace/inquiries"
+                          onClick={() => setDropdownOpen(false)}
+                          className="w-full text-left px-2.5 py-2 rounded-lg text-xs font-medium text-graphite hover:bg-slate-50 flex items-center gap-2 transition"
+                        >
+                          <Package className="w-3.5 h-3.5 text-slate-500" />
+                          <span>My Inquiries</span>
                         </a>
                       </div>
 
@@ -404,6 +449,20 @@ export function CompanySovereignHeader({
                       </div>
 
                       <div className="pt-2 border-t border-line/60 space-y-1">
+                        {(accessContext.contextType === "ECOSYSTEM_ORGANIZATION" ||
+                          (activeOrg &&
+                            ["ASSOCIATION", "CHAMBER", "FEDERATION", "INSTITUTION", "PUBLIC_ORGANIZATION"].includes(
+                              (activeOrg as any).organizationType
+                            ))) && (
+                          <a
+                            href="/ecosystem/dashboard?tab=members"
+                            onClick={() => setDropdownOpen(false)}
+                            className="w-full text-left px-2.5 py-2 rounded-lg text-xs font-bold text-royal bg-royal/5 hover:bg-royal/10 flex items-center justify-between transition"
+                          >
+                            <span>Return to Ecosystem Hub</span>
+                            <ArrowRight className="w-3.5 h-3.5 text-royal" />
+                          </a>
+                        )}
                         <a
                           href="/studio"
                           onClick={() => setDropdownOpen(false)}
@@ -468,12 +527,12 @@ export function CompanySovereignHeader({
                   {/* 2. Dominant Formal Name + Kicker + Inline Seal Verification + Supporting Line */}
                   <div className="space-y-1 min-w-0 flex-1">
                     
-                    {/* Kicker line: [Industry Domain] · Est. [Year] */}
-                    <div className="text-[11px] font-bold uppercase tracking-wider text-stone flex items-center gap-1.5 whitespace-nowrap overflow-hidden text-ellipsis">
-                      <span>{industryDomainName}</span>
-                      <span className="text-slate-300">·</span>
-                      <span>Est. {establishedYear}</span>
-                    </div>
+                    {/* Kicker line: Est. [Year] if present */}
+                    {establishedYear ? (
+                      <div className="text-[11px] font-bold uppercase tracking-wider text-stone flex items-center gap-1.5 whitespace-nowrap overflow-hidden text-ellipsis">
+                        <span>EST. {establishedYear}</span>
+                      </div>
+                    ) : null}
 
                     {/* Dominant Company Name & Inline Verification */}
                     <div className="flex flex-wrap items-baseline sm:items-center gap-x-2.5 gap-y-1">
@@ -494,24 +553,88 @@ export function CompanySovereignHeader({
                       )}
                     </div>
 
-                    {/* 3. Clean Metadata Line: legal entity name + country, followed by sector city pill */}
+                    {/* 3. Clean Metadata Line: legal entity name + country, followed by flagship/anchor seal & optional enrolling org badge */}
                     <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 font-sans text-xs sm:text-[12.5px] text-stone">
                       <span className="text-slate-700 font-medium">
                         {legalName} · {country}
                       </span>
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold font-mono bg-royal/10 text-royal border border-royal/20 whitespace-nowrap shrink-0">
-                        {formattedSectorCity}
-                      </span>
+                      {isAnchor ? (
+                        <span
+                          id="seal-anchor-registrant"
+                          className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold font-sans bg-slate-100 text-slate-800 border border-slate-300 whitespace-nowrap shrink-0 shadow-2xs"
+                          title={`Accredited Landmark Anchor within the ${formattedSectorCity} Registry`}
+                        >
+                          <Radio className="w-3 h-3 text-slate-700 shrink-0" />
+                          <span>Anchor</span>
+                        </span>
+                      ) : isFlagship ? (
+                        <span
+                          id="seal-flagship-registrant"
+                          className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold font-sans bg-amber-50 text-amber-800 border border-amber-200 whitespace-nowrap shrink-0 shadow-2xs"
+                          title={`Accredited Flagship Registrant within the ${formattedSectorCity} Registry`}
+                        >
+                          <Radio className="w-3 h-3 text-amber-700 shrink-0" />
+                          <span>Flagship</span>
+                        </span>
+                      ) : null}
+                      {enrolledOrg && (
+                        <a
+                          id="link-sovereign-enrolled-org"
+                          href={`/companies/${enrolledOrg.slug || enrolledOrg.id}`}
+                          className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-royal/5 text-royal-dark border border-royal/20/90 hover:bg-royal/10 transition whitespace-nowrap shrink-0 shadow-2xs"
+                          title={`Public organization profile for ${enrolledOrg.name}`}
+                        >
+                          <Building2 className="w-3 h-3 text-royal shrink-0" />
+                          <span>Member of {enrolledOrg.name}</span>
+                        </a>
+                      )}
                     </div>
 
                   </div>
 
                 </div>
 
-                {/* Right Side: Two clearly separated rows */}
+                {/* Right Side: Primary Action Buttons */}
                 <div className="flex flex-col lg:items-end justify-center gap-2.5 shrink-0 self-stretch lg:self-auto">
-                  {/* Row 1: Action Buttons (Share icon-only / AI Twin / Connect primary filled) */}
-                  <div className="flex items-center gap-2 sm:gap-2.5">
+                  {/* Action Buttons Row */}
+                  <div className="flex items-center gap-2 sm:gap-2.5 flex-wrap lg:flex-nowrap">
+                    {/* Prominent Explore Sector City Action */}
+                    <button
+                      type="button"
+                      id="btn-header-explore-sector-city"
+                      onClick={() => setIsAdvisorOpen(true)}
+                      className="inline-flex items-center justify-center gap-1.5 rounded-full border border-royal/30 bg-royal/5 hover:bg-royal/10 text-royal px-4 py-2 text-xs font-bold tracking-normal transition-all cursor-pointer font-sans min-h-[36px] shrink-0 shadow-2xs hover:border-royal/50 hover:shadow-xs group"
+                      title={`Explore ${formattedSectorCity} Guide & AI Advisor`}
+                    >
+                      <span>Explore {formattedSectorCity}</span>
+                      <ArrowRight className="w-3.5 h-3.5 text-royal group-hover:translate-x-0.5 transition-transform shrink-0" />
+                    </button>
+
+                    {onOpenTwinModal && (
+                      <button
+                        type="button"
+                        id="btn-header-twin"
+                        onClick={onOpenTwinModal}
+                        className="inline-flex items-center justify-center gap-1.5 rounded-full border border-line bg-white hover:bg-slate-50 px-3.5 sm:px-4 py-2 text-xs font-semibold text-graphite transition-colors cursor-pointer font-sans min-h-[36px] shrink-0"
+                        title="Open Company AI"
+                      >
+                        <Cpu className="w-3.5 h-3.5 text-royal" />
+                        <span>COMPANY AI</span>
+                      </button>
+                    )}
+
+                    {onOpenConnectModal && (
+                      <button
+                        type="button"
+                        id="btn-header-connect"
+                        onClick={onOpenConnectModal}
+                        className="inline-flex items-center justify-center gap-1.5 rounded-full bg-royal hover:bg-royal-dark text-white px-4 sm:px-5 py-2 text-xs font-semibold tracking-wider transition-colors cursor-pointer font-sans min-h-[36px] shrink-0"
+                      >
+                        <Link2 className="w-3.5 h-3.5 text-white" />
+                        <span>CONNECT</span>
+                      </button>
+                    )}
+
                     {onOpenShareModal && (
                       <button
                         type="button"
@@ -524,42 +647,6 @@ export function CompanySovereignHeader({
                         <Share2 className="w-4 h-4" />
                       </button>
                     )}
-
-                    {onOpenTwinModal && (
-                      <button
-                        type="button"
-                        id="btn-header-twin"
-                        onClick={onOpenTwinModal}
-                        className="inline-flex items-center justify-center gap-1.5 rounded-full border border-line bg-white hover:bg-slate-50 px-3.5 sm:px-4 py-2 text-xs font-semibold text-graphite transition-colors cursor-pointer font-sans min-h-[36px] shrink-0"
-                        title="Open Business Twin AI"
-                      >
-                        <Cpu className="w-3.5 h-3.5 text-royal" />
-                        <span>AI TWIN</span>
-                      </button>
-                    )}
-
-                    {onOpenConnectModal && (
-                      <button
-                        type="button"
-                        id="btn-header-connect"
-                        onClick={onOpenConnectModal}
-                        className="inline-flex items-center justify-center gap-1.5 rounded-full bg-royal hover:bg-blue-600 text-white px-4 sm:px-5 py-2 text-xs font-semibold tracking-wider transition-colors cursor-pointer font-sans min-h-[36px] shrink-0"
-                      >
-                        <Link2 className="w-3.5 h-3.5 text-white" />
-                        <span>CONNECT</span>
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Row 2: Trust Signal Summary Chip (Right-aligned under buttons) */}
-                  <div className="flex lg:justify-end">
-                    <div
-                      className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full border border-line bg-canvas text-[11px] font-semibold text-stone shrink-0"
-                      title={`${verifiedSignalsCount} of ${totalSignalsCount} audited institutional trust signals verified`}
-                    >
-                      <CheckCircle2 className={`w-3.5 h-3.5 shrink-0 ${verifiedSignalsCount === totalSignalsCount ? "text-emerald-600" : "text-amber-600"}`} />
-                      <span>{verifiedSignalsCount}/{totalSignalsCount} trust signals verified</span>
-                    </div>
                   </div>
                 </div>
 
@@ -603,6 +690,21 @@ export function CompanySovereignHeader({
           </div>
         </DigiContainer>
       </div>
+
+      {/* Reusable Sector City Guide & AI Advisor Drawer */}
+      {resolvedCity && (
+        <SectorCityAdvisorDrawer
+          isOpen={isAdvisorOpen}
+          onClose={() => setIsAdvisorOpen(false)}
+          city={resolvedCity}
+          config={activeConfig}
+          allCityCompanies={cityCompanies}
+          parentDomainName={parentDomain?.name}
+          entrySource="company_page"
+          referringCompanyId={company.id}
+          referringCompanyName={company.displayName || company.name}
+        />
+      )}
     </header>
   );
 }

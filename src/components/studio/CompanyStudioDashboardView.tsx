@@ -6,21 +6,22 @@ import {
   FileText,
   FolderArchive,
   MessageSquare,
-  Bot,
+  BrainCircuit,
   Cpu,
   CreditCard,
   ShieldCheck,
   CheckCircle2,
   ExternalLink,
   ChevronRight,
-  Sparkles,
   AlertCircle,
   Database,
   Lock,
   Layers,
   ArrowUpRight,
-  TrendingUp,
+  Radio,
+  PhoneCall,
 } from "lucide-react";
+import { AnchorRegistryVisibilityCard } from "./AnchorRegistryVisibilityCard";
 import type {
   StudioNavigationModule,
   ProductEntity,
@@ -47,6 +48,7 @@ import { getCompanyProducts } from "@/lib/services/productService";
 import { getCompanyServices } from "@/lib/services/serviceService";
 import { getCompanyConnectRecords } from "@/lib/services/connectService";
 import { getCompanyInquiries, subscribeInquiries } from "@/lib/connectStore";
+import { getCompanyContacts } from "@/lib/services/companyContactService";
 import { getCompanyVerificationStatus } from "@/lib/services/governanceService";
 import {
   getStudioBusinessTwinSummary,
@@ -86,6 +88,7 @@ export const CompanyStudioDashboardView: React.FC<CompanyStudioDashboardViewProp
   const [twinSummary, setTwinSummary] = useState<ReturnType<typeof getStudioBusinessTwinSummary>>(null);
   const [verificationStatus, setVerificationStatus] = useState<string>("PENDING");
   const [dataSpace, setDataSpace] = useState<ReturnType<typeof getCompanyDataSpace> | null>(null);
+  const [directReachCount, setDirectReachCount] = useState<number>(0);
   const [aiAdvisorCapability, setAiAdvisorCapability] = useState<{ isAllowed: boolean; companyHasEntitlement: boolean }>({
     isAllowed: false,
     companyHasEntitlement: false,
@@ -123,6 +126,7 @@ export const CompanyStudioDashboardView: React.FC<CompanyStudioDashboardViewProp
       const verif = getCompanyVerificationStatus(companyId);
       const ds = getCompanyDataSpace(companyId, currentAuth);
       const aiCap = evaluateEffectiveCapability(companyId, currentAuth.uid || "anon", "AI_ADVISOR", currentAuth);
+      const contactsPkg = getCompanyContacts(comp as any);
 
       setProducts(prods);
       setServices(servs);
@@ -134,6 +138,7 @@ export const CompanyStudioDashboardView: React.FC<CompanyStudioDashboardViewProp
       setTwinSummary(twin);
       setVerificationStatus(verif);
       setDataSpace(ds);
+      setDirectReachCount(contactsPkg?.teamMembers?.length || 0);
       setAiAdvisorCapability({
         isAllowed: aiCap.isAllowed,
         companyHasEntitlement: aiCap.companyHasEntitlement,
@@ -225,7 +230,7 @@ export const CompanyStudioDashboardView: React.FC<CompanyStudioDashboardViewProp
             {onNavigateToModule && (
               <button
                 onClick={() => onNavigateToModule("COMPANY")}
-                className="px-4 py-2 bg-royal hover:bg-blue-600 text-white text-xs font-bold rounded-xl transition flex items-center gap-2 shadow-sm"
+                className="px-4 py-2 bg-royal hover:bg-royal text-white text-xs font-bold rounded-xl transition flex items-center gap-2 shadow-sm"
               >
                 <Building2 className="w-4 h-4" />
                 Manage Profile
@@ -266,7 +271,7 @@ export const CompanyStudioDashboardView: React.FC<CompanyStudioDashboardViewProp
       </div>
 
       {/* 2. STATS OVERVIEW CARDS */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
         {/* Products Card */}
         <div
           onClick={() => onNavigateToModule?.("PRODUCTS")}
@@ -343,6 +348,26 @@ export const CompanyStudioDashboardView: React.FC<CompanyStudioDashboardViewProp
             <span className="text-amber-800 font-bold">{openInquiriesCount} Open Inquiries</span>
             <span className="flex items-center gap-1 font-semibold group-hover:text-royal transition">
               View <ChevronRight className="w-3 h-3" />
+            </span>
+          </div>
+        </div>
+
+        {/* Direct Reach & Contacts Card */}
+        <div
+          onClick={() => onNavigateToModule?.("CONTACTS")}
+          className="bg-white border border-line rounded-2xl p-5 shadow-sm hover:border-royal/40 transition cursor-pointer group"
+        >
+          <div className="flex items-center justify-between text-stone mb-2">
+            <span className="text-xs font-semibold uppercase tracking-wider">Direct Reach</span>
+            <div className="p-2 rounded-xl bg-sky-50 text-sky-800 group-hover:bg-sky-800 group-hover:text-white transition">
+              <PhoneCall className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="text-3xl font-bold text-graphite">{directReachCount}</div>
+          <div className="flex items-center justify-between text-[11px] text-stone mt-3 pt-3 border-t border-line">
+            <span className="text-sky-800 font-bold">Active Contacts</span>
+            <span className="flex items-center gap-1 font-semibold group-hover:text-royal transition">
+              Manage <ChevronRight className="w-3 h-3" />
             </span>
           </div>
         </div>
@@ -487,7 +512,7 @@ export const CompanyStudioDashboardView: React.FC<CompanyStudioDashboardViewProp
         <div className="bg-white border border-line rounded-2xl p-6 shadow-sm space-y-5">
           <div className="flex items-center justify-between pb-3 border-b border-line">
             <div className="flex items-center gap-2">
-              <Bot className="w-5 h-5 text-royal" />
+              <BrainCircuit className="w-5 h-5 text-royal" />
               <h3 className="text-base font-bold text-graphite">AI Advisor & Grounding</h3>
             </div>
             <span
@@ -504,7 +529,7 @@ export const CompanyStudioDashboardView: React.FC<CompanyStudioDashboardViewProp
           <div className="p-4 rounded-xl bg-royal/5 border border-royal/20 text-xs space-y-3">
             <div className="flex items-center justify-between">
               <span className="font-bold text-graphite flex items-center gap-1.5">
-                <Sparkles className="w-4 h-4 text-royal" />
+                <Cpu className="w-4 h-4 text-royal" />
                 Grounding Readiness
               </span>
               <span className="font-mono font-bold text-royal">
@@ -673,6 +698,9 @@ export const CompanyStudioDashboardView: React.FC<CompanyStudioDashboardViewProp
           </div>
         </div>
       </div>
+
+      {/* 6. REGISTRY VISIBILITY TELEMETRY CARD */}
+      <AnchorRegistryVisibilityCard companyId={companyId} className="mt-6" />
     </div>
   );
 };

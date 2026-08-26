@@ -1075,7 +1075,7 @@ export function ProductExperienceModal({
                         setInquiryModalMode("OFFICIAL_OFFER");
                         setIsInquiryModalOpen(true);
                       }}
-                      className="flex items-center justify-center gap-2 rounded-card-xs bg-royal hover:bg-blue-700 text-white px-4 py-3 text-xs font-extrabold transition shadow-2xs cursor-pointer uppercase tracking-wider focus-visible:ring-2 focus-visible:ring-royal focus-visible:outline-hidden"
+                      className="flex items-center justify-center gap-2 rounded-card-xs bg-royal hover:bg-royal-dark text-white px-4 py-3 text-xs font-extrabold transition shadow-2xs cursor-pointer uppercase tracking-wider focus-visible:ring-2 focus-visible:ring-royal focus-visible:outline-hidden"
                       aria-label="Request official offer for this offering"
                     >
                       <Bookmark className="w-4 h-4" />
@@ -1585,7 +1585,7 @@ export function ProductExperienceModal({
                                       setInquiryModalMode("OFFICIAL_OFFER");
                                       setIsInquiryModalOpen(true);
                                     }}
-                                    className="inline-flex items-center gap-1.5 rounded-card-xs bg-royal hover:bg-blue-700 text-white px-3 py-1.5 text-xs font-bold transition shadow-2xs cursor-pointer uppercase tracking-wider focus-visible:ring-2 focus-visible:ring-royal focus-visible:outline-hidden"
+                                    className="inline-flex items-center gap-1.5 rounded-card-xs bg-royal hover:bg-royal-dark text-white px-3 py-1.5 text-xs font-bold transition shadow-2xs cursor-pointer uppercase tracking-wider focus-visible:ring-2 focus-visible:ring-royal focus-visible:outline-hidden"
                                     aria-label="Request official offer"
                                   >
                                     <Bookmark className="w-3.5 h-3.5" />
@@ -1599,7 +1599,7 @@ export function ProductExperienceModal({
                                     onClick={() => {
                                       handleSendMessage(`Please provide detailed production slots, delivery lead times, and availability for ${activeOffering.name}.`);
                                     }}
-                                    className="inline-flex items-center gap-1.5 rounded-card-xs bg-royal hover:bg-blue-700 text-white px-3 py-1.5 text-xs font-bold transition shadow-2xs cursor-pointer uppercase tracking-wider focus-visible:ring-2 focus-visible:ring-royal focus-visible:outline-hidden"
+                                    className="inline-flex items-center gap-1.5 rounded-card-xs bg-royal hover:bg-royal-dark text-white px-3 py-1.5 text-xs font-bold transition shadow-2xs cursor-pointer uppercase tracking-wider focus-visible:ring-2 focus-visible:ring-royal focus-visible:outline-hidden"
                                     aria-label="Request production slots and availability schedule"
                                   >
                                     <Bookmark className="w-3.5 h-3.5" />
@@ -1705,7 +1705,7 @@ export function ProductExperienceModal({
                   type="submit"
                   id="btn-product-ai-send"
                   disabled={!advisorInput.trim() || isGenerating}
-                  className="px-3.5 py-1.5 rounded-card-xs bg-royal hover:bg-blue-700 text-white disabled:opacity-40 disabled:hover:bg-royal transition shadow-2xs flex items-center justify-center gap-1.5 cursor-pointer text-xs font-bold uppercase tracking-wider focus-visible:ring-2 focus-visible:ring-royal focus-visible:outline-hidden"
+                  className="px-3.5 py-1.5 rounded-card-xs bg-royal hover:bg-royal-dark text-white disabled:opacity-40 disabled:hover:bg-royal transition shadow-2xs flex items-center justify-center gap-1.5 cursor-pointer text-xs font-bold uppercase tracking-wider focus-visible:ring-2 focus-visible:ring-royal focus-visible:outline-hidden"
                   title="Send Query"
                   aria-label="Send AI advisor query"
                 >

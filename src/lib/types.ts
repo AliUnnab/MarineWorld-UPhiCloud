@@ -494,6 +494,9 @@ export interface CompanyProfile {
   shortDescription?: string;
   description?: string;
   coverImage?: string;
+  flagshipStatement?: string;
+  coverImageCaption?: string;
+  logo?: string;
   categoryIds?: string[];
   industryDomainIds?: string[];
   sectorCityIds?: string[];
@@ -501,6 +504,16 @@ export interface CompanyProfile {
   publicProfile?: boolean;
   featured?: boolean;
   sortOrder?: number;
+
+  // Commercial Digital Property & Flagship / Anchor Registry Status (Portable Across Platform)
+  presenceTier?: "FLAGSHIP" | "ENTERPRISE" | "STANDARD";
+  isFlagship?: boolean;
+  flagshipSectorCityId?: string;
+  flagshipRegisteredAt?: string;
+  flagshipLeaseId?: string;
+  isAnchor?: boolean;
+  anchorSectorCityId?: string;
+  anchorRegisteredAt?: string;
 
   // Corporate Identity & Registry Fields
   ownerId?: string;
@@ -542,6 +555,23 @@ export interface CompanyProfile {
   parentCompanyId?: string;
   subsidiaryCompanyIds?: string[];
   businessUnits?: string[];
+
+  // Ecosystem Organization Affiliation (Single enrolling org context)
+  enrolledOrganizationId?: string;
+  enrolledOrganizationName?: string;
+  enrolledOrganizationCode?: string;
+  enrolledOrganizationCountry?: string;
+  enrolledOrganizationType?: string;
+  enrolledOrganizationDiscount?: number;
+  ecosystemAffiliations?: Array<{
+    organizationId: string;
+    organizationName: string;
+    organizationCountry: string;
+    enrollmentCode: string;
+    status: string;
+    benefit: string;
+    enrolledAt: string;
+  }>;
 
   // Certifications Summary
   certifications?: Array<{
@@ -1038,6 +1068,12 @@ export interface FooterColumn {
   links: NavigationItem[];
 }
 
+export interface SectorHeroTrustItem {
+  index: string;
+  title: string;
+  desc: string;
+}
+
 export interface SectorConfig {
   /* Identity */
   sectorId: string;
@@ -1058,7 +1094,7 @@ export interface SectorConfig {
     support: string;
     primaryCta: string;
     secondaryCta: string;
-    trust: string[];
+    trust: Array<string | SectorHeroTrustItem>;
     visualMeta: { coords: string; label: string };
     nodes: { id: string; icon: IconName; title: string; line: string }[];
   };
@@ -1283,6 +1319,9 @@ export interface CompanyEntity {
   brandName?: string;
   shortDescription?: string;
   logo?: string;
+  coverImage?: string;
+  flagshipStatement?: string;
+  coverImageCaption?: string;
   heroImage?: string;
   website?: string;
   email?: string;
@@ -1295,6 +1334,22 @@ export interface CompanyEntity {
   ownerId?: string;
   sectorAttributes?: Record<string, any>;
   sectorCityId?: string;
+  // Ecosystem Organization Affiliation
+  enrolledOrganizationId?: string;
+  enrolledOrganizationName?: string;
+  enrolledOrganizationCode?: string;
+  enrolledOrganizationCountry?: string;
+  enrolledOrganizationType?: string;
+  enrolledOrganizationDiscount?: number;
+  // Commercial Digital Property & Flagship / Anchor Registry Status (Portable Across Platform)
+  presenceTier?: "FLAGSHIP" | "ENTERPRISE" | "STANDARD";
+  isFlagship?: boolean;
+  flagshipSectorCityId?: string;
+  flagshipRegisteredAt?: string;
+  flagshipLeaseId?: string;
+  isAnchor?: boolean;
+  anchorSectorCityId?: string;
+  anchorRegisteredAt?: string;
   // Cloud Billing & Marketplace fields (Phase 4.15)
   cloudBillingAccountId?: string;
   cloudBillingOrganizationId?: string;
@@ -1931,13 +1986,21 @@ export interface SavedServiceReference {
   savedAt: string;
 }
 
+export interface SavedCityReference {
+  userId: string;
+  cityId: string;
+  savedAt: string;
+}
+
 export type PersonalCollectionItemType =
   | "COMPANY"
   | "PRODUCT"
   | "SERVICE"
+  | "CITY"
   | "company"
   | "product"
-  | "service";
+  | "service"
+  | "city";
 
 export interface PersonalCollectionItem {
   id: string;
@@ -1962,12 +2025,15 @@ export type PersonalActivityType =
   | "VIEW_COMPANY"
   | "VIEW_PRODUCT"
   | "VIEW_SERVICE"
+  | "VIEW_CITY"
   | "SAVE_COMPANY"
   | "SAVE_PRODUCT"
   | "SAVE_SERVICE"
+  | "SAVE_CITY"
   | "UNSAVE_COMPANY"
   | "UNSAVE_PRODUCT"
   | "UNSAVE_SERVICE"
+  | "UNSAVE_CITY"
   | "CREATE_COLLECTION"
   | "RENAME_COLLECTION"
   | "UPDATE_COLLECTION"
@@ -2084,6 +2150,11 @@ export interface SubscriptionIntent {
   businessId: string;
   planId: string;
   amount: number;
+  catalogAmount?: number;
+  discountPercentage?: number;
+  enrolledOrganizationId?: string;
+  enrolledOrganizationName?: string;
+  enrolledOrganizationCode?: string;
   currency: string;
   status: PaymentStatus;
   paymentReference: string | null;
@@ -2115,6 +2186,7 @@ export interface CreateCompanyOnboardingRequest {
   country: string;
   requestedPlanCode: PlanCode;
   creatorEmail: string;
+  enrollmentCode?: string;
 }
 
 export interface CompanyOnboardingResult {
@@ -2172,6 +2244,7 @@ export type StudioNavigationModule =
   | "FILES"
   | "EXTERNAL_SOURCES"
   | "CONNECTIONS"
+  | "CONTACTS"
   | "PROPERTIES"
   | "BUSINESS_TWIN"
   | "ANALYTICS"

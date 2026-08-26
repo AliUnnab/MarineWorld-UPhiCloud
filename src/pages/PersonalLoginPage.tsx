@@ -239,7 +239,7 @@ export function PersonalLoginPage({
                       type="text"
                       value={displayName}
                       onChange={(e) => setDisplayName(e.target.value)}
-                      placeholder="e.g. Ali Osman"
+                      placeholder="e.g. Alexander Vance"
                       className="w-full pl-10 pr-3.5 py-2.5 border border-line rounded-xl text-sm text-graphite bg-white focus:outline-none focus:ring-2 focus:ring-royal/20 focus:border-royal transition"
                     />
                   </div>

@@ -27,16 +27,16 @@ import {
   Globe2,
   ShieldCheck,
   ExternalLink,
+  Upload,
+  Image as ImageIcon,
+  UploadCloud,
+  Trash2,
 } from "lucide-react";
 
-const AVAILABLE_SECTOR_CITIES = [
-  { id: "supplychain", label: "Supply Chain & Logistics" },
-  { id: "shipyard", label: "Shipyard & Refit Engineering" },
-  { id: "charter", label: "Yacht Charter & Fleet Ops" },
-  { id: "brokerage", label: "Yacht Brokerage & Sales" },
-  { id: "procurement", label: "Marine Equipment Procurement" },
-  { id: "marina", label: "Marina & Docking Hub" },
-];
+const AVAILABLE_SECTOR_CITIES = marineSector.explorer.cities.map((c) => ({
+  id: c.id,
+  label: `${c.domain} · ${c.shortDescription}`,
+}));
 
 const AVAILABLE_REGIONAL_EDITIONS = [
   { code: "MEDITERRANEAN", label: "Mediterranean Edition" },
@@ -83,7 +83,9 @@ export function CompanyIdentityView({ companyId, onProfileUpdated }: CompanyIden
     primaryRegistryCode: initialDigitalIdInfo.primaryRegistryCode,
     primaryRegistryNode: initialDigitalIdInfo.primaryRegistryNode,
     companyId6Digit: initialDigitalIdInfo.companyId6Digit,
-    logoUrl: resolvedProfile.logoUrl || resolvedProfile.coverImage || "",
+    logoUrl: resolvedProfile.logoUrl || (resolvedProfile as any).logo || "",
+    coverImage: resolvedProfile.coverImage || (resolvedProfile as any).heroImageUrl || "",
+    flagshipStatement: resolvedProfile.flagshipStatement || (resolvedProfile as any).coverImageCaption || "",
     verificationStatus: resolvedProfile.verificationStatus || "VERIFIED",
 
     primarySectorCategory: resolvedProfile.primarySectorCategory || resolvedProfile.industry || "Marine Services",
@@ -103,6 +105,38 @@ export function CompanyIdentityView({ companyId, onProfileUpdated }: CompanyIden
 
   const [validationError, setValidationError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState<boolean>(false);
+  const [logoUploadMsg, setLogoUploadMsg] = useState<string | null>(null);
+  const [coverUploadMsg, setCoverUploadMsg] = useState<string | null>(null);
+
+  const handleLogoFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const dataUrl = event.target?.result as string;
+      if (dataUrl) {
+        setFormData((prev) => ({ ...prev, logoUrl: dataUrl }));
+        setLogoUploadMsg(`Uploaded logo from desktop: ${file.name}`);
+        setTimeout(() => setLogoUploadMsg(null), 4000);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleCoverFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const dataUrl = event.target?.result as string;
+      if (dataUrl) {
+        setFormData((prev) => ({ ...prev, coverImage: dataUrl }));
+        setCoverUploadMsg(`Uploaded flagship photo from desktop: ${file.name}`);
+        setTimeout(() => setCoverUploadMsg(null), 4000);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
 
   // Re-sync form state when companyId changes
   useEffect(() => {
@@ -125,7 +159,9 @@ export function CompanyIdentityView({ companyId, onProfileUpdated }: CompanyIden
         primaryRegistryCode: digInfo.primaryRegistryCode,
         primaryRegistryNode: digInfo.primaryRegistryNode,
         companyId6Digit: digInfo.companyId6Digit,
-        logoUrl: prof.logoUrl || prof.coverImage || "",
+        logoUrl: prof.logoUrl || (prof as any).logo || "",
+        coverImage: prof.coverImage || (prof as any).heroImageUrl || "",
+        flagshipStatement: prof.flagshipStatement || (prof as any).coverImageCaption || "",
         verificationStatus: prof.verificationStatus || "VERIFIED",
 
         primarySectorCategory: prof.primarySectorCategory || prof.industry || "Marine Services",
@@ -233,6 +269,11 @@ export function CompanyIdentityView({ companyId, onProfileUpdated }: CompanyIden
       shortDescription: formData.corporateDescription.slice(0, 160) || `${formData.displayName} corporate profile.`,
       industry: formData.primarySectorCategory,
       logoUrl: formData.logoUrl,
+      logo: formData.logoUrl,
+      coverImage: formData.coverImage,
+      heroImageUrl: formData.coverImage,
+      flagshipStatement: formData.flagshipStatement,
+      coverImageCaption: formData.flagshipStatement,
       websiteUrl: formData.websiteUrl,
       website: formData.websiteUrl,
       email: formData.officialEmail,
@@ -326,7 +367,7 @@ export function CompanyIdentityView({ companyId, onProfileUpdated }: CompanyIden
             <button
               type="button"
               onClick={() => setIsEditing(true)}
-              className="px-5 py-2.5 rounded-xl bg-royal text-white hover:bg-blue-600 font-semibold text-xs transition-colors flex items-center gap-2 self-start sm:self-auto shadow-xs"
+              className="px-5 py-2.5 rounded-xl bg-royal text-white hover:bg-royal font-semibold text-xs transition-colors flex items-center gap-2 self-start sm:self-auto shadow-xs"
             >
               <Edit3 className="w-3.5 h-3.5" />
               <span>EDIT IDENTITY</span>
@@ -363,12 +404,12 @@ export function CompanyIdentityView({ companyId, onProfileUpdated }: CompanyIden
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                 CANONICAL MARINEWORLD ID
               </span>
-              <span className="text-[9px] px-2.5 py-0.5 rounded bg-royal/20 text-blue-400 font-mono font-bold flex items-center gap-1 border border-royal/30">
-                <Lock className="w-3 h-3 text-blue-400" />
+              <span className="text-[9px] px-2.5 py-0.5 rounded bg-royal/20 text-slate-300 font-mono font-bold flex items-center gap-1 border border-royal/30">
+                <Lock className="w-3 h-3 text-slate-300" />
                 <span>IMMUTABLE MARINEWORLD ID</span>
               </span>
             </div>
-            <div className="text-2xl font-mono font-black tracking-wider text-blue-400">
+            <div className="text-2xl font-mono font-black tracking-wider text-slate-300">
               {formData.mwCompanyDigitalId}
             </div>
             <div className="text-[10px] text-slate-400">
@@ -914,7 +955,7 @@ export function CompanyIdentityView({ companyId, onProfileUpdated }: CompanyIden
             </button>
             <button
               type="submit"
-              className="px-6 py-2.5 bg-royal text-white rounded-xl text-xs font-semibold hover:bg-blue-700 transition-colors flex items-center gap-2 shadow-xs"
+              className="px-6 py-2.5 bg-royal text-white rounded-xl text-xs font-semibold hover:bg-royal-dark transition-colors flex items-center gap-2 shadow-xs"
             >
               <Save className="w-3.5 h-3.5" />
               <span>SAVE COMPANY PROFILE</span>

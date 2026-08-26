@@ -172,8 +172,8 @@ function ActivityTrendChart({
         >
           <defs>
             <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#3A4FE0" stopOpacity="0.25" />
-              <stop offset="100%" stopColor="#3A4FE0" stopOpacity="0.0" />
+              <stop offset="0%" stopColor="#0D3868" stopOpacity="0.25" />
+              <stop offset="100%" stopColor="#0D3868" stopOpacity="0.0" />
             </linearGradient>
           </defs>
 
@@ -198,7 +198,7 @@ function ActivityTrendChart({
           <path d={areaString} fill="url(#chartGradient)" />
 
           {/* Main Trend Line */}
-          <path d={pathString} fill="none" stroke="#3A4FE0" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+          <path d={pathString} fill="none" stroke="#0D3868" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
 
           {/* Interactive Data Circles */}
           {points.map((p, idx) => (
@@ -814,7 +814,7 @@ export function CompanyMetricsModule({
                 healthSignal === "STRONG"
                   ? "bg-emerald-50 text-emerald-800 border-emerald-300"
                   : healthSignal === "HEALTHY"
-                  ? "bg-blue-50 text-blue-800 border-blue-300"
+                  ? "bg-royal/5 text-royal-dark border-royal/30"
                   : healthSignal === "DEVELOPING"
                   ? "bg-amber-50 text-amber-800 border-amber-300"
                   : "bg-stone-100 text-stone-700 border-stone-300"

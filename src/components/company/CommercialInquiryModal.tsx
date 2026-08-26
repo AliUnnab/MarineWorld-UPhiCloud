@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import type { CompanyOffering, CompanyProfile, CompanyEntity, SectorCity, IndustryDomainEntity } from "@/lib/types";
 import { submitCommercialInquiry, submitOfficialOfferRequest } from "@/lib/connectStore";
 import { getCurrentAuthSession } from "@/lib/services/securityService";
+import { checkFormAbuse, sanitizeInputString, isValidEmailAddress } from "@/lib/security/abuseProtection";
 import {
   X,
   ShieldCheck,
@@ -43,6 +44,8 @@ export function CommercialInquiryModal({
   const [activeStage, setActiveStage] = useState<"INQUIRY" | "OFFICIAL_OFFER">(initialMode);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [logoError, setLogoError] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [honeypot, setHoneypot] = useState("");
   const [submittedData, setSubmittedData] = useState<{
     referenceId: string;
     stage: "INQUIRY" | "OFFICIAL_OFFER";
@@ -183,7 +186,32 @@ export function CommercialInquiryModal({
   // Submit Initial Commercial Inquiry
   const handleSubmitInquiry = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!fullName.trim() || !businessEmail.trim() || !organization.trim() || !message.trim()) {
+    setFormError(null);
+
+    const cleanName = sanitizeInputString(fullName);
+    const cleanEmail = sanitizeInputString(businessEmail);
+    const cleanOrg = sanitizeInputString(organization);
+    const cleanMsg = sanitizeInputString(message);
+    const cleanQty = sanitizeInputString(quantityOrScope);
+    const cleanLocation = sanitizeInputString(deliveryLocation);
+
+    if (!cleanName || !cleanEmail || !cleanOrg || !cleanMsg) {
+      setFormError("Please fill in all mandatory fields (Full Name, Business Email, Organization, Message).");
+      return;
+    }
+
+    if (!isValidEmailAddress(cleanEmail)) {
+      setFormError("Please provide a valid institutional or business email address.");
+      return;
+    }
+
+    const abuseCheck = checkFormAbuse({
+      formId: `inquiry_modal_${offering.id}`,
+      honeypotValue: honeypot,
+    });
+
+    if (!abuseCheck.allowed) {
+      setFormError(abuseCheck.reason || "Submission temporarily throttled. Please wait a moment.");
       return;
     }
 
@@ -205,12 +233,12 @@ export function CommercialInquiryModal({
         canonicalUrl,
         sectorCity: primaryCity?.slug || "general",
         industryDomain: parentDomain?.slug || "marine",
-        requesterName: fullName.trim(),
-        businessEmail: businessEmail.trim(),
-        organization: organization.trim(),
-        quantityOrScope: quantityOrScope.trim() || undefined,
-        deliveryLocation: deliveryLocation.trim() || undefined,
-        message: message.trim(),
+        requesterName: cleanName,
+        businessEmail: cleanEmail,
+        organization: cleanOrg,
+        quantityOrScope: cleanQty || undefined,
+        deliveryLocation: cleanLocation || undefined,
+        message: cleanMsg,
       });
 
       setTimeout(() => {
@@ -220,15 +248,41 @@ export function CommercialInquiryModal({
           stage: "INQUIRY",
         });
       }, 500);
-    } catch (err) {
+    } catch (err: any) {
       setIsSubmitting(false);
+      setFormError(err?.message || "Failed to submit inquiry. Please try again.");
     }
   };
 
   // Submit Official Offer Request
   const handleSubmitOfficialOffer = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!fullName.trim() || !businessEmail.trim() || !organization.trim()) {
+    setFormError(null);
+
+    const cleanName = sanitizeInputString(fullName);
+    const cleanEmail = sanitizeInputString(businessEmail);
+    const cleanOrg = sanitizeInputString(organization);
+    const cleanMsg = sanitizeInputString(message);
+    const cleanQty = sanitizeInputString(quantityOrScope);
+    const cleanPort = sanitizeInputString(deliveryPort || deliveryLocation);
+
+    if (!cleanName || !cleanEmail || !cleanOrg) {
+      setFormError("Please fill in all mandatory identity fields (Full Name, Business Email, Organization).");
+      return;
+    }
+
+    if (!isValidEmailAddress(cleanEmail)) {
+      setFormError("Please provide a valid institutional or business email address.");
+      return;
+    }
+
+    const abuseCheck = checkFormAbuse({
+      formId: `offer_modal_${offering.id}`,
+      honeypotValue: honeypot,
+    });
+
+    if (!abuseCheck.allowed) {
+      setFormError(abuseCheck.reason || "Submission temporarily throttled. Please wait a moment.");
       return;
     }
 
@@ -250,17 +304,17 @@ export function CommercialInquiryModal({
         canonicalUrl,
         sectorCity: primaryCity?.slug || "general",
         industryDomain: parentDomain?.slug || "marine",
-        requesterName: fullName.trim(),
-        businessEmail: businessEmail.trim(),
-        organization: organization.trim(),
+        requesterName: cleanName,
+        businessEmail: cleanEmail,
+        organization: cleanOrg,
         incoterms,
-        deliveryPort: deliveryPort.trim() || deliveryLocation.trim() || undefined,
-        quantityOrScope: quantityOrScope.trim() || undefined,
-        engineeringRequirements: customEngineeringReq.trim() || undefined,
-        commercialRequirements: commercialRequirements.trim() || undefined,
-        deliveryTimeline: deliveryTimeline.trim() || undefined,
-        warrantyRequirements: warrantyRequirements.trim() || undefined,
-        message: message.trim() || undefined,
+        deliveryPort: cleanPort || undefined,
+        quantityOrScope: cleanQty || undefined,
+        engineeringRequirements: sanitizeInputString(customEngineeringReq) || undefined,
+        commercialRequirements: sanitizeInputString(commercialRequirements) || undefined,
+        deliveryTimeline: sanitizeInputString(deliveryTimeline) || undefined,
+        warrantyRequirements: sanitizeInputString(warrantyRequirements) || undefined,
+        message: cleanMsg || undefined,
       });
 
       setTimeout(() => {
@@ -270,8 +324,9 @@ export function CommercialInquiryModal({
           stage: "OFFICIAL_OFFER",
         });
       }, 600);
-    } catch (err) {
+    } catch (err: any) {
       setIsSubmitting(false);
+      setFormError(err?.message || "Failed to submit request. Please try again.");
     }
   };
 
@@ -451,7 +506,13 @@ export function CommercialInquiryModal({
               <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
                 <a
                   href="/workspace/inquiries"
-                  className="w-full sm:w-auto px-5 py-2.5 rounded-card-xs bg-royal hover:bg-blue-700 text-white text-xs font-bold transition shadow-xs text-center uppercase tracking-wider inline-flex items-center justify-center gap-1.5 focus-visible:ring-2 focus-visible:ring-royal focus-visible:outline-hidden"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    onClose();
+                    window.history.pushState({}, "", "/workspace/inquiries");
+                    window.dispatchEvent(new PopStateEvent("popstate"));
+                  }}
+                  className="w-full sm:w-auto px-5 py-2.5 rounded-card-xs bg-royal hover:bg-royal-dark text-white text-xs font-bold transition shadow-xs text-center uppercase tracking-wider inline-flex items-center justify-center gap-1.5 focus-visible:ring-2 focus-visible:ring-royal focus-visible:outline-hidden cursor-pointer"
                 >
                   <MessageSquare className="w-3.5 h-3.5" />
                   <span>Track in My Inquiries</span>
@@ -472,6 +533,24 @@ export function CommercialInquiryModal({
                1. INITIAL COMMERCIAL INQUIRY FORM (FAST FIRST CONTACT)
                ============================================================ */
             <form onSubmit={handleSubmitInquiry} className="space-y-4">
+              {/* Invisible Honeypot */}
+              <input
+                type="text"
+                name="inquiry_bot_trap"
+                value={honeypot}
+                onChange={(e) => setHoneypot(e.target.value)}
+                tabIndex={-1}
+                autoComplete="off"
+                className="sr-only"
+                aria-hidden="true"
+              />
+
+              {formError && (
+                <div className="p-3 rounded-card-xs bg-red-50 border border-red-200 text-red-800 text-xs font-medium">
+                  {formError}
+                </div>
+              )}
+
               {/* Need Help Deciding Callout (Fix 4) */}
               {onOpenAIAdvisor && (
                 <div className="flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-card-sm bg-soft/70 border border-royal/15 text-xs text-stone">
@@ -600,7 +679,7 @@ export function CommercialInquiryModal({
                     disabled={isSubmitting}
                     id="btn-send-commercial-inquiry"
                     aria-label="Send commercial inquiry"
-                    className="flex-1 sm:flex-none px-6 py-2.5 rounded-card-xs bg-royal hover:bg-blue-700 text-white font-bold text-xs transition flex items-center justify-center gap-2 cursor-pointer shadow-2xs uppercase tracking-wider disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-royal focus-visible:outline-hidden"
+                    className="flex-1 sm:flex-none px-6 py-2.5 rounded-card-xs bg-royal hover:bg-royal-dark text-white font-bold text-xs transition flex items-center justify-center gap-2 cursor-pointer shadow-2xs uppercase tracking-wider disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-royal focus-visible:outline-hidden"
                   >
                     <Send className="w-3.5 h-3.5" />
                     <span>{isSubmitting ? "TRANSMITTING..." : "SEND COMMERCIAL INQUIRY"}</span>
@@ -630,6 +709,24 @@ export function CommercialInquiryModal({
                2. OFFICIAL OFFER FLOW (ADVANCED COMMERCIAL REQUEST STAGE)
                ============================================================ */
             <form onSubmit={handleSubmitOfficialOffer} className="space-y-4">
+              {/* Invisible Honeypot */}
+              <input
+                type="text"
+                name="offer_bot_trap"
+                value={honeypot}
+                onChange={(e) => setHoneypot(e.target.value)}
+                tabIndex={-1}
+                autoComplete="off"
+                className="sr-only"
+                aria-hidden="true"
+              />
+
+              {formError && (
+                <div className="p-3 rounded-card-xs bg-red-50 border border-red-200 text-red-800 text-xs font-medium">
+                  {formError}
+                </div>
+              )}
+
               {/* Inherited Contact Fields (Pre-filled, no duplication) */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
@@ -778,7 +875,7 @@ export function CommercialInquiryModal({
                   disabled={isSubmitting}
                   id="btn-submit-official-offer-request"
                   aria-label="Submit official offer request"
-                  className="w-full sm:w-auto px-6 py-2.5 rounded-card-xs bg-royal hover:bg-blue-700 text-white font-bold text-xs transition flex items-center justify-center gap-2 cursor-pointer shadow-2xs uppercase tracking-wider disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-royal focus-visible:outline-hidden"
+                  className="w-full sm:w-auto px-6 py-2.5 rounded-card-xs bg-royal hover:bg-royal-dark text-white font-bold text-xs transition flex items-center justify-center gap-2 cursor-pointer shadow-2xs uppercase tracking-wider disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-royal focus-visible:outline-hidden"
                 >
                   <Send className="w-3.5 h-3.5" />
                   <span>{isSubmitting ? "TRANSMITTING..." : "SUBMIT OFFICIAL OFFER REQUEST"}</span>

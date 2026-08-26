@@ -214,7 +214,7 @@ export function CompanyBusinessTwinModule({
             <button
               type="button"
               onClick={handleCopyUrl}
-              className="inline-flex items-center gap-1.5 text-xs font-semibold text-royal hover:text-blue-700 bg-royal/5 hover:bg-royal/10 px-3 py-1.5 rounded-full transition-colors cursor-pointer self-start sm:self-auto shrink-0"
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-royal hover:text-royal bg-royal/5 hover:bg-royal/10 px-3 py-1.5 rounded-full transition-colors cursor-pointer self-start sm:self-auto shrink-0"
               title="Copy canonical profile URL"
             >
               {copiedUrl ? (

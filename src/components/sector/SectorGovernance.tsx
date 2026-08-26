@@ -54,9 +54,9 @@ export function SectorGovernance({ config }: { config: SectorConfig }) {
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
-              <DigiBadge variant="soft">ISO 27001</DigiBadge>
-              <DigiBadge variant="soft">SOC 2 TYPE II</DigiBadge>
-              <DigiBadge variant="soft">IMO / IACS</DigiBadge>
+              <DigiBadge variant="soft">Sovereign Identity</DigiBadge>
+              <DigiBadge variant="soft">Explicit Verification</DigiBadge>
+              <DigiBadge variant="soft">Tenant Isolation</DigiBadge>
             </div>
           </div>
         </Reveal>

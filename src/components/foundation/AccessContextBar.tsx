@@ -18,7 +18,6 @@ import {
   ChevronUp,
   Shield,
   CheckCircle2,
-  Sparkles,
   LayoutDashboard,
 } from "lucide-react";
 import type { AccessContext } from "@/lib/types";
@@ -205,7 +204,7 @@ export function AccessContextBar({ onNavigate }: AccessContextBarProps) {
                     type="button"
                     id="btn-entry-company"
                     onClick={handleCompanyEntry}
-                    className="w-full py-2.5 px-3 rounded-lg bg-royal hover:bg-blue-600 text-white text-xs font-bold transition flex items-center justify-center gap-2 shadow-md"
+                    className="w-full py-2.5 px-3 rounded-lg bg-royal hover:bg-royal text-white text-xs font-bold transition flex items-center justify-center gap-2 shadow-md"
                   >
                     <span>COMPANY LOGIN</span>
                     <ArrowRight className="w-3.5 h-3.5" />
@@ -216,27 +215,27 @@ export function AccessContextBar({ onNavigate }: AccessContextBarProps) {
               {/* Option 3: ECOSYSTEM ORGANIZATION */}
               <div
                 id="entry-choice-ecosystem"
-                className="bg-indigo-950/50 hover:bg-indigo-950/80 border border-indigo-500/40 hover:border-indigo-400 rounded-xl p-4 transition-all flex flex-col justify-between"
+                className="bg-slate-900 hover:bg-slate-900 border border-royal/30 hover:border-royal/40 rounded-xl p-4 transition-all flex flex-col justify-between"
               >
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-[11px] font-mono font-bold px-2 py-0.5 rounded bg-indigo-900 border border-indigo-700 text-indigo-200 uppercase tracking-wider">
+                    <span className="text-[11px] font-mono font-bold px-2 py-0.5 rounded bg-slate-900 border border-slate-700 text-slate-200 uppercase tracking-wider">
                       ECOSYSTEM ORGANIZATION
                     </span>
-                    <Landmark className="w-5 h-5 text-indigo-300" />
+                    <Landmark className="w-5 h-5 text-slate-300" />
                   </div>
                   <h3 className="text-sm font-bold text-white">Official Organization</h3>
-                  <p className="text-xs text-indigo-200/80 mt-1 leading-relaxed">
+                  <p className="text-xs text-slate-300 mt-1 leading-relaxed">
                     Association / Chamber / Federation / Institution / Public Organization. Official access and member digitalization.
                   </p>
                 </div>
 
-                <div className="pt-4 mt-3 border-t border-indigo-500/30">
+                <div className="pt-4 mt-3 border-t border-royal/30">
                   <button
                     type="button"
                     id="btn-entry-ecosystem"
                     onClick={handleEcosystemEntry}
-                    className="w-full py-2.5 px-3 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition flex items-center justify-center gap-2 shadow-sm"
+                    className="w-full py-2.5 px-3 rounded-lg bg-royal hover:bg-royal text-white text-xs font-bold transition flex items-center justify-center gap-2 shadow-sm"
                   >
                     <span>OFFICIAL ORGANIZATION ACCESS</span>
                     <ArrowRight className="w-3.5 h-3.5" />
@@ -268,7 +267,7 @@ export function AccessContextBar({ onNavigate }: AccessContextBarProps) {
                   ? "bg-slate-200 text-slate-700 border border-slate-300"
                   : isCompany
                   ? "bg-royal/10 text-royal border border-royal/30"
-                  : "bg-indigo-100 text-indigo-800 border border-indigo-300"
+                  : "bg-royal/10 text-royal-dark border border-royal/30"
               }`}
             >
               {accessContext.contextType}
@@ -337,7 +336,7 @@ export function AccessContextBar({ onNavigate }: AccessContextBarProps) {
                   type="button"
                   id="btn-bar-ecosystem-shortcut"
                   onClick={() => navigateTo("/ecosystem/access")}
-                  className="px-2.5 py-1 rounded bg-white hover:bg-linesoft border border-line text-indigo-700 font-sans font-bold text-[11px] uppercase tracking-wider transition-colors"
+                  className="px-2.5 py-1 rounded bg-white hover:bg-linesoft border border-line text-royal font-sans font-bold text-[11px] uppercase tracking-wider transition-colors"
                 >
                   Ecosystem
                 </button>
@@ -350,7 +349,7 @@ export function AccessContextBar({ onNavigate }: AccessContextBarProps) {
                     type="button"
                     id="btn-bar-studio-shortcut"
                     onClick={() => navigateTo("/studio")}
-                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-royal text-white hover:bg-blue-600 text-[11px] font-sans font-bold uppercase tracking-wider transition-colors shadow-sm"
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-royal text-white hover:bg-royal text-[11px] font-sans font-bold uppercase tracking-wider transition-colors shadow-sm"
                   >
                     <LayoutDashboard className="w-3 h-3" />
                     <span>Company Studio</span>
@@ -362,7 +361,7 @@ export function AccessContextBar({ onNavigate }: AccessContextBarProps) {
                     type="button"
                     id="btn-bar-ecosystem-dashboard"
                     onClick={() => navigateTo("/ecosystem/dashboard")}
-                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-indigo-700 text-white hover:bg-indigo-800 text-[11px] font-sans font-bold uppercase tracking-wider transition-colors shadow-sm"
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-royal-dark text-white hover:bg-slate-800 text-[11px] font-sans font-bold uppercase tracking-wider transition-colors shadow-sm"
                   >
                     <Landmark className="w-3 h-3" />
                     <span>Organization Portal</span>
@@ -385,7 +384,7 @@ export function AccessContextBar({ onNavigate }: AccessContextBarProps) {
             <a
               href="/company/onboarding"
               id="btn-bar-onboarding"
-              className="hidden lg:inline-flex px-2.5 py-1 rounded bg-royal text-white hover:bg-blue-600 text-[11px] font-sans font-bold uppercase tracking-wider transition-colors shadow-sm"
+              className="hidden lg:inline-flex px-2.5 py-1 rounded bg-royal text-white hover:bg-royal text-[11px] font-sans font-bold uppercase tracking-wider transition-colors shadow-sm"
             >
               CREATE COMPANY
             </a>

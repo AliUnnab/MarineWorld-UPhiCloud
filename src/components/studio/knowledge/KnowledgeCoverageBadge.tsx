@@ -2,7 +2,7 @@ import React from "react";
 import {
   ShieldCheck,
   AlertCircle,
-  Sparkles,
+  Cpu,
   FileText,
   CheckCircle2,
   AlertTriangle,
@@ -66,7 +66,7 @@ export const OfferingKnowledgeCoverageBadge: React.FC<OfferingKnowledgeCoverageB
               : "bg-slate-100 text-slate-700 border-slate-200"
           }`}
         >
-          <Sparkles className="w-3 h-3" />
+          <Cpu className="w-3 h-3" />
           {result.aiReadiness}
         </span>
       </div>
@@ -134,7 +134,7 @@ export const CompanyKnowledgeCoverageBadge: React.FC<CompanyKnowledgeCoverageBad
             : "bg-slate-100 text-slate-700 border-slate-200"
         }`}
       >
-        <Sparkles className="w-3 h-3" />
+        <Cpu className="w-3 h-3" />
         {result.aiReadiness}
       </span>
     </div>

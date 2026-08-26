@@ -1,5 +1,5 @@
 import React from "react";
-import { AlertCircle, CheckCircle2, Package, Sparkles } from "lucide-react";
+import { AlertCircle, CheckCircle2, Package } from "lucide-react";
 
 interface OfferingLimitUsageBarProps {
   activeCount: number;

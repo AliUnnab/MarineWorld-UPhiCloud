@@ -246,9 +246,9 @@ export function CompanyStudioPropertyEditor({
               status === "PUBLISHED"
                 ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
                 : status === "APPROVED"
-                ? "bg-blue-50 text-blue-800 border border-blue-200"
+                ? "bg-royal/5 text-royal-dark border border-royal/20"
                 : status === "SUBMITTED" || status === "IN_REVIEW"
-                ? "bg-indigo-50 text-indigo-800 border border-indigo-200"
+                ? "bg-royal/5 text-royal-dark border border-royal/20"
                 : status === "REVISION_REQUIRED"
                 ? "bg-amber-50 text-amber-800 border border-amber-200"
                 : status === "REJECTED"
@@ -261,9 +261,9 @@ export function CompanyStudioPropertyEditor({
                 status === "PUBLISHED"
                   ? "bg-emerald-500"
                   : status === "APPROVED"
-                  ? "bg-blue-500"
+                  ? "bg-royal"
                   : status === "SUBMITTED" || status === "IN_REVIEW"
-                  ? "bg-indigo-500 animate-pulse"
+                  ? "bg-royal animate-pulse"
                   : status === "REVISION_REQUIRED"
                   ? "bg-amber-500"
                   : status === "REJECTED"
@@ -809,7 +809,7 @@ export function CompanyStudioPropertyEditor({
                   <button
                     disabled={status !== "DRAFT" && status !== "REVISION_REQUIRED" && status !== "REJECTED"}
                     onClick={handleSubmitReview}
-                    className="flex-1 h-11 bg-royal text-white rounded-xl flex items-center justify-center gap-2 text-xs font-semibold uppercase tracking-wider hover:bg-blue-700 shadow-xs transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="flex-1 h-11 bg-royal text-white rounded-xl flex items-center justify-center gap-2 text-xs font-semibold uppercase tracking-wider hover:bg-royal-dark shadow-xs transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     <Send className="w-4 h-4" />
                     SUBMIT FOR REVIEW

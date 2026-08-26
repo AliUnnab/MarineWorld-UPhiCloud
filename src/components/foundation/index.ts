@@ -7,6 +7,7 @@ export { MetadataRow } from "./MetadataRow";
 export { FilterBar } from "./FilterBar";
 export { WorkflowSteps } from "./WorkflowSteps";
 export { CityCard } from "./CityCard";
+export { CanonicalSectorCityCard } from "./CanonicalCityCard";
 export { CompanyCard } from "./CompanyCard";
 export { EmptyState } from "./EmptyState";
 export { LoadingState } from "./LoadingState";

@@ -8,7 +8,7 @@ import {
   CheckCircle2,
   FileText,
   AlertCircle,
-  Sparkles,
+  Cpu,
   ArrowRight,
   RefreshCw,
   Edit2,
@@ -325,7 +325,7 @@ export const AddKnowledgeSourceModal: React.FC<AddKnowledgeSourceModalProps> = (
         <div className="px-6 py-4 border-b border-line flex items-center justify-between bg-canvas shrink-0">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-xl bg-royal/10 text-royal flex items-center justify-center shrink-0">
-              <Sparkles className="w-4 h-4" />
+              <Cpu className="w-4 h-4" />
             </div>
             <div>
               <span className="text-[10px] font-mono font-bold text-royal uppercase tracking-wider block">
@@ -593,7 +593,7 @@ export const AddKnowledgeSourceModal: React.FC<AddKnowledgeSourceModalProps> = (
                       }
                       className="px-5 py-2.5 bg-royal hover:bg-royal/90 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition"
                     >
-                      <Sparkles className="w-3.5 h-3.5" />
+                      <Cpu className="w-3.5 h-3.5" />
                       <span>Analyze with AI</span>
                     </button>
                   </div>
@@ -688,7 +688,7 @@ export const AddKnowledgeSourceModal: React.FC<AddKnowledgeSourceModalProps> = (
                       : "bg-mist text-stone cursor-not-allowed border border-line"
                   }`}
                 >
-                  <Sparkles className="w-3.5 h-3.5" />
+                  <Cpu className="w-3.5 h-3.5" />
                   <span>Analyze Selected Drive File</span>
                 </button>
               </div>
@@ -767,7 +767,7 @@ export const AddKnowledgeSourceModal: React.FC<AddKnowledgeSourceModalProps> = (
                       }
                       className="px-5 py-2 rounded-xl bg-royal hover:bg-royal/90 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition"
                     >
-                      <Sparkles className="w-3.5 h-3.5" />
+                      <Cpu className="w-3.5 h-3.5" />
                       <span>Analyze Web Source</span>
                     </button>
                   </div>
@@ -852,7 +852,7 @@ export const AddKnowledgeSourceModal: React.FC<AddKnowledgeSourceModalProps> = (
                       : "bg-mist text-stone cursor-not-allowed border border-line"
                   }`}
                 >
-                  <Sparkles className="w-3.5 h-3.5" />
+                  <Cpu className="w-3.5 h-3.5" />
                   <span>Analyze Selected Source</span>
                 </button>
               </div>
@@ -1232,7 +1232,7 @@ export const AddKnowledgeSourceModal: React.FC<AddKnowledgeSourceModalProps> = (
                 onClick={() => handleConfirmAndGround(true)}
                 className="px-5 py-2 rounded-xl bg-royal hover:bg-royal/90 text-white text-xs font-bold transition shadow-sm flex items-center gap-1.5"
               >
-                <Sparkles className="w-3.5 h-3.5" />
+                <Cpu className="w-3.5 h-3.5" />
                 <span>Confirm & Teach Company AI</span>
               </button>
             </div>

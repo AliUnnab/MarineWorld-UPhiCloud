@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import {
-  Sparkles,
+  Cpu,
   Send,
   ShieldCheck,
   Building,
@@ -9,7 +9,7 @@ import {
   RefreshCw,
   Layers,
   ArrowUpRight,
-  Bot,
+  BrainCircuit,
   User,
   CheckCircle2,
   Lock,
@@ -113,7 +113,7 @@ export function OfferingAIAdvisorPanel({
       <div className="p-5 sm:p-6 border-b border-line bg-canvas flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-start sm:items-center gap-3.5">
           <div className="w-10 h-10 rounded-xl bg-royal text-white flex items-center justify-center shadow-xs shrink-0">
-            <Sparkles className="w-5 h-5" />
+            <Cpu className="w-5 h-5" />
           </div>
           <div>
             <div className="flex items-center gap-2">
@@ -177,7 +177,7 @@ export function OfferingAIAdvisorPanel({
               {msg.sender === "advisor" && (
                 <div className="flex items-center justify-between border-b border-line/60 pb-2 mb-2 text-[10.5px] font-mono text-stone">
                   <div className="flex items-center gap-1.5 font-bold text-royal">
-                    <Bot className="w-3.5 h-3.5" />
+                    <BrainCircuit className="w-3.5 h-3.5" />
                     <span>{offering.name} Verified Advisor</span>
                   </div>
                   {msg.confidence && (
@@ -214,7 +214,7 @@ export function OfferingAIAdvisorPanel({
                     <button
                       type="button"
                       onClick={onRequestOffer}
-                      className="px-3 py-1.5 rounded-lg bg-royal hover:bg-blue-700 text-white text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                      className="px-3 py-1.5 rounded-lg bg-royal hover:bg-royal-dark text-white text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
                     >
                       <span>Request Official Offer</span>
                       <ArrowUpRight className="w-3.5 h-3.5" />
@@ -281,7 +281,7 @@ export function OfferingAIAdvisorPanel({
           <button
             type="submit"
             disabled={loading || !inputQuery.trim()}
-            className="px-4 py-2.5 rounded-xl bg-royal hover:bg-blue-700 text-white font-semibold text-xs sm:text-sm transition flex items-center gap-1.5 cursor-pointer shadow-xs disabled:opacity-50 shrink-0"
+            className="px-4 py-2.5 rounded-xl bg-royal hover:bg-royal-dark text-white font-semibold text-xs sm:text-sm transition flex items-center gap-1.5 cursor-pointer shadow-xs disabled:opacity-50 shrink-0"
           >
             <Send className="w-4 h-4" />
             <span className="hidden sm:inline">Ask Advisor</span>

@@ -57,7 +57,7 @@ const SECTOR_CITY_REGISTRY: Record<string, SectorCityEntity> = {
       description: "The official digital twin city and marketplace for the maritime sector.",
     },
     branding: {
-      primaryColor: "#3A4FE0",
+      primaryColor: "#0D3868",
       logoUrl: "/icon.png",
       heroImage: "https://images.unsplash.com/photo-1559136555-9303baea8ebd?auto=format&fit=crop&w=1920&q=80",
     },

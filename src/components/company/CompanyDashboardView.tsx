@@ -6,13 +6,12 @@ import {
   Cpu,
   ArrowUpRight,
   ChevronRight,
-  Sparkles,
   Radio,
   Layers,
   Send,
   Building2,
   Database,
-  Bot,
+  BrainCircuit,
   MessageSquareCode,
   Users,
 } from "lucide-react";
@@ -138,7 +137,7 @@ export function CompanyDashboardView({
     {
       id: "ai",
       label: "COMPANY AI",
-      icon: Bot,
+      icon: BrainCircuit,
       description: "Conversational intelligence grounded in the company's verified operating context.",
     },
     {
@@ -198,7 +197,7 @@ export function CompanyDashboardView({
             <div className="px-4 py-3 sm:py-3.5 space-y-0.5">
               <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">OPERATING STATUS</div>
               <div className="text-xs sm:text-[13px] font-semibold text-graphite flex items-center gap-1.5 truncate">
-                <span className="h-2 w-2 rounded-full shrink-0 bg-blue-500" />
+                <span className="h-2 w-2 rounded-full shrink-0 bg-royal" />
                 <span className="truncate">{operatingStatus === "ACTIVE" ? "Live" : operatingStatus}</span>
               </div>
             </div>
@@ -207,7 +206,7 @@ export function CompanyDashboardView({
             <div className="px-4 py-3 sm:py-3.5 space-y-0.5">
               <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">AI STATE</div>
               <div className="text-xs sm:text-[13px] font-semibold text-royal flex items-center gap-1.5 truncate">
-                <Sparkles className="w-3.5 h-3.5 text-royal shrink-0" />
+                <Cpu className="w-3.5 h-3.5 text-royal shrink-0" />
                 <span className="truncate">AI Grounded</span>
               </div>
             </div>
@@ -275,7 +274,9 @@ export function CompanyDashboardView({
               REAL-WORLD OPERATING PRESENCE
             </div>
             <p className="text-sm sm:text-base text-white/95 max-w-2xl font-light leading-relaxed">
-              Physical operational facilities, marine yards, and engineering logistics infrastructure maintained under verified international standards.
+              {company.flagshipStatement ||
+                company.coverImageCaption ||
+                "Physical operational facilities, marine yards, and engineering logistics infrastructure maintained under verified international standards."}
             </p>
           </div>
         </div>
@@ -488,7 +489,7 @@ export function CompanyDashboardView({
                 }}
                 className="inline-flex items-center justify-center gap-2 rounded-full bg-slate-900 px-6 py-3 text-xs font-bold text-white hover:bg-slate-800 transition-colors shadow-2xs cursor-pointer font-sans"
               >
-                <Cpu className="w-3.5 h-3.5 text-blue-400" />
+                <Cpu className="w-3.5 h-3.5 text-slate-300" />
                 <span>OPEN COMPANY AI</span>
                 <ArrowUpRight className="w-3.5 h-3.5" />
               </button>

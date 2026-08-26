@@ -6,8 +6,8 @@ import {
   CheckCircle2,
   ShieldCheck,
   Building,
-  Bot,
-  Sparkles,
+  BrainCircuit,
+  Cpu,
   MessageSquare,
   Share2,
   Eye,
@@ -216,7 +216,7 @@ export const CompanyStudioDigitalPresenceView: React.FC<CompanyStudioDigitalPres
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="p-4 rounded-xl bg-canvas border border-line space-y-2">
             <div className="w-8 h-8 rounded-xl bg-royal/10 text-royal flex items-center justify-center font-bold">
-              <Bot className="w-4 h-4" />
+              <BrainCircuit className="w-4 h-4" />
             </div>
             <h4 className="text-xs font-bold text-graphite">Company AI Advisor</h4>
             <p className="text-[11px] text-stone">
@@ -226,7 +226,7 @@ export const CompanyStudioDigitalPresenceView: React.FC<CompanyStudioDigitalPres
 
           <div className="p-4 rounded-xl bg-canvas border border-line space-y-2">
             <div className="w-8 h-8 rounded-xl bg-royal/10 text-royal flex items-center justify-center font-bold">
-              <Sparkles className="w-4 h-4" />
+              <Cpu className="w-4 h-4" />
             </div>
             <h4 className="text-xs font-bold text-graphite">Offering AI Advisors</h4>
             <p className="text-[11px] text-stone">

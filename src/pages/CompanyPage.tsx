@@ -23,6 +23,12 @@ import {
   buildServiceSchema,
   injectJsonLd,
 } from "@/lib/services/schemaOrgService";
+import {
+  getEcosystemOrganizationById,
+  isInstitutionalOrganization,
+  type EcosystemOrganizationSummary,
+} from "@/lib/services/ecosystemOrganizationService";
+import { PublicOrganizationProfile } from "@/components/organization/PublicOrganizationProfile";
 
 export function CompanyPage({
   config,
@@ -56,13 +62,62 @@ export function CompanyPage({
     }
   }
 
-  // Resolve company dynamically from registry
+  // Check if target entity is an institutional organization
+  const institutionalOrg = getEcosystemOrganizationById(resolvedSlug || companySlug || "");
+  const isInstitutional =
+    Boolean(institutionalOrg) ||
+    isInstitutionalOrganization(resolvedSlug) ||
+    isInstitutionalOrganization(companySlug);
+
+  // Resolve company dynamically from registry if not strictly an institutional org
   const company = getCompanyBySlug(config, resolvedSlug) || config?.network?.companies?.[0];
 
-  // Record personal visitor view activity
+  const effectiveIsInstitutional =
+    isInstitutional ||
+    (company && isInstitutionalOrganization(company));
+
+  const orgData: EcosystemOrganizationSummary | undefined = effectiveIsInstitutional
+    ? institutionalOrg ||
+      (company
+        ? ({
+            id: company.id || company.slug,
+            name: company.displayName || company.name,
+            legalName: company.legalName || company.name,
+            slug: company.slug || company.id,
+            organizationType: (company.organizationType as any) || "ASSOCIATION",
+            businessId: company.businessId || `MW-BUS-${company.companyId6Digit || "ORG"}`,
+            verificationStatus: "VERIFIED",
+            status: "HUB_ACTIVE",
+            hubStatus: "ACTIVE",
+            activationCode: "MW-ORG-2026",
+            enrollmentCode: `MW-${String(company.slug || company.id).slice(0, 4).toUpperCase()}-2026`,
+            ecosystemHubId: `hub-${company.slug || company.id}`,
+            country: company.country || "Netherlands",
+            officialWebsite: company.website || `https://www.${company.slug}.org`,
+            principalAuthorityUserId: "usr-authority-lead",
+            principalAuthorityName: "Executive Secretariat",
+            principalAuthorityRole: "Institutional Director",
+            officialEmailDomain: `${company.slug}.org`,
+            officialContactEmail: company.officialEmail || `secretariat@${company.slug}.org`,
+            discountPercentage: 20,
+            totalMembersCount: (company as any).totalMembersCount || 500,
+            activatedMembersCount: 380,
+            verifiedMembersCount: 320,
+            activeSectorCitiesCount: (company as any).activeSectorCitiesCount || (company.sectorCityIds?.length || 10),
+            memberCompanyIds: [],
+            aboutDescription: company.description || company.corporateDescription || "Institutional organization operating in the global marine ecosystem.",
+            capabilities: company.capabilities || ["Institutional Governance", "Standards Accreditation", "Industry Collaboration"],
+            knowledgeArticlesCount: 42,
+            publicationsCount: 18,
+          } as EcosystemOrganizationSummary)
+        : undefined)
+    : undefined;
+
+  // Record personal visitor view activity (unconditional hook)
   useEffect(() => {
+    if (effectiveIsInstitutional || !company) return;
     const session = getCurrentAuthSession();
-    if (!session || !session.uid || !company) return;
+    if (!session || !session.uid) return;
 
     if (selectedProductSlug) {
       const prod = getCompanyProductBySlug(company, selectedProductSlug);
@@ -77,7 +132,40 @@ export function CompanyPage({
     } else {
       recordCompanyView(session.uid, company.id, company.name, company.businessId);
     }
-  }, [company?.id, selectedProductSlug, selectedServiceSlug]);
+  }, [company?.id, selectedProductSlug, selectedServiceSlug, effectiveIsInstitutional]);
+
+  // Resolve parent context (Primary Sector City & Industry Domain)
+  const { primaryCity, parentDomain } = company
+    ? getCompanyParentContext(config, company)
+    : { primaryCity: undefined, parentDomain: undefined };
+
+  const selectedProduct = company && selectedProductSlug ? getCompanyProductBySlug(company, selectedProductSlug) : undefined;
+  const selectedService = company && selectedServiceSlug ? getCompanyServiceBySlug(company, selectedServiceSlug) : undefined;
+  const canonicalSectorCity = primaryCity?.id || company?.primarySectorCityId || company?.sectorCityIds?.[0] || "shipyard";
+
+  // Runtime JSON-LD Schema injection for external AI & machine discoverability (unconditional hook)
+  useEffect(() => {
+    if (effectiveIsInstitutional || !company) return;
+    if (selectedProduct) {
+      injectJsonLd(buildProductSchema(selectedProduct as any, company as unknown as CompanyEntity), "company-entity-jsonld");
+    } else if (selectedService) {
+      injectJsonLd(buildServiceSchema(selectedService as any, company as unknown as CompanyEntity), "company-entity-jsonld");
+    } else {
+      injectJsonLd(buildCompanySchema(company as unknown as CompanyEntity, undefined, company.products as any, company.services as any), "company-entity-jsonld");
+    }
+  }, [company, selectedProduct, selectedService, canonicalSectorCity, effectiveIsInstitutional]);
+
+  // ALL HOOKS HAVE BEEN EXECUTED UNCONDITIONALLY. NOW WE CAN SAFELY BRANCH RENDER OUTPUT.
+
+  if (effectiveIsInstitutional && orgData) {
+    return (
+      <PublicOrganizationProfile
+        organization={orgData}
+        config={config}
+        initialTab={activeModule}
+      />
+    );
+  }
 
   if (!company) {
     return (
@@ -97,9 +185,6 @@ export function CompanyPage({
       </div>
     );
   }
-
-  // Resolve parent context (Primary Sector City & Industry Domain)
-  const { primaryCity, parentDomain } = getCompanyParentContext(config, company);
 
   const handleSelectModule = (moduleSlug: string) => {
     setActiveModule(moduleSlug);
@@ -126,9 +211,6 @@ export function CompanyPage({
     const newPath = serviceSlug ? `${companyBase}/${serviceSlug}` : companyBase;
     window.history.pushState({}, "", newPath);
   };
-
-  const selectedProduct = company && selectedProductSlug ? getCompanyProductBySlug(company, selectedProductSlug) : undefined;
-  const selectedService = company && selectedServiceSlug ? getCompanyServiceBySlug(company, selectedServiceSlug) : undefined;
 
   const cityDomain = primaryCity?.domain ?? "SECTOR CITY";
   const isProducts = activeModule === "products";
@@ -174,7 +256,6 @@ export function CompanyPage({
     ? `Network presence and operational node mapping for ${company.name} across MarineWorld Sector Cities.`
     : `${company.name} — ${company.industry} operating environment within ${cityDomain}.`;
 
-  const canonicalSectorCity = primaryCity?.id || company.primarySectorCityId || company.sectorCityIds?.[0] || "shipyard";
   const companyCanonicalUrl = buildCanonicalCompanyUrl(company, canonicalSectorCity);
 
   const canonicalUrl = selectedProduct
@@ -182,18 +263,6 @@ export function CompanyPage({
     : selectedService
     ? buildCanonicalOfferingUrl(selectedService.slug || selectedService.id || "service", company.slug || company.id || "company", canonicalSectorCity)
     : companyCanonicalUrl;
-
-  // Runtime JSON-LD Schema injection for external AI & machine discoverability
-  useEffect(() => {
-    if (!company) return;
-    if (selectedProduct) {
-      injectJsonLd(buildProductSchema(selectedProduct as any, company as unknown as CompanyEntity), "company-entity-jsonld");
-    } else if (selectedService) {
-      injectJsonLd(buildServiceSchema(selectedService as any, company as unknown as CompanyEntity), "company-entity-jsonld");
-    } else {
-      injectJsonLd(buildCompanySchema(company as unknown as CompanyEntity, undefined, company.products as any, company.services as any), "company-entity-jsonld");
-    }
-  }, [company, selectedProduct, selectedService, canonicalSectorCity]);
 
   return (
     <div className="min-h-screen bg-canvas font-sans text-graphite">

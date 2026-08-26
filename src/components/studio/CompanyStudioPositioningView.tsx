@@ -18,7 +18,6 @@ import {
   X,
   Radio,
   Layers,
-  Sparkles,
   Info,
   Check,
   ArrowRight,
@@ -1005,7 +1004,7 @@ export const CompanyStudioPositioningView: React.FC<CompanyStudioPositioningView
               <Search className="w-4 h-4 text-stone absolute left-3.5 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
-                placeholder="Search all 25 MarineWorld Sector Cities (e.g. SHIPYARD, propulsion, cargo, repair)..."
+                placeholder="Search all MarineWorld Sector Cities (e.g. SHIPYARD, propulsion, cargo, repair)..."
                 value={citySearchQuery}
                 onChange={(e) => setCitySearchQuery(e.target.value)}
                 className="w-full h-10 pl-9 pr-3.5 rounded-xl border border-line bg-white focus:border-royal focus:outline-none text-xs text-graphite"
@@ -1340,7 +1339,7 @@ export const CompanyStudioPositioningView: React.FC<CompanyStudioPositioningView
         {/* Live Query Matching Showcase (Illustrating Routing Engine) */}
         <div className="p-4 rounded-xl bg-canvas border border-line space-y-2 text-xs">
           <div className="text-[10px] font-mono font-bold text-stone uppercase tracking-wider flex items-center gap-1">
-            <Sparkles className="w-3 h-3 text-royal" />
+            <Cpu className="w-3 h-3 text-royal" />
             <span>DISCOVERY & AI MATCHING RESOLUTION ENGINE</span>
           </div>
 

@@ -4,20 +4,47 @@
   --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
 
-  --color-canvas: #FAFAFC;
-  --color-graphite: #111113;
-  --color-stone: #4A4A52;
-  --color-mute: #8E8E93;
-  --color-line: rgba(17, 17, 19, 0.12);
-  --color-linesoft: rgba(17, 17, 19, 0.06);
-  --color-mist: #F1F1F3;
-  --color-soft: #EEF1FF;
-  --color-royal: #3A4FE0;
-  --color-electric: #6B7CFF;
-  --color-success: #10B981;
+  /* Surfaces & Institutional Neutrals */
+  --color-canvas: #F8FAFC;
+  --color-surface: #FFFFFF;
+  --color-graphite: #0F172A;
+  --color-stone: #475569;
+  --color-mute: #94A3B8;
+  --color-line: rgba(15, 23, 42, 0.10);
+  --color-linesoft: rgba(15, 23, 42, 0.05);
+  --color-mist: #F1F4F8;
+
+  /* Primary Institutional Accent: Admiralty Maritime Navy */
+  --color-royal: #0D3868;
+  --color-royal-dark: #072140;
+  --color-royal-light: #154D8C;
+  --color-royal-soft: #EFF5FB;
+  --color-royal-border: #C8DBEE;
+
+  --color-marine: #0D3868;
+  --color-marine-dark: #072140;
+  --color-marine-light: #154D8C;
+  --color-marine-soft: #EFF5FB;
+  --color-marine-border: #C8DBEE;
+
+  /* Secondary Institutional Accent: Navigational Brass / Seal Gold */
+  --color-brass: #C59A45;
+  --color-brass-dark: #966F1E;
+  --color-brass-light: #D4AE5E;
+  --color-brass-soft: #FDF9EE;
+  --color-brass-border: #EADBBA;
+
+  /* Legacy & Semantic aliases */
+  --color-soft: #EFF5FB;
+  --color-electric: #154D8C;
+
+  /* Semantic Status Colors */
+  --color-success: #059669;
   --color-success-soft: #ECFDF5;
-  --color-warning: #F59E0B;
+  --color-warning: #D97706;
   --color-warning-soft: #FFFBEB;
+  --color-danger: #DC2626;
+  --color-danger-soft: #FEF2F2;
 
   --radius-card-lg: 20px;
   --radius-card-md: 14px;

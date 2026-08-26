@@ -14,6 +14,10 @@ import {
   Check,
   Sparkles,
   Info,
+  Upload,
+  Image as ImageIcon,
+  UploadCloud,
+  Trash2,
 } from "lucide-react";
 import type { CompanyEntity, CompanyProfile } from "@/lib/types";
 import { getCompanyById, saveCompany } from "@/lib/services/companyService";
@@ -22,6 +26,8 @@ import { resolveMarineWorldCompanyDigitalId } from "@/lib/services/companyIdenti
 import { marineSector } from "@/lib/sectors/marine";
 import { getCompanyBySlug } from "@/lib/registry";
 import { recordIdentityAudit } from "@/lib/services/auditService";
+
+import { getEnrolledOrganizationForCompany } from "@/lib/services/ecosystemOrganizationService";
 
 interface CompanyStudioIdentityViewProps {
   companyId: string;
@@ -63,8 +69,13 @@ export const CompanyStudioIdentityView: React.FC<CompanyStudioIdentityViewProps>
     officialPhone: canonicalCompany?.phone || "+31 10 555 0190",
     shortDescription: canonicalCompany?.shortDescription || "",
     description: canonicalCompany?.description || "",
-    logoUrl: canonicalCompany?.logo || "",
+    logoUrl: canonicalCompany?.logo || canonicalCompany?.logoUrl || "",
+    coverImage: canonicalCompany?.coverImage || (canonicalCompany as any)?.heroImageUrl || "",
+    flagshipStatement: canonicalCompany?.flagshipStatement || (canonicalCompany as any)?.coverImageCaption || "",
   });
+
+  const [logoUploadMsg, setLogoUploadMsg] = useState<string | null>(null);
+  const [coverUploadMsg, setCoverUploadMsg] = useState<string | null>(null);
 
   useEffect(() => {
     const comp =
@@ -82,10 +93,50 @@ export const CompanyStudioIdentityView: React.FC<CompanyStudioIdentityViewProps>
         officialPhone: comp.phone || "+31 10 555 0190",
         shortDescription: comp.shortDescription || "",
         description: comp.description || "",
-        logoUrl: comp.logo || "",
+        logoUrl: comp.logo || comp.logoUrl || "",
+        coverImage: comp.coverImage || (comp as any)?.heroImageUrl || "",
+        flagshipStatement: comp.flagshipStatement || (comp as any)?.coverImageCaption || "",
       });
     }
   }, [companyId]);
+
+  const handleLogoFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) {
+      setLogoUploadMsg("Logo file size exceeds 10MB limit.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const dataUrl = event.target?.result as string;
+      if (dataUrl) {
+        setFormData((prev) => ({ ...prev, logoUrl: dataUrl }));
+        setLogoUploadMsg(`Uploaded logo from desktop: ${file.name}`);
+        setTimeout(() => setLogoUploadMsg(null), 4500);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleCoverFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 15 * 1024 * 1024) {
+      setCoverUploadMsg("Facility photo size exceeds 15MB limit.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const dataUrl = event.target?.result as string;
+      if (dataUrl) {
+        setFormData((prev) => ({ ...prev, coverImage: dataUrl }));
+        setCoverUploadMsg(`Uploaded flagship facility photo from desktop: ${file.name}`);
+        setTimeout(() => setCoverUploadMsg(null), 4500);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
 
   // Mandatory fields evaluation for real-time validation
   const missingFields = useMemo(() => {
@@ -146,6 +197,11 @@ export const CompanyStudioIdentityView: React.FC<CompanyStudioIdentityViewProps>
         shortDescription: formData.shortDescription.trim(),
         description: formData.description.trim(),
         logo: formData.logoUrl.trim(),
+        logoUrl: formData.logoUrl.trim(),
+        coverImage: formData.coverImage.trim(),
+        heroImageUrl: formData.coverImage.trim(),
+        flagshipStatement: formData.flagshipStatement.trim(),
+        coverImageCaption: formData.flagshipStatement.trim(),
         email: formData.officialEmail.trim(),
         phone: formData.officialPhone.trim(),
         updatedAt: new Date().toISOString(),
@@ -375,6 +431,56 @@ export const CompanyStudioIdentityView: React.FC<CompanyStudioIdentityViewProps>
               <span className="text-[10px] text-stone font-mono">Rotterdam Node</span>
             </div>
           </div>
+
+          {/* Ecosystem Membership Affiliation */}
+          {(() => {
+            const enrolledOrg = getEnrolledOrganizationForCompany(companyId);
+            if (!enrolledOrg) return null;
+            return (
+              <div className="p-4 rounded-xl bg-royal/5 border border-royal/20 flex flex-col justify-between md:col-span-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-[10px] font-mono font-bold text-royal-dark uppercase tracking-wider mb-0.5">
+                      ECOSYSTEM MEMBERSHIP AFFILIATION
+                    </div>
+                    <div className="font-bold text-slate-900 text-sm flex items-center gap-2 mt-1">
+                      <Building2 className="w-4 h-4 text-royal shrink-0" />
+                      <span>{enrolledOrg.name}</span>
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-royal text-white uppercase">
+                        VERIFIED MEMBER
+                      </span>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[10px] font-mono text-stone uppercase block">INSPECTION STATUS</span>
+                    <span className="text-xs font-bold text-emerald-700 flex items-center gap-1 justify-end mt-0.5">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>AUTHENTICATED</span>
+                    </span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3 pt-3 border-t border-royal/20 text-xs font-mono">
+                  <div>
+                    <span className="text-[10px] text-stone font-sans">Issuing Country:</span>
+                    <div className="text-graphite font-bold">{enrolledOrg.country || "Global"}</div>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-stone font-sans">Organization Type:</span>
+                    <div className="text-graphite font-bold">{enrolledOrg.organizationType || "ASSOCIATION"}</div>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-stone font-sans">Member Discount:</span>
+                    <div className="text-royal font-bold">{enrolledOrg.discountPercentage ? `${enrolledOrg.discountPercentage}% Benefit` : "Standard Affiliation"}</div>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-stone font-sans">Enrollment Code:</span>
+                    <div className="text-graphite font-bold">{enrolledOrg.enrollmentCode || "MW-MEMBER"}</div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
         </div>
       </div>
 
@@ -641,44 +747,256 @@ export const CompanyStudioIdentityView: React.FC<CompanyStudioIdentityViewProps>
           />
         </div>
 
-        {/* Brand Mark / Initials */}
-        <div className="p-4 rounded-xl bg-canvas border border-line space-y-3">
-          <div className="text-xs font-bold text-graphite flex items-center justify-between">
-            <span>Company Brand Mark / Initials</span>
-            <span className="text-[10px] font-mono text-stone font-normal">
-              Vector Monogram or Image URL
-            </span>
+        {/* BRAND MARK / LOGO EDITOR */}
+        <div className="p-5 rounded-xl bg-canvas border border-line space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-xs font-bold text-graphite flex items-center gap-1.5">
+                <span>COMPANY BRAND MARK / LOGO</span>
+                <span className="text-[10px] font-mono text-royal font-bold uppercase bg-royal/10 px-2 py-0.5 rounded">
+                  PASSPORT LOGO
+                </span>
+              </div>
+              <p className="text-[11px] text-stone mt-0.5">
+                Rendered across public company pages, executive headers, AI advisor cards, and sector city directories.
+              </p>
+            </div>
           </div>
 
-          <div className="flex items-center gap-4">
-            <div className="w-14 h-14 rounded-2xl bg-royal/10 border border-royal/20 text-royal flex items-center justify-center font-bold text-lg shrink-0">
-              {formData.logoUrl && formData.logoUrl.startsWith("http") ? (
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+            <div className="w-20 h-20 rounded-2xl bg-white border-2 border-line text-royal flex items-center justify-center font-bold text-xl shrink-0 shadow-2xs overflow-hidden relative group">
+              {formData.logoUrl && (formData.logoUrl.startsWith("http") || formData.logoUrl.startsWith("data:")) ? (
                 <img
                   src={formData.logoUrl}
                   alt={formData.brandName || "Logo"}
-                  className="w-full h-full rounded-2xl object-cover"
+                  className="w-full h-full object-contain p-1.5"
                   referrerPolicy="no-referrer"
                 />
               ) : (
-                formData.logoUrl ||
-                (formData.brandName || formData.legalName || "MW")
-                  .slice(0, 2)
-                  .toUpperCase()
+                <span className="font-mono text-xl">
+                  {formData.logoUrl || (formData.brandName || formData.legalName || "MW").slice(0, 2).toUpperCase()}
+                </span>
               )}
             </div>
 
-            <div className="flex-1 space-y-1">
+            <div className="flex-1 space-y-2.5 w-full">
+              <div className="flex flex-wrap items-center gap-2">
+                <label
+                  htmlFor="logo-desktop-input"
+                  className="px-4 py-2 bg-royal hover:bg-royal text-white rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer transition shadow-2xs"
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                  <span>Upload Logo from Desktop</span>
+                  <input
+                    type="file"
+                    id="logo-desktop-input"
+                    accept="image/*"
+                    onChange={handleLogoFileUpload}
+                    className="hidden"
+                  />
+                </label>
+
+                {formData.logoUrl && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFormData((prev) => ({ ...prev, logoUrl: "" }));
+                      setLogoUploadMsg(null);
+                    }}
+                    className="px-3 py-2 bg-slate-100 hover:bg-red-50 text-slate-600 hover:text-red-700 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Clear Logo</span>
+                  </button>
+                )}
+              </div>
+
+              {logoUploadMsg && (
+                <div className="text-[11px] font-mono text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-lg flex items-center gap-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>{logoUploadMsg}</span>
+                </div>
+              )}
+
+              <div className="space-y-1">
+                <span className="text-[10px] font-mono text-stone uppercase block">Or specify image URL / 2-char monogram</span>
+                <input
+                  type="text"
+                  id="input-logo-url"
+                  value={formData.logoUrl}
+                  onChange={(e) => setFormData({ ...formData, logoUrl: e.target.value })}
+                  placeholder="https://images.unsplash.com/... or monogram (e.g. AM)"
+                  className="w-full h-10 px-3.5 rounded-lg border border-line bg-white focus:border-royal focus:outline-none text-xs text-graphite font-mono transition"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* FLAGSHIP COMPANY PRESENCE PHOTO EDITOR */}
+        <div className="p-5 rounded-xl bg-canvas border border-line space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-xs font-bold text-graphite flex items-center gap-1.5">
+                <Building2 className="w-4 h-4 text-royal" />
+                <span>FLAGSHIP COMPANY PRESENCE PHOTO (COVER / FACILITY IMAGE)</span>
+              </div>
+              <p className="text-[11px] text-stone mt-0.5">
+                Featured at the top of your public Company Page in the <strong className="text-graphite">FLAGSHIP COMPANY PRESENCE</strong> banner (showing physical yards, vessels, or engineering facilities).
+              </p>
+            </div>
+            <span className="text-[10px] font-mono text-emerald-700 font-bold uppercase bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-md hidden sm:inline-block">
+              PUBLIC BANNER MEDIA
+            </span>
+          </div>
+
+          {/* Large Banner Preview */}
+          <div className="relative w-full h-44 sm:h-52 rounded-xl overflow-hidden border border-line bg-slate-900 shadow-2xs group">
+            {formData.coverImage ? (
+              <img
+                src={formData.coverImage}
+                alt="Flagship Company Presence Banner"
+                className="w-full h-full object-cover"
+                referrerPolicy="no-referrer"
+              />
+            ) : (
+              <div className="w-full h-full flex flex-col items-center justify-center p-6 text-center text-slate-400">
+                <ImageIcon className="w-10 h-10 text-slate-600 mb-2" />
+                <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">No Flagship Facility Photo Uploaded</span>
+                <span className="text-[11px] text-slate-500 mt-0.5">Upload a photo below to feature your real-world yard, vessel, or office facility.</span>
+              </div>
+            )}
+
+            <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-950/30 to-transparent pointer-events-none" />
+            <div className="absolute bottom-3 left-4 right-4 text-white text-xs font-sans pointer-events-none space-y-1">
+              <div className="font-mono text-[9px] uppercase tracking-widest text-emerald-400 font-bold flex items-center justify-between">
+                <span>PREVIEW: REAL-WORLD OPERATING PRESENCE</span>
+                <span className="text-[9px] bg-slate-950/70 border border-white/20 px-1.5 py-0.5 rounded text-white/90 font-mono">16:9 Banner</span>
+              </div>
+              <p className="text-xs sm:text-sm text-white/95 font-light line-clamp-2 leading-relaxed">
+                {formData.flagshipStatement || "Physical operational facilities, marine yards, and engineering logistics infrastructure maintained under verified international standards."}
+              </p>
+            </div>
+          </div>
+
+          {/* Banner Overlay Statement Editor */}
+          <div className="p-3.5 bg-slate-900/5 rounded-xl border border-line space-y-2">
+            <label htmlFor="input-flagship-statement" className="text-xs font-bold text-graphite flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <span>BANNER OVERLAY STATEMENT</span>
+              </span>
+              <span className="text-[10px] font-mono text-royal font-bold">LIVE OVERLAY TEXT</span>
+            </label>
+            <textarea
+              id="input-flagship-statement"
+              rows={2}
+              value={formData.flagshipStatement}
+              onChange={(e) => setFormData({ ...formData, flagshipStatement: e.target.value })}
+              placeholder="Physical operational facilities, marine yards, and engineering logistics infrastructure maintained under verified international standards."
+              className="w-full p-3 rounded-lg border border-line bg-white focus:border-royal focus:outline-none text-xs text-graphite transition leading-relaxed font-sans"
+            />
+            <p className="text-[10px] text-stone">
+              This statement renders live on top of your Flagship Company Presence banner across public institutional pages.
+            </p>
+          </div>
+
+          {/* Upload Controls */}
+          <div className="space-y-3 pt-1">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <label
+                htmlFor="cover-desktop-input"
+                className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer transition shadow-2xs"
+              >
+                <UploadCloud className="w-4 h-4 text-emerald-400" />
+                <span>Upload Facility Photo from Desktop</span>
+                <input
+                  type="file"
+                  id="cover-desktop-input"
+                  accept="image/*"
+                  onChange={handleCoverFileUpload}
+                  className="hidden"
+                />
+              </label>
+
+              {formData.coverImage && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFormData((prev) => ({ ...prev, coverImage: "" }));
+                    setCoverUploadMsg(null);
+                  }}
+                  className="px-3.5 py-2.5 bg-slate-100 hover:bg-red-50 text-slate-600 hover:text-red-700 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Remove Photo</span>
+                </button>
+              )}
+            </div>
+
+            {coverUploadMsg && (
+              <div className="text-[11px] font-mono text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-lg flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                <span>{coverUploadMsg}</span>
+              </div>
+            )}
+
+            {/* URL Input */}
+            <div className="space-y-1">
+              <label htmlFor="input-cover-url" className="text-[10px] font-mono text-stone uppercase block">
+                Or specify image URL directly
+              </label>
               <input
                 type="text"
-                id="input-logo-url"
-                value={formData.logoUrl}
-                onChange={(e) => setFormData({ ...formData, logoUrl: e.target.value })}
-                placeholder="Logo URL or 2-character monogram (e.g. AM)"
+                id="input-cover-url"
+                value={formData.coverImage}
+                onChange={(e) => setFormData({ ...formData, coverImage: e.target.value })}
+                placeholder="https://images.unsplash.com/photo-..."
                 className="w-full h-10 px-3.5 rounded-lg border border-line bg-white focus:border-royal focus:outline-none text-xs text-graphite font-mono transition"
               />
-              <p className="text-[10px] text-stone">
-                Rendered across the public institutional passport, offering AI advisor headers, and Sector City directories.
-              </p>
+            </div>
+
+            {/* Sample Facility Photo Presets */}
+            <div className="space-y-1.5 pt-1">
+              <span className="text-[10px] font-mono text-stone uppercase block">
+                Or select a curated maritime facility preset photo:
+              </span>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {[
+                  {
+                    label: "Drydock Shipyard",
+                    url: "https://images.unsplash.com/photo-1541888946425-d0fbb186a5b3?auto=format&fit=crop&w=1200&q=80",
+                  },
+                  {
+                    label: "Port Logistics Terminal",
+                    url: "https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=1200&q=80",
+                  },
+                  {
+                    label: "Autonomous Fleet Base",
+                    url: "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=1200&q=80",
+                  },
+                  {
+                    label: "Subsea Offshore Yard",
+                    url: "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=80",
+                  },
+                ].map((preset) => (
+                  <button
+                    key={preset.label}
+                    type="button"
+                    onClick={() => {
+                      setFormData((prev) => ({ ...prev, coverImage: preset.url }));
+                      setCoverUploadMsg(`Selected preset: ${preset.label}`);
+                    }}
+                    className={`p-1.5 rounded-lg border text-left flex items-center gap-2 transition ${
+                      formData.coverImage === preset.url
+                        ? "border-royal bg-royal/5 ring-1 ring-royal"
+                        : "border-line bg-white hover:border-slate-300"
+                    }`}
+                  >
+                    <img src={preset.url} alt={preset.label} className="w-10 h-7 rounded object-cover shrink-0" />
+                    <span className="text-[10px] font-medium text-graphite truncate">{preset.label}</span>
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         </div>

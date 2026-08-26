@@ -3,6 +3,8 @@ import type { SectorConfig, CompanyProfile } from "@/lib/types";
 import { SectorCityTopChrome } from "@/components/foundation/SectorCityTopChrome";
 import { GlobalFooter } from "@/components/foundation/GlobalFooter";
 import { PageMetadata } from "@/components/foundation/PageMetadata";
+import { CompanyDiscoveryModal } from "@/components/company/CompanyDiscoveryModal";
+import { SectorCityAdvisorDrawer } from "@/components/sector/SectorCityAdvisorDrawer";
 import {
   getCityBySlug,
   getIndustryDomainById,
@@ -17,6 +19,9 @@ import {
   getPublicPropertyProjections,
   getCountryPavilions,
 } from "@/lib/services/propertyService";
+import {
+  getAllCommercialInventory,
+} from "@/lib/services/commercialPropertyService";
 import {
   ShieldCheck,
   ArrowRight,
@@ -37,7 +42,8 @@ import {
   Award,
   ChevronRight,
   Anchor,
-  Sparkles,
+  Cpu,
+  Play,
 } from "lucide-react";
 import { CreativeData } from "@/components/studio/CompanyStudioPropertyEditor";
 
@@ -115,6 +121,8 @@ export function SectorCityEntranceV2({
 
   const [searchQuery, setSearchQuery] = useState("");
   const [isAdvisorOpen, setIsAdvisorOpen] = useState(false);
+  const [showCompanyListModal, setShowCompanyListModal] = useState(false);
+  const [modalSearchQuery, setModalSearchQuery] = useState("");
 
   useEffect(() => {
     if (regionSlug) {
@@ -221,9 +229,8 @@ export function SectorCityEntranceV2({
 
   const breadcrumbs = [
     { label: "MarineWorld.City", href: "/" },
-    { label: "Explore", href: "/explore" },
-    { label: "Cities", href: "/cities" },
-    { label: parentDomainName, href: "/explore" },
+    { label: "Sector Cities", href: "/cities" },
+    { label: parentDomainName, href: `/industries/${parentDomain?.slug || "maritime-services"}` },
     { label: city.domain.toUpperCase() },
   ];
 
@@ -253,11 +260,107 @@ export function SectorCityEntranceV2({
       passesSearch(f.companyName, f.companyRegion, f.companyIndustry || "")
   );
 
-  const activePresence = presence.filter((p) => {
-    const name = p.displayName || p.name;
-    const region = formatCompactLocation(p.country, p.city);
-    return passesSearch(name, region, p.industry || "");
-  });
+  // Authoritative commercial presence inventory for this Sector City and Region
+  const commercialPresenceInventory = useMemo(() => {
+    return getAllCommercialInventory({
+      cityId: city.id,
+      regionCode: activeRegionEdition.regionCode,
+      tier: "PRESENCE",
+    });
+  }, [city.id, activeRegionEdition.regionCode]);
+
+  // Active/Occupied commercial company placements based on real commercial property data
+  const occupiedPresenceSlots = useMemo(() => {
+    return commercialPresenceInventory
+      .filter(
+        (p) =>
+          p.tenantCompanyId &&
+          (p.commercialStatus === "ACTIVE" || p.availabilityStatus === "RESERVED")
+      )
+      .map((p) => {
+        const comp =
+          getCompanyById(config, p.tenantCompanyId!) ||
+          getCompanyBySlug(config, p.tenantCompanyId!);
+        return {
+          property: p,
+          company: comp,
+          companyName:
+            comp?.displayName ||
+            comp?.legalName ||
+            comp?.name ||
+            p.tenantCompanyName ||
+            "Verified Tenant",
+          location: comp
+            ? formatCompactLocation(comp.country, comp.city)
+            : "Global",
+          description:
+            (comp as any)?.tagline || comp?.description || p.frontageDescription,
+          capabilities: comp?.capabilities || p.features || [],
+          companyId: comp?.slug || comp?.id || p.tenantCompanyId,
+          logo: comp?.coverImage,
+        };
+      })
+      .filter((slot) =>
+        passesSearch(slot.companyName, slot.location, slot.company?.industry || "")
+      );
+  }, [commercialPresenceInventory, config, passesSearch]);
+
+  const totalPresenceSlots = Math.max(6, commercialPresenceInventory.length || 6);
+  const availablePresenceCount = Math.max(
+    0,
+    totalPresenceSlots - occupiedPresenceSlots.length
+  );
+
+  // Active company IDs for this Sector City
+  const activeCompanyIds = useMemo(() => {
+    const ids = new Set<string>();
+    occupiedPresenceSlots.forEach((s) => {
+      if (s.companyId) ids.add(s.companyId.toLowerCase());
+      if (s.company?.id) ids.add(s.company.id.toLowerCase());
+      if (s.company?.slug) ids.add(s.company.slug.toLowerCase());
+    });
+    activeFlagships.forEach((f) => {
+      if ((f as any).companyId) ids.add((f as any).companyId.toLowerCase());
+      if ((f as any).tenantCompanyId) ids.add((f as any).tenantCompanyId.toLowerCase());
+    });
+    if ((landmark as any)?.tenantCompanyId) {
+      ids.add((landmark as any).tenantCompanyId.toLowerCase());
+    }
+    if ((landmark as any)?.companyId) {
+      ids.add((landmark as any).companyId.toLowerCase());
+    }
+    return ids;
+  }, [occupiedPresenceSlots, activeFlagships, landmark]);
+
+  // Organic AI-Native Company Network: real sector companies belonging to this Sector City
+  const organicCityCompanies = useMemo(() => {
+    return allCityCompanies.filter((c) =>
+      passesSearch(
+        c.displayName || c.legalName || c.name || "",
+        formatCompactLocation(c.country, c.city),
+        c.industry || ""
+      )
+    );
+  }, [allCityCompanies, passesSearch]);
+
+  const modalFilteredCompanies = useMemo(() => {
+    if (!modalSearchQuery.trim()) return allCityCompanies;
+    const q = modalSearchQuery.toLowerCase();
+    return allCityCompanies.filter((c) => {
+      const name = (c.displayName || c.legalName || c.name || "").toLowerCase();
+      const loc = formatCompactLocation(c.country, c.city).toLowerCase();
+      const ind = (c.industry || "").toLowerCase();
+      const desc = ((c as any).tagline || c.description || "").toLowerCase();
+      const caps = (c.capabilities || []).join(" ").toLowerCase();
+      return (
+        name.includes(q) ||
+        loc.includes(q) ||
+        ind.includes(q) ||
+        desc.includes(q) ||
+        caps.includes(q)
+      );
+    });
+  }, [allCityCompanies, modalSearchQuery]);
 
   const displayFlagships = [...activeFlagships];
   while (displayFlagships.length < 4 && !searchQuery) {
@@ -280,23 +383,19 @@ export function SectorCityEntranceV2({
         <section className="pt-20 md:pt-28 pb-12 px-4 sm:px-6 relative border-b border-slate-100">
           <div className="max-w-5xl mx-auto text-center space-y-6">
             
-            {/* THREE-TIER VISUAL PROGRESSION */}
+            {/* CANONICAL HIERARCHY */}
             <div className="inline-flex items-center justify-center flex-wrap gap-2 text-xs font-medium uppercase tracking-wider text-slate-500 mb-2 bg-slate-50/80 px-4 py-2 rounded-full border border-slate-200/60">
-              <span className="text-slate-600 font-medium">
+              <span className="text-slate-700 font-semibold">
                 {city.category}
               </span>
               <span className="text-slate-300 font-light">→</span>
-              <span className="text-slate-700 font-semibold">
-                {parentDomainName}
-              </span>
-              <span className="text-slate-300 font-light">→</span>
-              <span className="text-blue-700 font-extrabold bg-blue-50 px-2.5 py-0.5 rounded border border-blue-200/80 tracking-widest">
+              <span className="text-royal font-extrabold bg-royal/5 px-2.5 py-0.5 rounded border border-royal/20 tracking-widest">
                 {city.domain.toUpperCase()}
               </span>
             </div>
 
             {/* CITY DOMAIN HEADLINE */}
-            <h1 className="text-5xl sm:text-7xl md:text-8xl lg:text-[88px] font-extrabold text-slate-900 tracking-tight uppercase leading-[0.95] text-balance">
+            <h1 className="text-3xl sm:text-5xl md:text-6xl lg:text-7xl font-extrabold text-slate-900 tracking-tight uppercase leading-[1.05] break-words text-balance max-w-full">
               {city.domain}
             </h1>
 
@@ -305,124 +404,64 @@ export function SectorCityEntranceV2({
               {city.description}
             </p>
 
-            {/* FRAMEWORK LINK */}
-            <div className="pt-4">
-              <a
-                href={`/cities/${city.slug}/details`}
-                className="inline-flex items-center gap-2 text-xs font-mono font-bold uppercase tracking-wider text-slate-500 hover:text-blue-600 transition-colors bg-white px-4 py-2 rounded-full border border-slate-200 shadow-2xs hover:border-blue-300"
-              >
-                <FileText className="w-3.5 h-3.5 text-blue-600" />
-                <span>View Architecture & Compliance Framework</span>
-                <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
-              </a>
-            </div>
-
-            {/* CITY SIGNALS / METRICS STRIP */}
-            <div className="pt-10 grid grid-cols-2 sm:grid-cols-4 gap-4 max-w-4xl mx-auto border-t border-slate-100 text-left">
-              <div className="p-4 rounded-xl bg-slate-50/60 border border-slate-100">
-                <p className="text-xs font-mono uppercase tracking-wider text-slate-400 mb-1">
-                  Verified Companies
-                </p>
-                <p className="text-2xl font-extrabold text-slate-900">
-                  {allCityCompanies.length}
-                </p>
-                <p className="text-[11px] text-slate-500 font-light mt-0.5">
-                  Active commercial presence
-                </p>
-              </div>
-
-              <div className="p-4 rounded-xl bg-slate-50/60 border border-slate-100">
-                <p className="text-xs font-mono uppercase tracking-wider text-slate-400 mb-1">
-                  City Editions
-                </p>
-                <p className="text-2xl font-extrabold text-slate-900">
-                  {availableRegions.length}
-                </p>
-                <p className="text-[11px] text-slate-500 font-light mt-0.5">
-                  Active global jurisdictions
-                </p>
-              </div>
-
-              <div className="p-4 rounded-xl bg-slate-50/60 border border-slate-100">
-                <p className="text-xs font-mono uppercase tracking-wider text-slate-400 mb-1">
-                  Commercial Presence
-                </p>
-                <p className="text-2xl font-extrabold text-slate-900">
-                  {activeFlagships.length + (showLandmark ? 1 : 0)}
-                </p>
-                <p className="text-[11px] text-slate-500 font-light mt-0.5">
-                  Landmark & Flagships
-                </p>
-              </div>
-
-              <div className="p-4 rounded-xl bg-slate-50/60 border border-slate-100">
-                <p className="text-xs font-mono uppercase tracking-wider text-slate-400 mb-1">
-                  Commercial Standard
-                </p>
-                <p className="text-sm font-bold text-slate-900 flex items-center gap-1.5 mt-1">
-                  <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <span>Verified Standard</span>
-                </p>
-                <p className="text-[11px] text-slate-500 font-light mt-0.5">
-                  Governed Ecosystem
-                </p>
-              </div>
-            </div>
-
           </div>
         </section>
 
-        {/* CITY EDITION SELECTOR & SEARCH */}
-        <section className="max-w-[1400px] mx-auto px-4 sm:px-6 my-10">
-          <div className="bg-slate-50/70 p-4 md:p-6 rounded-2xl border border-slate-200/80 space-y-4">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-mono font-bold uppercase tracking-widest text-slate-500 flex items-center gap-2">
-                <Globe className="w-3.5 h-3.5 text-blue-600" />
-                <span>City Editions</span>
-              </span>
-              <span className="text-xs text-slate-500 font-light hidden sm:inline">
-                Active: <strong className="text-slate-900 font-semibold">{activeRegionEdition.name}</strong>
-              </span>
-            </div>
-
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-              {/* Regional Edition Pill Selector */}
-              <div
-                className="flex-1 overflow-x-auto no-scrollbar pb-1 md:pb-0"
-                style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
-              >
-                <div className="flex items-center gap-2">
-                  {availableRegions.map((region) => {
-                    const isActive = region.slug === selectedRegionSlug;
-                    return (
-                      <button
-                        key={region.slug}
-                        onClick={() => setSelectedRegionSlug(region.slug)}
-                        className={`whitespace-nowrap px-4 py-2.5 rounded-full text-xs font-bold uppercase tracking-wider transition-all border ${
-                          isActive
-                            ? "bg-slate-900 text-white border-slate-900 shadow-xs"
-                            : "bg-white text-slate-600 border-slate-200 hover:border-slate-400 hover:text-slate-900"
-                        }`}
-                      >
-                        {region.name}
-                      </button>
-                    );
-                  })}
+        {/* CITY EDITIONS SELECTOR & SEARCH */}
+        <section className="max-w-[1400px] mx-auto px-4 sm:px-6 my-8">
+          <div className="bg-white/90 p-5 md:p-6 rounded-2xl border border-slate-200/80 shadow-xs space-y-4">
+            
+            {/* Header with Title and Search */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-royal/5 border border-royal/15 flex items-center justify-center text-royal shrink-0">
+                  <Globe className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-mono font-bold uppercase tracking-widest text-slate-500">
+                      City Editions
+                    </span>
+                  </div>
                 </div>
               </div>
 
               {/* Search Bar */}
-              <div className="w-full md:w-[320px] shrink-0 relative">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <div className="w-full sm:w-[300px] shrink-0 relative">
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                 <input
                   type="text"
                   placeholder="Search companies or presence..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-11 pr-4 py-2.5 bg-white border border-slate-200 rounded-full text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900 transition-all"
+                  className="w-full pl-10 pr-4 py-2 bg-slate-50/80 hover:bg-white focus:bg-white border border-slate-200 rounded-full text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900 transition-all"
                 />
               </div>
             </div>
+
+            {/* Regional Edition Pill Selector (Refined, compact & elegant) */}
+            <div className="pt-1">
+              <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                {availableRegions.map((region) => {
+                  const isActive = region.slug === selectedRegionSlug;
+                  const cleanLabel = region.name.replace(/\s*Edition$/i, "");
+                  return (
+                    <button
+                      key={region.slug}
+                      onClick={() => setSelectedRegionSlug(region.slug)}
+                      className={`whitespace-nowrap px-3.5 py-1.5 rounded-full text-[11px] font-semibold uppercase tracking-wider transition-all border ${
+                        isActive
+                          ? "bg-slate-900 text-white border-slate-900 shadow-2xs font-bold"
+                          : "bg-slate-50/80 text-slate-600 border-slate-200/90 hover:bg-white hover:border-slate-300 hover:text-slate-900"
+                      }`}
+                    >
+                      {cleanLabel}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
           </div>
         </section>
 
@@ -431,123 +470,127 @@ export function SectorCityEntranceV2({
           
           {/* TIER 1: CITY LANDMARK */}
           <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <span className="text-xs font-mono font-bold uppercase tracking-widest text-blue-700 bg-blue-50 px-2.5 py-1 rounded border border-blue-200">
-                  TIER 1: CITY LANDMARK
-                </span>
-                <p className="text-sm text-slate-500 font-light mt-1">
-                  Primary anchor digital commercial presence in {city.domain} ({activeRegionEdition.name})
-                </p>
-              </div>
+            <div className="flex items-center gap-3">
+              <div className="w-6 h-[2px] bg-slate-400" />
+              <span className="text-xs font-mono font-bold uppercase tracking-widest text-slate-700">
+                DIGITAL PROPERTY: FLAGSHIP
+              </span>
             </div>
 
             <div className="w-full">
               {showLandmark ? (
-                <div
-                  className="flex flex-col md:flex-row group cursor-pointer border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-xs hover:border-slate-400 transition-all"
-                  onClick={() =>
-                    (window.location.href = `/companies/${landmark.companyId}`)
-                  }
-                >
-                  <div className="md:w-3/5 aspect-video md:aspect-[16/8] bg-slate-100 overflow-hidden relative">
-                    <SafeImage
-                      src={
-                        landmark.creative.mediaUrl ||
-                        landmark.companyLogo ||
-                        "https://images.unsplash.com/photo-1569263979104-865ab7cd8d13?auto=format&fit=crop&w=1600&q=80"
-                      }
-                      alt={landmark.companyName}
-                      className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-                    />
-                    <div className="absolute top-4 left-4 bg-slate-900/90 text-white text-[10px] font-mono uppercase tracking-widest px-3 py-1 rounded backdrop-blur-xs">
-                      Anchor Tenant · {landmark.companyRegion}
-                    </div>
-                  </div>
+                <div className="relative w-full rounded-3xl overflow-hidden min-h-[440px] sm:min-h-[500px] lg:min-h-[560px] flex flex-col justify-end shadow-xl border border-slate-200/40 group">
+                  {/* Full-bleed Scenic Maritime Media Background */}
+                  <SafeImage
+                    src={
+                      landmark.creative.mediaUrl ||
+                      landmark.companyLogo ||
+                      "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=2000&q=85"
+                    }
+                    alt={landmark.companyName}
+                    className="absolute inset-0 w-full h-full object-cover transition-transform duration-1000 ease-out group-hover:scale-105"
+                  />
 
-                  <div className="md:w-2/5 p-8 md:p-12 xl:p-14 flex flex-col justify-between bg-white">
-                    <div className="space-y-4">
-                      <div className="flex items-center gap-2 text-xs font-mono uppercase tracking-wider text-emerald-700">
-                        <CheckCircle2 className="w-4 h-4" />
-                        <span>Verified Anchor Entity</span>
-                      </div>
+                  {/* Cinema Gradients for High-Contrast Text Legibility */}
+                  <div className="absolute inset-0 bg-gradient-to-t from-slate-950/95 via-slate-950/45 to-transparent pointer-events-none" />
+                  <div className="absolute inset-0 bg-gradient-to-r from-slate-950/70 via-transparent to-transparent pointer-events-none" />
 
-                      <h2 className="text-3xl md:text-4xl lg:text-5xl font-extrabold text-slate-900 tracking-tight leading-tight">
-                        {landmark.companyName}
-                      </h2>
-
-                      <p className="text-slate-600 font-light text-base md:text-lg leading-relaxed">
-                        {landmark.creative.headline ||
-                          "Primary anchor enterprise operating inside " +
-                            city.domain}
-                      </p>
-
-                      {landmark.creative.tagline && (
-                        <p className="text-xs text-slate-500 italic">
-                          "{landmark.creative.tagline}"
-                        </p>
+                  {/* Content Box Positioned Bottom-Left */}
+                  <div className="relative z-10 p-6 sm:p-10 md:p-14 lg:p-16 max-w-4xl space-y-4 sm:space-y-6">
+                    {/* Status Badges */}
+                    <div className="flex flex-wrap items-center gap-2.5">
+                      <span className="bg-white text-slate-950 text-[11px] font-extrabold uppercase tracking-wider px-3.5 py-1 rounded-md shadow-xs">
+                        RESERVED
+                      </span>
+                      <span className="inline-flex items-center gap-1.5 text-emerald-400 text-[11px] font-bold uppercase tracking-wider bg-emerald-950/50 border border-emerald-500/30 px-3.5 py-1 rounded-md backdrop-blur-md">
+                        <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>VERIFIED</span>
+                      </span>
+                      {landmark.companyRegion && (
+                        <span className="text-white/80 text-[11px] font-mono uppercase tracking-wider bg-slate-900/60 border border-white/10 px-3 py-1 rounded-md backdrop-blur-md">
+                          {landmark.companyRegion}
+                        </span>
                       )}
                     </div>
 
-                    <div className="pt-8 border-t border-slate-100 flex items-center justify-between">
-                      <span className="text-xs font-mono uppercase tracking-wider text-slate-400">
-                        {landmark.slotCode}
-                      </span>
-                      <span className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-blue-600 group-hover:text-blue-800 transition-colors">
-                        <span>Explore Company</span>
-                        <ArrowUpRight className="w-4 h-4" />
-                      </span>
+                    {/* Main Title / Company Name */}
+                    <h2 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-extrabold text-white tracking-tight leading-[1.08]">
+                      {landmark.companyName}
+                    </h2>
+
+                    {/* Subtitle / Headline Description */}
+                    <p className="text-white/90 text-sm sm:text-base md:text-lg font-light leading-relaxed max-w-2xl">
+                      {landmark.creative.headline ||
+                        landmark.creative.tagline ||
+                        `Premier AI-Native anchor enterprise operating inside ${city.domain}.`}
+                    </p>
+
+                    {/* Action Buttons Row */}
+                    <div className="pt-2 flex flex-wrap items-center gap-3">
+                      <a
+                        href={`/companies/${landmark.companyId}`}
+                        className="inline-flex items-center justify-center gap-2.5 px-6 py-3.5 rounded-xl bg-royal hover:bg-royal-light text-white font-bold text-xs sm:text-sm uppercase tracking-wider transition-all duration-200 shadow-lg shadow-royal/20 hover:shadow-royal/20"
+                      >
+                        <Play className="w-3.5 h-3.5 fill-white text-white" />
+                        <span>LAUNCH WORKSPACE</span>
+                      </a>
+
+                      <a
+                        href={`/companies/${landmark.companyId}#ai`}
+                        className="inline-flex items-center justify-center gap-2.5 px-6 py-3.5 rounded-xl bg-slate-900/70 hover:bg-slate-900/95 text-white font-medium text-xs sm:text-sm uppercase tracking-wider border border-white/20 backdrop-blur-md transition-all duration-200 shadow-md"
+                      >
+                        <Cpu className="w-4 h-4 text-slate-300" />
+                        <span>AI ASSISTANT</span>
+                      </a>
                     </div>
                   </div>
                 </div>
               ) : !searchQuery ? (
-                <div
-                  className="flex flex-col md:flex-row border border-dashed border-slate-300 rounded-2xl cursor-pointer hover:border-blue-500 hover:bg-blue-50/20 transition-all group p-8 md:p-12 items-center gap-8 bg-slate-50/40"
-                  onClick={() =>
-                    (window.location.href = `/enter/${city.slug}`)
-                  }
-                >
-                  <div className="md:w-1/2 space-y-4">
-                    <span className="text-xs font-mono uppercase tracking-widest text-blue-700 font-bold bg-blue-100 px-3 py-1 rounded-full">
-                      Flagship Anchor Position Available
-                    </span>
-                    <h2 className="text-3xl md:text-4xl font-extrabold text-slate-900 group-hover:text-blue-900 transition-colors">
+                <div className="relative w-full rounded-3xl overflow-hidden min-h-[440px] sm:min-h-[500px] lg:min-h-[560px] flex flex-col justify-end shadow-xl border border-slate-200/40 group">
+                  <SafeImage
+                    src="https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=2000&q=85"
+                    alt={`Reserve ${city.domain} Landmark`}
+                    className="absolute inset-0 w-full h-full object-cover transition-transform duration-1000 ease-out group-hover:scale-105"
+                  />
+
+                  <div className="absolute inset-0 bg-gradient-to-t from-slate-950/95 via-slate-950/55 to-transparent pointer-events-none" />
+                  <div className="absolute inset-0 bg-gradient-to-r from-slate-950/70 via-transparent to-transparent pointer-events-none" />
+
+                  <div className="relative z-10 p-6 sm:p-10 md:p-14 lg:p-16 max-w-4xl space-y-4 sm:space-y-6">
+                    <div className="flex flex-wrap items-center gap-2.5">
+                      <span className="bg-royal text-white text-[11px] font-extrabold uppercase tracking-wider px-3.5 py-1 rounded-md shadow-xs">
+                        AVAILABLE
+                      </span>
+                      <span className="inline-flex items-center gap-1.5 text-white/90 text-[11px] font-mono uppercase tracking-wider bg-slate-900/60 border border-white/20 px-3.5 py-1 rounded-md backdrop-blur-md">
+                        TIER 1: FLAGSHIP LANDMARK
+                      </span>
+                    </div>
+
+                    <h2 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-extrabold text-white tracking-tight leading-[1.08]">
                       Reserve the Landmark Position
                     </h2>
-                    <p className="text-slate-600 font-light text-base leading-relaxed">
+
+                    <p className="text-white/90 text-sm sm:text-base md:text-lg font-light leading-relaxed max-w-2xl">
                       Establish the primary anchor commercial presence in {city.domain} for
                       the {activeRegionEdition.name} edition. Connect your AI-Native Company to
-                      unmatched visibility across the global maritime network.
+                      unmatched global maritime visibility.
                     </p>
-                    <div className="flex flex-wrap gap-3 pt-2 text-xs font-medium text-slate-600">
-                      <span className="flex items-center gap-1.5 bg-white px-3 py-1.5 rounded-full border border-slate-200">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-blue-600" />
-                        Prime Visibility
-                      </span>
-                      <span className="flex items-center gap-1.5 bg-white px-3 py-1.5 rounded-full border border-slate-200">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-blue-600" />
-                        Verified Ecosystem
-                      </span>
-                      <span className="flex items-center gap-1.5 bg-white px-3 py-1.5 rounded-full border border-slate-200">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-blue-600" />
-                        Strategic Advantage
-                      </span>
-                    </div>
-                  </div>
 
-                  <div className="md:w-1/2 w-full flex flex-col items-center justify-center p-8 bg-white border border-slate-200 rounded-xl text-center space-y-4 shadow-2xs">
-                    <Building2 className="w-10 h-10 text-slate-300 group-hover:text-blue-600 transition-colors" />
-                    <div>
-                      <p className="text-sm font-bold text-slate-900">
-                        Tier 1 Landmark Slot
-                      </p>
-                      <p className="text-xs text-slate-500 font-mono mt-1">
-                        {city.id.toUpperCase()}-LM-01
-                      </p>
+                    <div className="pt-2 flex flex-wrap items-center gap-3">
+                      <a
+                        href={`/enter/${city.slug}`}
+                        className="inline-flex items-center justify-center gap-2.5 px-6 py-3.5 rounded-xl bg-royal hover:bg-royal-light text-white font-bold text-xs sm:text-sm uppercase tracking-wider transition-all duration-200 shadow-lg shadow-royal/20"
+                      >
+                        <span>RESERVE LANDMARK PRESENCE →</span>
+                      </a>
+
+                      <a
+                        href={`/cities/${city.slug}/architecture`}
+                        className="inline-flex items-center justify-center gap-2.5 px-6 py-3.5 rounded-xl bg-slate-900/70 hover:bg-slate-900/95 text-white font-medium text-xs sm:text-sm uppercase tracking-wider border border-white/20 backdrop-blur-md transition-all duration-200 shadow-md"
+                      >
+                        <span>INSPECT SPECIFICATIONS</span>
+                      </a>
                     </div>
-                    <span className="inline-flex items-center gap-2 bg-slate-900 text-white group-hover:bg-blue-600 px-6 py-3 rounded-full text-xs font-bold uppercase tracking-wider transition-colors">
-                      <span>Reserve Landmark Presence →</span>
-                    </span>
                   </div>
                 </div>
               ) : null}
@@ -555,64 +598,90 @@ export function SectorCityEntranceV2({
           </div>
 
           {/* TIER 2: CITY DISTRICTS */}
-          <div className="space-y-6 pt-6 border-t border-slate-200">
-            <div>
-              <h2 className="text-2xl font-extrabold text-slate-900 uppercase tracking-tight">
-                TIER 2: CITY DISTRICTS
-              </h2>
-              <p className="text-sm text-slate-500 font-light mt-1">
-                Geographic and market-specific commercial pavilions inside {city.domain}
-              </p>
+          <div id="city-districts" className="space-y-6 pt-8 border-t border-slate-200">
+            <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="w-6 h-[2px] bg-slate-400" />
+                  <span className="text-xs font-mono font-bold uppercase tracking-widest text-slate-700">
+                    DIGITAL PROPERTY: DISTRICTS
+                  </span>
+                </div>
+                <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 uppercase tracking-tight">
+                  CITY DISTRICTS
+                </h2>
+                <p className="text-sm text-slate-500 font-light mt-1">
+                  Geographic and market-specific commercial pavilions inside {city.domain} ({activeRegionEdition.name}).
+                </p>
+              </div>
+
+              <span className="text-xs font-mono uppercase tracking-wider text-slate-400">
+                {countryPavilions.length} Regional Pavilions
+              </span>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {countryPavilions.slice(0, 3).map((pavilion) => (
                 <div
                   key={pavilion.id}
-                  className="group bg-white border border-slate-200 rounded-2xl overflow-hidden hover:border-slate-400 transition-all flex flex-col justify-between"
+                  className="group relative bg-white border border-slate-200/90 rounded-3xl overflow-hidden hover:border-slate-400 hover:shadow-xl transition-all duration-300 flex flex-col justify-between shadow-2xs"
                 >
-                  <div className="aspect-[16/9] overflow-hidden relative bg-slate-100">
+                  <div className="aspect-[16/9] overflow-hidden relative bg-slate-950">
                     <SafeImage
                       src={pavilion.heroImage}
                       alt={pavilion.countryName}
-                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                      className="w-full h-full object-cover transition-transform duration-700 ease-out group-hover:scale-105"
                     />
-                    <div className="absolute top-3 left-3 bg-white/95 backdrop-blur-xs px-3 py-1 rounded-full text-xs font-bold text-slate-900 flex items-center gap-2 border border-slate-200">
-                      <span>{pavilion.flagEmoji}</span>
-                      <span>{pavilion.countryName}</span>
+                    <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent pointer-events-none" />
+                    
+                    <div className="absolute top-3 left-3 bg-slate-950/75 backdrop-blur-md px-3.5 py-1.5 rounded-full text-xs font-bold text-white flex items-center gap-2 border border-white/20 shadow-xs">
+                      <span className="text-sm leading-none">{pavilion.flagEmoji}</span>
+                      <span className="tracking-wide uppercase text-[11px] font-semibold">{pavilion.countryName}</span>
+                    </div>
+
+                    <div className="absolute bottom-3 left-4 right-4 flex items-center justify-between text-white/90 text-xs font-mono">
+                      <span className="flex items-center gap-1.5">
+                        <MapPin className="w-3.5 h-3.5 text-slate-300 shrink-0" />
+                        <span>{pavilion.featuredHub}</span>
+                      </span>
+                      <span className="text-[10px] uppercase tracking-wider text-slate-300 font-bold bg-slate-900 px-2 py-0.5 rounded border border-royal/40/30">
+                        District Pavilion
+                      </span>
                     </div>
                   </div>
 
-                  <div className="p-6 space-y-4 flex-1 flex flex-col justify-between">
+                  <div className="p-6 sm:p-7 space-y-4 flex-1 flex flex-col justify-between bg-white">
                     <div className="space-y-2">
-                      <div className="flex items-center gap-1.5 text-xs font-mono text-slate-500">
-                        <MapPin className="w-3.5 h-3.5 text-slate-400" />
-                        <span>{pavilion.featuredHub}</span>
-                      </div>
-                      <h3 className="text-lg font-bold text-slate-900 tracking-tight leading-snug">
+                      <h3 className="text-lg font-bold text-slate-900 tracking-tight leading-snug group-hover:text-royal transition-colors">
                         {pavilion.subtitle}
                       </h3>
+                      <p className="text-xs text-slate-500 font-light leading-relaxed">
+                        Dedicated regional maritime corridor and sovereign enterprise cluster for {pavilion.countryName}.
+                      </p>
                     </div>
 
-                    <div className="space-y-3 pt-2">
+                    <div className="space-y-4 pt-2 border-t border-slate-100">
                       <div className="flex flex-wrap gap-1.5">
                         {pavilion.capabilities.slice(0, 3).map((cap, i) => (
                           <span
                             key={i}
-                            className="text-[11px] bg-slate-100 text-slate-600 px-2.5 py-1 rounded font-medium"
+                            className="text-[11px] bg-slate-50 border border-slate-200/80 text-slate-700 px-2.5 py-1 rounded-md font-medium"
                           >
                             {cap}
                           </span>
                         ))}
                       </div>
 
-                      <div className="pt-3 border-t border-slate-100">
+                      <div className="pt-2 flex items-center justify-between">
+                        <span className="text-[10.5px] font-mono text-slate-400 uppercase tracking-wider">
+                          Commercial Corridor
+                        </span>
                         <a
                           href={pavilion.ctaHref}
-                          className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-blue-600 group-hover:text-blue-800 transition-colors"
+                          className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-royal group-hover:text-royal-dark transition-colors"
                         >
                           <span>Explore District</span>
-                          <ArrowRight className="w-3.5 h-3.5" />
+                          <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-1" />
                         </a>
                       </div>
                     </div>
@@ -622,100 +691,271 @@ export function SectorCityEntranceV2({
             </div>
           </div>
 
-          {/* ACTIVE COMPANY PRESENCE */}
-          <div id="active-presence" className="space-y-8 pt-6 border-t border-slate-200">
+          {/* COMMERCIAL LAYER 3: COMPANY PRESENCE */}
+          <div id="company-presence" className="space-y-8 pt-8 border-t border-slate-200">
             <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
               <div>
-                <h2 className="text-2xl font-extrabold text-slate-900 uppercase tracking-tight">
-                  ACTIVE COMPANY PRESENCE
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="w-6 h-[2px] bg-slate-400" />
+                  <span className="text-xs font-mono font-bold uppercase tracking-widest text-slate-700">
+                    DIGITAL PROPERTY: COMPANY PRESENCE
+                  </span>
+                </div>
+                <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 uppercase tracking-tight">
+                  COMPANY PRESENCE
                 </h2>
                 <p className="text-sm text-slate-500 font-light mt-1">
-                  Verified companies with an active commercial presence inside {city.domain}.
+                  Premium digital company presence for verified businesses operating within {city.domain}.
                 </p>
               </div>
 
-              <span className="text-xs font-mono uppercase tracking-wider text-slate-400">
-                {allCityCompanies.filter(c => passesSearch(c.displayName || c.legalName || c.name || "", formatCompactLocation(c.country, c.city), c.industry || "")).length} Verified Entities
+              <span className="text-xs font-mono uppercase tracking-wider text-slate-400 font-semibold bg-slate-50 px-3 py-1.5 rounded-full border border-slate-200/80">
+                {occupiedPresenceSlots.length} Active · {availablePresenceCount} Available
               </span>
             </div>
 
-            {/* OCCUPIED FLAGSHIP SUITES */}
-            {activeFlagships.length > 0 && (
-              <div className="space-y-3">
-                <p className="text-xs font-mono uppercase tracking-widest text-slate-400">
-                  Flagship Commercial Presence
-                </p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                  {activeFlagships.map((f: any, idx: number) => {
-                    const logoUrl = f.creative?.mediaUrl || f.companyLogo;
-                    return (
-                      <a
-                        key={f.id || `f-${idx}`}
-                        href={`/companies/${f.companyId}`}
-                        className="group relative bg-white border border-slate-200/80 p-6 md:p-8 flex flex-col justify-between min-h-[170px] rounded-xl transition-all duration-200 hover:-translate-y-1 hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-400 shadow-2xs"
-                      >
-                        {/* Top Accent Rule */}
-                        <div className="absolute top-0 left-6 right-6 h-[2.5px] bg-blue-600 group-hover:bg-blue-700 transition-all rounded-t" />
+            {/* COMPANY PRESENCE INVENTORY GRID */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {/* OCCUPIED COMMERCIAL COMPANY PLACEMENTS */}
+              {occupiedPresenceSlots.map((slot) => {
+                const comp = slot.company;
+                const companyName = slot.companyName;
+                const location = slot.location;
+                const companyId = slot.companyId;
 
-                        <div className="space-y-3">
-                          {logoUrl ? (
-                            <img
-                              src={logoUrl}
-                              alt={f.companyName}
-                              className="h-5 max-w-[120px] object-contain opacity-75 group-hover:opacity-100 transition-opacity mb-2"
-                            />
-                          ) : null}
+                return (
+                  <a
+                    key={slot.property.canonicalPropertyKey || slot.property.slotId}
+                    href={`/companies/${companyId}`}
+                    className="group bg-white border border-slate-200/90 rounded-3xl p-6 sm:p-7 hover:border-slate-400 hover:shadow-xl transition-all duration-300 flex flex-col justify-between shadow-2xs space-y-4"
+                  >
+                    <div className="space-y-3.5">
+                      <div className="flex items-start justify-between gap-3">
+                        <span className="inline-flex items-center gap-1.5 text-[10px] font-mono font-bold uppercase tracking-wider text-royal bg-royal/5 px-2.5 py-1 rounded-md border border-royal/20 shrink-0">
+                          <Building2 className="w-3.5 h-3.5 text-royal" />
+                          <span>VERIFIED COMMERCIAL PRESENCE</span>
+                        </span>
 
-                          <h3 className="text-lg font-bold text-slate-900 tracking-tight leading-snug group-hover:text-blue-700 transition-colors">
-                            {f.companyName}
+                        <span className="inline-flex items-center gap-1 text-[10px] font-mono font-bold uppercase tracking-wider text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200/80 shrink-0">
+                          <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                          <span>Active</span>
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-3 pt-1">
+                        {slot.logo ? (
+                          <img
+                            src={slot.logo}
+                            alt={companyName}
+                            className="w-11 h-11 rounded-xl object-contain border border-slate-100 bg-slate-50 p-1 shrink-0"
+                          />
+                        ) : (
+                          <div className="w-11 h-11 rounded-xl bg-royal/5 border border-royal/20 text-royal font-bold flex items-center justify-center shrink-0 text-sm">
+                            {companyName.substring(0, 2).toUpperCase()}
+                          </div>
+                        )}
+                        <div>
+                          <h3 className="text-base font-bold text-slate-900 group-hover:text-royal transition-colors leading-snug">
+                            {companyName}
                           </h3>
+                          <div className="flex items-center gap-1.5 text-xs text-slate-500 font-mono mt-0.5">
+                            <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
+                            <span>{location}</span>
+                          </div>
                         </div>
+                      </div>
 
-                        <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
-                          <p className="text-[11px] font-mono uppercase tracking-wider text-slate-400 group-hover:text-slate-600 transition-colors">
-                            {f.companyRegion || "Global"}
-                          </p>
-                          <span className="text-xs font-bold uppercase tracking-wider text-blue-600 group-hover:text-blue-800 transition-colors flex items-center gap-1">
-                            <span>Explore Company</span>
-                            <ArrowUpRight className="w-3.5 h-3.5" />
-                          </span>
+                      <p className="text-xs text-slate-600 font-light leading-relaxed line-clamp-2">
+                        {slot.description || `Specialized maritime supply chain and logistics services.`}
+                      </p>
+
+                      {slot.capabilities && slot.capabilities.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 pt-1">
+                          {slot.capabilities.slice(0, 3).map((cap, i) => (
+                            <span
+                              key={i}
+                              className="text-[11px] bg-slate-50 border border-slate-200/80 text-slate-700 px-2.5 py-1 rounded-md font-medium"
+                            >
+                              {cap}
+                            </span>
+                          ))}
                         </div>
-                      </a>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
+                      )}
+                    </div>
 
-            {/* VERIFIED COMPANY PRESENCE GRID */}
-            <div className="space-y-4">
-              {allCityCompanies.filter((c) =>
-                passesSearch(
-                  c.displayName || c.legalName || c.name || "",
-                  formatCompactLocation(c.country, c.city),
-                  c.industry || ""
-                )
-              ).length === 0 ? (
-                <div className="text-center py-12 px-6 border border-dashed border-slate-200 rounded-2xl bg-slate-50/50 space-y-2">
-                  <p className="text-sm font-semibold text-slate-700">
-                    No active company presence records currently indexed for {city.domain}.
+                    <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
+                      <span className="text-[10.5px] font-mono uppercase tracking-wider text-slate-400">
+                        COMMERCIAL PRESENCE
+                      </span>
+                      <span className="text-xs font-bold uppercase tracking-wider text-royal group-hover:text-royal-dark transition-colors flex items-center gap-1">
+                        <span>EXPLORE COMPANY</span>
+                        <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-1" />
+                      </span>
+                    </div>
+                  </a>
+                );
+              })}
+
+              {/* AVAILABLE COMMERCIAL PRESENCE INVENTORY CARDS */}
+              <a
+                href={`/enter/${city.slug}`}
+                className="group relative border border-dashed border-slate-300 bg-slate-50/60 hover:border-royal hover:bg-royal/5/20 rounded-3xl p-6 sm:p-7 transition-all duration-300 flex flex-col justify-between min-h-[230px] space-y-4 shadow-2xs"
+              >
+                <div className="space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="inline-flex items-center gap-1.5 text-[10px] font-mono font-bold uppercase tracking-wider text-royal bg-royal/5 px-2.5 py-1 rounded-md border border-royal/20 shrink-0">
+                      <Building2 className="w-3.5 h-3.5 text-royal" />
+                      <span>AVAILABLE COMPANY PRESENCE</span>
+                    </span>
+
+                    <span className="inline-flex items-center gap-1 text-[10px] font-mono font-bold uppercase tracking-wider text-royal bg-royal/5 px-2 py-0.5 rounded border border-royal/20 shrink-0">
+                      Available
+                    </span>
+                  </div>
+
+                  <div className="pt-1">
+                    <h3 className="text-base font-bold text-slate-900 group-hover:text-royal-dark transition-colors leading-snug break-words">
+                      Establish your company's commercial presence inside <span className="break-all">{city.domain}</span>
+                    </h3>
+                    <div className="flex items-center gap-1.5 text-xs text-slate-500 font-mono mt-0.5">
+                      <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
+                      <span>{activeRegionEdition.name}</span>
+                    </div>
+                  </div>
+
+                  <p className="text-xs text-slate-600 font-light leading-relaxed">
+                    Premium company positioning with direct routing to your AI-Native Company profile.
                   </p>
-                  <p className="text-xs text-slate-500 font-light max-w-md mx-auto">
-                    Commercial entities with verified credentials can establish presence using the available inventory below.
-                  </p>
+
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    <span className="text-[10.5px] bg-white border border-slate-200 text-slate-600 px-2.5 py-0.5 rounded-md font-medium">
+                      Verified Standard
+                    </span>
+                    <span className="text-[10.5px] bg-white border border-slate-200 text-slate-600 px-2.5 py-0.5 rounded-md font-medium">
+                      Direct AI Routing
+                    </span>
+                  </div>
                 </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {allCityCompanies
-                    .filter((c) =>
-                      passesSearch(
-                        c.displayName || c.legalName || c.name || "",
-                        formatCompactLocation(c.country, c.city),
-                        c.industry || ""
-                      )
-                    )
-                    .map((company) => {
-                      const companyName = company.displayName || company.legalName || company.name || "Company";
+
+                <div className="pt-4 border-t border-slate-200/70 flex items-center justify-between text-xs font-bold uppercase tracking-wider text-royal group-hover:text-royal-dark transition-colors">
+                  <span>ESTABLISH COMPANY PRESENCE</span>
+                  <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-1" />
+                </div>
+              </a>
+
+              <a
+                href={`/enter/${city.slug}`}
+                className="group relative border border-dashed border-slate-300 bg-slate-50/60 hover:border-royal hover:bg-royal/5/20 rounded-3xl p-6 sm:p-7 transition-all duration-300 flex flex-col justify-between min-h-[230px] space-y-4 shadow-2xs"
+              >
+                <div className="space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="inline-flex items-center gap-1.5 text-[10px] font-mono font-bold uppercase tracking-wider text-royal bg-royal/5 px-2.5 py-1 rounded-md border border-royal/20 shrink-0">
+                      <Globe className="w-3.5 h-3.5 text-royal" />
+                      <span>AVAILABLE COMPANY PRESENCE</span>
+                    </span>
+
+                    <span className="inline-flex items-center gap-1 text-[10px] font-mono font-bold uppercase tracking-wider text-royal bg-royal/5 px-2 py-0.5 rounded border border-royal/20 shrink-0">
+                      {activeRegionEdition.name} Edition
+                    </span>
+                  </div>
+
+                  <div className="pt-1">
+                    <h3 className="text-base font-bold text-slate-900 group-hover:text-royal-dark transition-colors leading-snug">
+                      Premium Digital Company Space
+                    </h3>
+                    <div className="flex items-center gap-1.5 text-xs text-slate-500 font-mono mt-0.5">
+                      <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
+                      <span>Regional Maritime Hub</span>
+                    </div>
+                  </div>
+
+                  <p className="text-xs text-slate-600 font-light leading-relaxed">
+                    Premium digital company space available with guaranteed visibility and priority sector routing.
+                  </p>
+
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    <span className="text-[10.5px] bg-white border border-slate-200 text-slate-600 px-2.5 py-0.5 rounded-md font-medium">
+                      Commercial Corridor
+                    </span>
+                    <span className="text-[10.5px] bg-white border border-slate-200 text-slate-600 px-2.5 py-0.5 rounded-md font-medium">
+                      Dual Billing Support
+                    </span>
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t border-slate-200/70 flex items-center justify-between text-xs font-bold uppercase tracking-wider text-royal group-hover:text-royal-dark transition-colors">
+                  <span>RESERVE COMPANY PRESENCE</span>
+                  <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-1" />
+                </div>
+              </a>
+            </div>
+          </div>
+
+          {/* AI-NATIVE COMPANY NETWORK (ORGANIC SECTOR ECOSYSTEM) */}
+          <div id="ai-native-network" className="pt-8 border-t border-slate-200">
+            {searchQuery.trim() ? (
+              /* ACTIVE SEARCH RESULTS VIEW */
+              <div className="space-y-8">
+                <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+                  <div>
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className="w-6 h-[2px] bg-royal" />
+                      <span className="text-xs font-mono font-bold uppercase tracking-widest text-royal">
+                        SEARCH RESULTS · ORGANIC ECOSYSTEM
+                      </span>
+                    </div>
+                    <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 uppercase tracking-tight">
+                      AI-NATIVE COMPANY NETWORK
+                    </h2>
+                    <p className="text-sm text-slate-500 font-light mt-1">
+                      Showing verified companies matching{" "}
+                      <strong className="text-slate-900 font-semibold">"{searchQuery}"</strong> in {city.domain} ({activeRegionEdition.name}).
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setSearchQuery("")}
+                      className="text-xs font-mono uppercase tracking-wider text-slate-500 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-full transition-colors"
+                    >
+                      Clear Search
+                    </button>
+                    <span className="text-xs font-mono uppercase tracking-wider text-royal font-semibold bg-royal/5 px-3 py-1.5 rounded-full border border-royal/20">
+                      {organicCityCompanies.length} Matching
+                    </span>
+                  </div>
+                </div>
+
+                {/* SEARCH RESULTS CARDS GRID */}
+                {organicCityCompanies.length === 0 ? (
+                  <div className="text-center py-12 px-6 border border-dashed border-slate-200 rounded-3xl bg-slate-50/50 space-y-3">
+                    <p className="text-sm font-semibold text-slate-700">
+                      No AI-Native companies found matching "{searchQuery}" in {city.domain}.
+                    </p>
+                    <p className="text-xs text-slate-500 font-light max-w-md mx-auto">
+                      Try searching with different terms, or view the complete accredited list.
+                    </p>
+                    <div className="pt-2 flex items-center justify-center gap-3">
+                      <button
+                        onClick={() => setSearchQuery("")}
+                        className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-full text-xs font-bold uppercase tracking-wider transition-colors"
+                      >
+                        Reset Search
+                      </button>
+                      <button
+                        onClick={() => setShowCompanyListModal(true)}
+                        className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-full text-xs font-bold uppercase tracking-wider transition-colors inline-flex items-center gap-1.5"
+                      >
+                        <List className="w-3.5 h-3.5" />
+                        <span>Explore AI-Native Companies ({allCityCompanies.length})</span>
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {organicCityCompanies.map((company) => {
+                      const companyName =
+                        company.displayName || company.legalName || company.name || "Company";
                       const location = formatCompactLocation(company.country, company.city);
                       const companyId = company.slug || company.id;
 
@@ -723,41 +963,47 @@ export function SectorCityEntranceV2({
                         <a
                           key={company.id}
                           href={`/companies/${companyId}`}
-                          className="group bg-white border border-slate-200 rounded-2xl p-6 hover:border-slate-400 transition-all flex flex-col justify-between shadow-2xs space-y-4"
+                          className="group bg-white border border-royal/20 rounded-3xl p-6 sm:p-7 hover:border-royal hover:shadow-xl transition-all duration-300 flex flex-col justify-between shadow-2xs space-y-4 ring-1 ring-royal/40/10"
                         >
-                          <div className="space-y-3">
+                          <div className="space-y-3.5">
                             <div className="flex items-start justify-between gap-3">
-                              <div className="flex items-center gap-3">
-                                {company.coverImage ? (
-                                  <img
-                                    src={company.coverImage}
-                                    alt={companyName}
-                                    className="w-10 h-10 rounded-lg object-contain border border-slate-100 bg-slate-50 p-1 shrink-0"
-                                  />
-                                ) : (
-                                  <div className="w-10 h-10 rounded-lg bg-blue-50 border border-blue-200 text-blue-700 font-bold flex items-center justify-center shrink-0 text-sm">
-                                    {companyName.substring(0, 2).toUpperCase()}
-                                  </div>
-                                )}
-                                <div>
-                                  <h3 className="text-base font-bold text-slate-900 group-hover:text-blue-700 transition-colors leading-snug">
-                                    {companyName}
-                                  </h3>
-                                  <div className="flex items-center gap-1.5 text-xs text-slate-500 font-mono mt-0.5">
-                                    <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
-                                    <span>{location}</span>
-                                  </div>
-                                </div>
-                              </div>
+                              <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-500 bg-slate-100 px-2.5 py-1 rounded-md border border-slate-200">
+                                AI-NATIVE COMPANY
+                              </span>
 
-                              <span className="inline-flex items-center gap-1 text-[10px] font-mono font-bold uppercase tracking-wider text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 shrink-0">
-                                <CheckCircle2 className="w-3 h-3" />
+                              <span className="inline-flex items-center gap-1 text-[10px] font-mono font-bold uppercase tracking-wider text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200/80 shrink-0">
+                                <CheckCircle2 className="w-3 h-3 text-emerald-600" />
                                 <span>Verified</span>
                               </span>
                             </div>
 
+                            <div className="flex items-center gap-3 pt-1">
+                              {company.coverImage ? (
+                                <img
+                                  src={company.coverImage}
+                                  alt={companyName}
+                                  className="w-10 h-10 rounded-xl object-contain border border-slate-100 bg-slate-50 p-1 shrink-0"
+                                />
+                              ) : (
+                                <div className="w-10 h-10 rounded-xl bg-slate-100 border border-slate-200 text-slate-700 font-bold flex items-center justify-center shrink-0 text-xs">
+                                  {companyName.substring(0, 2).toUpperCase()}
+                                </div>
+                              )}
+                              <div>
+                                <h3 className="text-base font-bold text-slate-900 group-hover:text-royal transition-colors leading-snug">
+                                  {companyName}
+                                </h3>
+                                <div className="flex items-center gap-1.5 text-xs text-slate-500 font-mono mt-0.5">
+                                  <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
+                                  <span>{location}</span>
+                                </div>
+                              </div>
+                            </div>
+
                             <p className="text-xs text-slate-600 font-light leading-relaxed line-clamp-2">
-                              {(company as any).tagline || company.description || `Verified enterprise providing commercial maritime services inside ${city.domain}.`}
+                              {(company as any).tagline ||
+                                company.description ||
+                                `Accredited AI-Native enterprise operating within ${city.domain}.`}
                             </p>
 
                             {company.capabilities && company.capabilities.length > 0 && (
@@ -765,7 +1011,7 @@ export function SectorCityEntranceV2({
                                 {company.capabilities.slice(0, 3).map((cap, i) => (
                                   <span
                                     key={i}
-                                    className="text-[10.5px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-medium"
+                                    className="text-[11px] bg-slate-50 border border-slate-200/80 text-slate-700 px-2.5 py-1 rounded-md font-medium"
                                   >
                                     {cap}
                                   </span>
@@ -774,140 +1020,112 @@ export function SectorCityEntranceV2({
                             )}
                           </div>
 
-                          <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
+                          <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
                             <span className="text-[10.5px] font-mono uppercase tracking-wider text-slate-400">
-                              Commercial Presence
+                              Sector Ecosystem
                             </span>
-                            <span className="text-xs font-bold uppercase tracking-wider text-blue-600 group-hover:text-blue-800 transition-colors flex items-center gap-1">
-                              <span>Explore Company</span>
+                            <span className="text-xs font-bold uppercase tracking-wider text-royal group-hover:text-royal-dark transition-colors flex items-center gap-1">
+                              <span>EXPLORE COMPANY</span>
                               <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-1" />
                             </span>
                           </div>
                         </a>
                       );
                     })}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* AVAILABLE COMMERCIAL PRESENCE */}
-          <div id="available-presence" className="space-y-8 pt-6 border-t border-slate-200">
-            <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
-              <div>
-                <h2 className="text-2xl font-extrabold text-slate-900 uppercase tracking-tight">
-                  AVAILABLE COMMERCIAL PRESENCE
-                </h2>
-                <p className="text-sm text-slate-500 font-light mt-1">
-                  Commercial spaces and flagship suites currently available for reservation inside {city.domain}.
-                </p>
+                  </div>
+                )}
               </div>
+            ) : (
+              /* DEFAULT COMPACT ENTRY PANEL WITH LIST BUTTON */
+              <div className="bg-slate-50/70 border border-slate-200/80 rounded-3xl p-6 sm:p-8 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 shadow-2xs hover:border-slate-300 transition-all">
+                <div className="space-y-3 max-w-2xl">
+                  <div className="flex items-center gap-2.5">
+                    <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-600 bg-white px-2.5 py-1 rounded-md border border-slate-200 shadow-2xs">
+                      ORGANIC SECTOR ECOSYSTEM
+                    </span>
+                    <span className="text-xs font-mono uppercase tracking-wider text-slate-500 font-semibold bg-white px-2.5 py-1 rounded-md border border-slate-200 shadow-2xs flex items-center gap-1">
+                      <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                      <span>{allCityCompanies.length} Verified Companies</span>
+                    </span>
+                  </div>
 
-              <a
-                href={`/enter/${city.slug}`}
-                className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-blue-600 hover:text-blue-800 transition-colors"
-              >
-                <span>Reserve Commercial Space</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </a>
-            </div>
-
-            {/* AVAILABLE INVENTORY GRID */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {/* AVAILABLE FLAGSHIP SUITE SLOTS */}
-              {Array.from({ length: Math.max(1, 4 - activeFlagships.length) }).map((_, idx) => (
-                <a
-                  key={`available-suite-${idx}`}
-                  href={`/enter/${city.slug}`}
-                  className="group relative bg-slate-50/50 border border-dashed border-slate-300 p-6 md:p-8 flex flex-col justify-between min-h-[170px] rounded-2xl transition-all hover:border-blue-400 hover:bg-blue-50/10 text-left space-y-4"
-                >
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
-                        Available Suite #{idx + 1}
-                      </span>
-                      <span className="text-[11px] font-mono text-slate-400 uppercase">
-                        Flagship Tier
-                      </span>
-                    </div>
-                    <h3 className="text-base font-bold text-slate-900 group-hover:text-blue-900 transition-colors">
-                      + Available Flagship Suite
-                    </h3>
-                    <p className="text-xs text-slate-500 font-light leading-relaxed">
-                      Anchor corporate presence with custom digital frontage and direct inquiry routing in {city.domain}.
+                  <div>
+                    <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900 uppercase tracking-tight">
+                      AI-Native Company Network
+                    </h2>
+                    <p className="text-xs sm:text-sm text-slate-600 font-light mt-1 leading-relaxed">
+                      Explore the verified AI-Native enterprises and operating twins indexed inside{" "}
+                      <strong className="text-slate-800 font-semibold">{city.domain}</strong> ({activeRegionEdition.name}).
                     </p>
                   </div>
 
-                  <div className="pt-3 border-t border-slate-200/60 flex items-center justify-between text-xs font-bold uppercase tracking-wider text-blue-600 group-hover:text-blue-800 transition-colors">
-                    <span>Reserve Flagship Suite</span>
-                    <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-1" />
-                  </div>
-                </a>
-              ))}
-
-              {/* AVAILABLE COMMERCIAL PRESENCE OPPORTUNITY */}
-              <a
-                href={`/enter/${city.slug}`}
-                className="group border border-dashed border-slate-300 bg-slate-50/50 hover:border-blue-400 hover:bg-blue-50/10 rounded-2xl p-6 md:p-8 transition-all flex flex-col justify-between space-y-4"
-              >
-                <div className="space-y-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-lg bg-blue-50/60 border border-dashed border-blue-300 text-blue-700 font-bold flex items-center justify-center shrink-0">
-                        <Building2 className="w-5 h-5 text-blue-600" />
-                      </div>
-                      <div>
-                        <h3 className="text-base font-bold text-slate-900 group-hover:text-blue-900 transition-colors leading-snug">
-                          Available Company Presence
-                        </h3>
-                        <div className="flex items-center gap-1.5 text-xs text-slate-500 font-mono mt-0.5">
-                          <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
-                          <span>{activeRegionEdition.name}</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <span className="inline-flex items-center gap-1 text-[10px] font-mono font-bold uppercase tracking-wider text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 shrink-0">
-                      Available
-                    </span>
-                  </div>
-
-                  <p className="text-xs text-slate-600 font-light leading-relaxed">
-                    Establish your company's commercial presence inside {city.domain}. Connect your AI-Native Company to verified global maritime operators.
-                  </p>
-
-                  <div className="flex flex-wrap gap-1.5 pt-1">
-                    <span className="text-[10.5px] bg-white border border-slate-200 text-slate-600 px-2 py-0.5 rounded font-medium">
-                      Verified Standard
-                    </span>
-                    <span className="text-[10.5px] bg-white border border-slate-200 text-slate-600 px-2 py-0.5 rounded font-medium">
-                      AI Twin Integration
-                    </span>
+                  {/* PREVIEW CHIP STRIP OF VERIFIED COMPANIES */}
+                  <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                    {allCityCompanies.slice(0, 4).map((c) => (
+                      <button
+                        key={c.id}
+                        onClick={() => setShowCompanyListModal(true)}
+                        className="inline-flex items-center gap-1.5 text-xs bg-white hover:bg-slate-100 border border-slate-200/90 text-slate-700 px-3 py-1 rounded-full font-medium transition-colors shadow-2xs"
+                      >
+                        <Building2 className="w-3 h-3 text-slate-400" />
+                        <span>{c.displayName || c.legalName || c.name}</span>
+                      </button>
+                    ))}
+                    {allCityCompanies.length > 4 && (
+                      <button
+                        onClick={() => setShowCompanyListModal(true)}
+                        className="text-xs bg-slate-200/80 hover:bg-slate-300 text-slate-700 px-2.5 py-1 rounded-full font-mono font-bold transition-colors"
+                      >
+                        +{allCityCompanies.length - 4} more
+                      </button>
+                    )}
                   </div>
                 </div>
 
-                <div className="pt-3 border-t border-slate-200/60 flex items-center justify-between text-xs font-bold uppercase tracking-wider text-blue-600 group-hover:text-blue-800 transition-colors">
-                  <span>Reserve Presence</span>
-                  <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-1" />
+                {/* PRIMARY ACTION BUTTON TO OPEN DISCOVERY MODAL */}
+                <div className="flex flex-col sm:flex-row md:flex-col lg:flex-row items-stretch sm:items-center gap-3 w-full md:w-auto shrink-0">
+                  <button
+                    id="btn-open-company-network-list"
+                    onClick={() => setShowCompanyListModal(true)}
+                    className="px-6 py-3.5 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl text-xs font-bold uppercase tracking-wider transition-all inline-flex items-center justify-center gap-2 shadow-xs hover:shadow-md cursor-pointer"
+                  >
+                    <List className="w-4 h-4" />
+                    <span>EXPLORE AI-NATIVE COMPANIES ({allCityCompanies.length})</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+
+                  <a
+                    href="/companies"
+                    className="px-4 py-3.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200/90 rounded-2xl text-xs font-bold uppercase tracking-wider transition-colors inline-flex items-center justify-center gap-1.5 shadow-2xs text-center"
+                  >
+                    <span>AI-Native Companies</span>
+                    <ArrowUpRight className="w-3.5 h-3.5 text-slate-400" />
+                  </a>
                 </div>
-              </a>
-            </div>
+              </div>
+            )}
           </div>
 
           {/* INDUSTRY INTELLIGENCE */}
           <div className="space-y-6 pt-8 border-t border-slate-200">
             <div>
-              <h2 className="text-2xl font-extrabold text-slate-900 uppercase tracking-tight">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="w-6 h-[2px] bg-slate-400" />
+                <span className="text-xs font-mono font-bold uppercase tracking-widest text-slate-700">
+                  SECTOR OPERATIONAL FRAMEWORK
+                </span>
+              </div>
+              <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 uppercase tracking-tight">
                 INDUSTRY INTELLIGENCE
               </h2>
               <p className="text-sm text-slate-500 font-light mt-1">
-                Domain briefing and operational framework for {city.domain} within the {activeRegionEdition.name} jurisdiction
+                Domain briefing and operational framework for {city.domain} within the {activeRegionEdition.name} jurisdiction.
               </p>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-              <div className="p-6 bg-slate-50/80 border border-slate-200/80 rounded-2xl space-y-3">
-                <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center text-blue-700">
+              <div className="p-6 bg-slate-50/80 border border-slate-200/80 rounded-3xl space-y-3 shadow-2xs hover:border-slate-300 transition-all">
+                <div className="w-9 h-9 rounded-xl bg-royal/10 flex items-center justify-center text-royal">
                   <Globe className="w-4 h-4" />
                 </div>
                 <h3 className="text-xs font-mono font-bold uppercase tracking-widest text-slate-900">
@@ -918,8 +1136,8 @@ export function SectorCityEntranceV2({
                 </p>
               </div>
 
-              <div className="p-6 bg-slate-50/80 border border-slate-200/80 rounded-2xl space-y-3">
-                <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center text-blue-700">
+              <div className="p-6 bg-slate-50/80 border border-slate-200/80 rounded-3xl space-y-3 shadow-2xs hover:border-slate-300 transition-all">
+                <div className="w-9 h-9 rounded-xl bg-royal/10 flex items-center justify-center text-royal">
                   <Layers className="w-4 h-4" />
                 </div>
                 <h3 className="text-xs font-mono font-bold uppercase tracking-widest text-slate-900">
@@ -930,8 +1148,8 @@ export function SectorCityEntranceV2({
                 </p>
               </div>
 
-              <div className="p-6 bg-slate-50/80 border border-slate-200/80 rounded-2xl space-y-3">
-                <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center text-blue-700">
+              <div className="p-6 bg-slate-50/80 border border-slate-200/80 rounded-3xl space-y-3 shadow-2xs hover:border-slate-300 transition-all">
+                <div className="w-9 h-9 rounded-xl bg-royal/10 flex items-center justify-center text-royal">
                   <Briefcase className="w-4 h-4" />
                 </div>
                 <h3 className="text-xs font-mono font-bold uppercase tracking-widest text-slate-900">
@@ -942,15 +1160,15 @@ export function SectorCityEntranceV2({
                 </p>
               </div>
 
-              <div className="p-6 bg-slate-50/80 border border-slate-200/80 rounded-2xl space-y-3">
-                <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center text-blue-700">
+              <div className="p-6 bg-slate-50/80 border border-slate-200/80 rounded-3xl space-y-3 shadow-2xs hover:border-slate-300 transition-all">
+                <div className="w-9 h-9 rounded-xl bg-royal/10 flex items-center justify-center text-royal">
                   <ShieldCheck className="w-4 h-4" />
                 </div>
                 <h3 className="text-xs font-mono font-bold uppercase tracking-widest text-slate-900">
                   STANDARDS & COMPLIANCE
                 </h3>
                 <p className="text-xs text-slate-600 leading-relaxed font-light">
-                  Verified registry standards, IMO/ISO admiralty alignment, corporate authorization badges, and secure transaction frameworks enforced across MarineWorld.City.
+                  Structured registry standards, maritime regulatory alignment, corporate authorization badges, and enterprise verification frameworks supported across MarineWorld.City.
                 </p>
               </div>
             </div>
@@ -958,13 +1176,13 @@ export function SectorCityEntranceV2({
 
           {/* VERIFIED ECOSYSTEM / ENTER SECTOR CITY */}
           <div className="p-8 md:p-12 bg-slate-50/80 border border-slate-200/80 rounded-3xl space-y-6 text-center max-w-4xl mx-auto shadow-2xs">
-            <div className="inline-flex items-center gap-2 bg-blue-50 border border-blue-200 px-4 py-1.5 rounded-full text-xs font-mono uppercase tracking-widest text-blue-700">
+            <div className="inline-flex items-center gap-2 bg-royal/5 border border-royal/20 px-4 py-1.5 rounded-full text-xs font-mono uppercase tracking-widest text-royal">
               <Award className="w-3.5 h-3.5" />
               <span>Verified Commercial Ecosystem</span>
             </div>
 
-            <h2 className="text-3xl sm:text-4xl font-extrabold uppercase tracking-tight text-slate-900">
-              Enter {city.domain}
+            <h2 className="text-2xl sm:text-3xl md:text-4xl font-extrabold uppercase tracking-tight text-slate-900 break-words">
+              Enter <span className="break-all">{city.domain}</span>
             </h2>
 
             <p className="text-slate-600 font-light text-base max-w-2xl mx-auto leading-relaxed">
@@ -980,17 +1198,15 @@ export function SectorCityEntranceV2({
                 <ArrowRight className="w-4 h-4" />
               </a>
 
-              <a
-                href="#active-presence"
-                onClick={(e) => {
-                  e.preventDefault();
-                  document.getElementById("active-presence")?.scrollIntoView({ behavior: "smooth" });
-                }}
-                className="w-full sm:w-auto px-8 py-3.5 bg-white hover:bg-slate-100 text-slate-900 border border-slate-200 rounded-full text-xs font-bold uppercase tracking-wider transition-colors inline-flex items-center justify-center gap-2 shadow-2xs"
+              <button
+                type="button"
+                onClick={() => setShowCompanyListModal(true)}
+                className="w-full sm:w-auto px-8 py-3.5 bg-white hover:bg-slate-100 text-slate-900 border border-slate-200 rounded-full text-xs font-bold uppercase tracking-wider transition-colors inline-flex items-center justify-center gap-2 shadow-2xs cursor-pointer"
               >
-                <span>Explore Company Presence</span>
+                <List className="w-4 h-4 text-slate-500" />
+                <span>Explore AI-Native Companies ({allCityCompanies.length})</span>
                 <ArrowRight className="w-4 h-4 text-slate-400" />
-              </a>
+              </button>
             </div>
           </div>
 
@@ -999,71 +1215,48 @@ export function SectorCityEntranceV2({
 
       <GlobalFooter config={config} />
 
-      {/* AI ADVISOR WIDGET */}
-      <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end">
-        {isAdvisorOpen ? (
-          <div className="bg-white border border-slate-200 rounded-2xl shadow-2xl w-[320px] sm:w-[380px] h-[480px] flex flex-col overflow-hidden mb-4 animate-in fade-in slide-in-from-bottom-4 duration-200">
-            <div className="bg-slate-900 text-white p-4 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center">
-                  <Compass className="w-4 h-4 text-white" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold">{city.domain} Advisor</h3>
-                  <p className="text-[10px] text-slate-400 font-mono uppercase tracking-wider">
-                    Sector City Guide
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => setIsAdvisorOpen(false)}
-                className="p-2 hover:bg-white/10 rounded-full transition-colors text-slate-300 hover:text-white"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
+      {/* REDESIGNED AI-NATIVE COMPANY DISCOVERY MODAL */}
+      <CompanyDiscoveryModal
+        isOpen={showCompanyListModal}
+        onClose={() => setShowCompanyListModal(false)}
+        city={city}
+        parentDomainName={parentDomainName}
+        activeRegionEdition={activeRegionEdition}
+        allCityCompanies={allCityCompanies}
+        occupiedCompanyIds={activeCompanyIds}
+        config={config}
+      />
 
-            <div className="flex-1 bg-slate-50 p-4 overflow-y-auto space-y-4 text-sm">
-              <div className="flex items-start gap-3">
-                <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center shrink-0 mt-0.5">
-                  <Compass className="w-3.5 h-3.5 text-blue-700" />
-                </div>
-                <div className="bg-white border border-slate-200 p-3 rounded-2xl rounded-tl-sm text-slate-700 shadow-2xs">
-                  <p>Welcome to {city.domain}. I'm your dedicated city advisor.</p>
-                  <p className="mt-2">
-                    Are you looking for a specific verified enterprise, or would
-                    you like to explore establishing your company's commercial presence here?
-                  </p>
-                </div>
-              </div>
-            </div>
+      {/* GEMINI-STYLE SECTOR CITY ADVISOR DRAWER */}
+      <SectorCityAdvisorDrawer
+        isOpen={isAdvisorOpen}
+        onClose={() => setIsAdvisorOpen(false)}
+        city={city}
+        parentDomainName={parentDomainName}
+        activeRegionEdition={activeRegionEdition}
+        allCityCompanies={allCityCompanies}
+        config={config}
+      />
 
-            <div className="p-3 bg-white border-t border-slate-200">
-              <div className="relative">
-                <input
-                  type="text"
-                  placeholder="Ask a question..."
-                  className="w-full bg-slate-50 border border-slate-200 rounded-full pl-4 pr-10 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-slate-400"
-                />
-                <button className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-slate-400 hover:text-slate-900 transition-colors">
-                  <ArrowRight className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
+      {/* FLOATING LAUNCHER BUTTON */}
+      <div className="fixed bottom-6 right-6 z-40 flex flex-col items-end">
+        <button
+          onClick={() => setIsAdvisorOpen(true)}
+          className="group flex items-center gap-3 bg-slate-900 hover:bg-slate-800 text-white rounded-full p-3.5 pr-5 shadow-xl hover:shadow-2xl hover:-translate-y-0.5 transition-all cursor-pointer ring-1 ring-white/20 border border-slate-700"
+        >
+          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-royal to-royal-dark flex items-center justify-center text-white shadow-xs">
+            <Compass className="w-4 h-4 text-white" />
           </div>
-        ) : (
-          <button
-            onClick={() => setIsAdvisorOpen(true)}
-            className="group flex items-center gap-3 bg-slate-900 text-white rounded-full p-4 pr-5 shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all"
-          >
-            <div className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center">
-              <MessageSquare className="w-3 h-3 text-white" />
+          <div className="text-left">
+            <div className="text-xs font-bold tracking-wide flex items-center gap-1.5">
+              <span>{city.domain} Advisor</span>
+              <span className="w-2 h-2 rounded-full bg-royal-light animate-pulse" />
             </div>
-            <span className="text-sm font-bold tracking-wide">
-              Ask the city advisor
-            </span>
-          </button>
-        )}
+            <p className="text-[10px] text-slate-300 font-mono">
+              {allCityCompanies.length} Verified Firms • Guide
+            </p>
+          </div>
+        </button>
       </div>
     </div>
   );

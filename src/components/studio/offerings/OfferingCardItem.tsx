@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import {
   Package,
   Wrench,
-  Sparkles,
+  Cpu,
   Edit2,
   Trash2,
   Eye,
@@ -75,7 +75,7 @@ export const OfferingCardItem: React.FC<OfferingCardItemProps> = ({
         return {
           label: "AI READY",
           color: "bg-emerald-50 text-emerald-800 border-emerald-200",
-          icon: Sparkles,
+          icon: Cpu,
         };
       case "GROUNDED":
         return {

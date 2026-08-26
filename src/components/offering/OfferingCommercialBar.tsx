@@ -94,7 +94,7 @@ export function OfferingCommercialBar({
         <button
           type="button"
           onClick={onRequestOffer}
-          className="p-3.5 rounded-xl bg-royal hover:bg-blue-700 text-white font-bold text-xs flex items-center justify-center gap-2 transition cursor-pointer shadow-xs"
+          className="p-3.5 rounded-xl bg-royal hover:bg-royal-dark text-white font-bold text-xs flex items-center justify-center gap-2 transition cursor-pointer shadow-xs"
         >
           <Send className="w-4 h-4" />
           <span>Request Official Offer</span>

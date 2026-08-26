@@ -462,13 +462,13 @@ function getInitials(name: string): string {
 // Color palette generator for user avatars
 function getAvatarBgColor(userId: string): string {
   const bgClasses = [
-    "bg-sky-100 text-sky-800 border-sky-300",
-    "bg-indigo-100 text-indigo-800 border-indigo-300",
+    "bg-royal/10 text-royal-dark border-royal/30",
+    "bg-royal/10 text-royal-dark border-royal/30",
     "bg-emerald-100 text-emerald-800 border-emerald-300",
     "bg-amber-100 text-amber-800 border-amber-300",
     "bg-teal-100 text-teal-800 border-teal-300",
     "bg-purple-100 text-purple-800 border-purple-300",
-    "bg-blue-100 text-blue-800 border-blue-300",
+    "bg-royal/10 text-royal-dark border-royal/30",
   ];
   let hash = 0;
   for (let i = 0; i < userId.length; i++) {
@@ -769,7 +769,7 @@ export const CompanyStudioAuditView: React.FC<CompanyStudioAuditViewProps> = ({
               {metrics.todayCount}
             </div>
           </div>
-          <div className="w-10 h-10 rounded-xl bg-sky-50 border border-sky-100 flex items-center justify-center text-sky-600">
+          <div className="w-10 h-10 rounded-xl bg-royal/5 border border-royal/10 flex items-center justify-center text-royal">
             <Clock className="w-5 h-5" />
           </div>
         </div>
@@ -783,7 +783,7 @@ export const CompanyStudioAuditView: React.FC<CompanyStudioAuditViewProps> = ({
               {metrics.weekCount}
             </div>
           </div>
-          <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600">
+          <div className="w-10 h-10 rounded-xl bg-royal/5 border border-royal/10 flex items-center justify-center text-royal">
             <Calendar className="w-5 h-5" />
           </div>
         </div>

@@ -7,7 +7,7 @@ import {
   Wrench,
   Anchor,
   CheckCircle2,
-  Sparkles,
+  Cpu,
 } from "lucide-react";
 import type { DocumentEntity, CompanyOffering } from "@/lib/types";
 import { changeSourceScope } from "@/lib/services/knowledgeLifecycleService";
@@ -229,7 +229,7 @@ export const ChangeScopeModal: React.FC<ChangeScopeModalProps> = ({
             disabled={isSaving}
             className="px-5 py-2 rounded-xl bg-royal hover:bg-royal/90 text-white text-xs font-bold transition shadow-sm flex items-center gap-1.5"
           >
-            <Sparkles className="w-3.5 h-3.5" />
+            <Cpu className="w-3.5 h-3.5" />
             <span>Apply Scope</span>
           </button>
         </div>

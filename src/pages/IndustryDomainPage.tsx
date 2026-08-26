@@ -1,6 +1,7 @@
 import type { SectorConfig } from "@/lib/types";
 import { PageShell } from "@/components/foundation/PageShell";
 import { CompanyCard } from "@/components/foundation/CompanyCard";
+import { CanonicalSectorCityCard } from "@/components/foundation/CanonicalCityCard";
 import { Icon } from "@/components/digione/icons";
 import {
   DigiBadge,
@@ -43,7 +44,7 @@ export function IndustryDomainPage({
 
   const breadcrumbs = [
     { label: "MARINEWORLD", href: "/" },
-    { label: "MARITIME CATEGORIES", href: "/industries" },
+    { label: "MARITIME TAXONOMY", href: "/sectors" },
     { label: domain.name.toUpperCase() },
   ];
 
@@ -78,7 +79,7 @@ export function IndustryDomainPage({
                       <DigiButton href="#cities" icon="chevronDown">
                         EXPLORE {citiesInDomain.length} SECTOR CITIES
                       </DigiButton>
-                      <DigiButton href="/industries" variant="secondary">
+                      <DigiButton href="/sectors" variant="secondary">
                         All Industry Domains
                       </DigiButton>
                     </div>
@@ -131,33 +132,7 @@ export function IndustryDomainPage({
 
               <div className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
                 {citiesInDomain.map((city) => (
-                  <div key={city.id} className="flex h-full flex-col justify-between rounded-card-md border border-line bg-canvas p-6 transition-all hover:border-royal hover:shadow-md">
-                    <div>
-                      <div className="flex items-center justify-between">
-                        <DigiIconContainer icon={city.icon} mode="royal" size={36} />
-                        <span className="font-mono text-[10.5px] font-bold text-royal">{city.code}</span>
-                      </div>
-                      <h3 className="mt-4 text-[18px] font-bold text-graphite">{city.domain}</h3>
-                      <p className="mt-2 text-[13px] text-stone leading-relaxed">{city.description}</p>
-
-                      <div className="mt-4 pt-3 border-t border-line">
-                        <p className="font-mono text-[10px] uppercase text-mute">Capabilities:</p>
-                        <div className="mt-1 flex flex-wrap gap-1">
-                          {city.scope.map((s) => (
-                            <span key={s} className="rounded bg-white border border-line px-2 py-0.5 text-[11px] text-stone">
-                              {s}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="mt-6 pt-4 border-t border-line">
-                      <DigiButton href={`/cities/${city.slug}`} size="sm" className="w-full" icon="arrowRight">
-                        ENTER {city.domain}
-                      </DigiButton>
-                    </div>
-                  </div>
+                  <CanonicalSectorCityCard key={city.id} city={city} />
                 ))}
               </div>
             </Reveal>

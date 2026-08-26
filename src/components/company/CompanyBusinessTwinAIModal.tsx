@@ -130,7 +130,7 @@ export function CompanyBusinessTwinAIModal({
       sender: "twin",
       timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
       mode,
-      text: `Hi, I'm the Business Twin for **${displayName}**.\n\nI can help with technical specifications, commercial quotes, drydock capacities, or general questions about our marine and engineering services.\n\nWhat would you like to know?`,
+      text: `Hi, I'm the Company AI for **${displayName}**.\n\nI can help with technical specifications, commercial quotes, drydock capacities, or general questions about our marine and engineering services.\n\nWhat would you like to know?`,
       groundedSources: [
         "MarineWorld Verified Registry",
         "Company Technical Catalog",
@@ -196,7 +196,7 @@ export function CompanyBusinessTwinAIModal({
   // Export / Download transcript
   const handleExportTranscript = () => {
     const header = `=================================================================\n` +
-      `MARINEWORLD BUSINESS TWIN TRANSCRIPT\n` +
+      `MARINEWORLD COMPANY AI TRANSCRIPT\n` +
       `Company: ${displayName} (${legalName})\n` +
       `Digital ID: ${digitalIdInfo.mwCompanyDigitalId}\n` +
       `Location: ${headquartersCity}, ${country}\n` +
@@ -207,15 +207,15 @@ export function CompanyBusinessTwinAIModal({
       `=================================================================\n\n`;
 
     const body = messages
-      .map((m) => `[${m.timestamp}] ${m.sender === "twin" ? displayName + " (BUSINESS TWIN)" : "VISITOR"}:\n${m.text}\n`)
+      .map((m) => `[${m.timestamp}] ${m.sender === "twin" ? displayName + " (COMPANY AI)" : "VISITOR"}:\n${m.text}\n`)
       .join("\n-----------------------------------------------------------------\n\n");
 
-    const fullDoc = header + body + `\n=================================================================\nMarineWorld Business Twin.\n`;
+    const fullDoc = header + body + `\n=================================================================\nMarineWorld Company AI.\n`;
     const blob = new Blob([fullDoc], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `${company.slug || "company"}-twin-transcript-${Date.now()}.txt`;
+    link.download = `${company.slug || "company"}-company-ai-transcript-${Date.now()}.txt`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -322,7 +322,7 @@ export function CompanyBusinessTwinAIModal({
 
             <div className="min-w-0 space-y-1">
               <div className="flex items-center gap-2 font-sans text-[11px] font-bold uppercase tracking-[0.14em] text-royal">
-                <span>BUSINESS TWIN</span>
+                <span>COMPANY AI</span>
               </div>
               
               <div className="flex items-center gap-3 min-w-0">
@@ -658,7 +658,9 @@ export function CompanyBusinessTwinAIModal({
                         : "bg-white border border-line text-slate-800 rounded-tl-xs shadow-xs space-y-4"
                     }`}
                   >
-                    <div className="whitespace-pre-wrap font-sans break-words leading-relaxed text-slate-800">
+                    <div className={`whitespace-pre-wrap font-sans break-words leading-relaxed ${
+                      msg.sender === "user" ? "text-white" : "text-slate-800"
+                    }`}>
                       {renderFormattedText(msg.text, msg.sender === "user")}
                     </div>
 
@@ -708,7 +710,7 @@ export function CompanyBusinessTwinAIModal({
                               onClose();
                               onOpenConnectModal();
                             }}
-                            className="inline-flex items-center gap-1.5 rounded-card-sm bg-royal hover:bg-blue-700 text-white px-4 py-2 text-xs font-bold transition shadow-xs cursor-pointer font-sans uppercase tracking-wider"
+                            className="inline-flex items-center gap-1.5 rounded-card-sm bg-royal hover:bg-royal-dark text-white px-4 py-2 text-xs font-bold transition shadow-xs cursor-pointer font-sans uppercase tracking-wider"
                           >
                             <PhoneCall className="w-3.5 h-3.5" />
                             <span>Direct Connect / Open RFQ</span>
@@ -827,7 +829,7 @@ export function CompanyBusinessTwinAIModal({
                   type="submit"
                   id="btn-twin-send"
                   disabled={!inputQuery.trim() || isGenerating}
-                  className="px-4 py-2.5 rounded-card-sm bg-royal hover:bg-blue-700 text-white disabled:opacity-40 disabled:hover:bg-royal transition-all shadow-xs flex items-center justify-center gap-1.5 cursor-pointer text-xs font-bold font-sans uppercase tracking-wider"
+                  className="px-4 py-2.5 rounded-card-sm bg-royal hover:bg-royal-dark text-white disabled:opacity-40 disabled:hover:bg-royal transition-all shadow-xs flex items-center justify-center gap-1.5 cursor-pointer text-xs font-bold font-sans uppercase tracking-wider"
                   title="Send message"
                 >
                   <span>Send</span>
@@ -857,7 +859,7 @@ export function CompanyBusinessTwinAIModal({
  * Text renderer helper to support markdown bold, italic, and bullet lists cleanly
  */
 function renderFormattedText(text: string, isUser: boolean) {
-  if (isUser) return <span>{text}</span>;
+  if (isUser) return <span className="text-white font-medium">{text}</span>;
 
   const lines = text.split("\n");
   return (

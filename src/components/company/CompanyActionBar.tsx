@@ -49,7 +49,7 @@ export function CompanyActionBar({
               onClick={() => onSelectModule(twinState === "AVAILABLE" ? "chat" : "business-twin")}
               icon="spark"
             >
-              BUSINESS TWIN
+              COMPANY AI
             </DigiButton>
 
             <SaveEntityButton

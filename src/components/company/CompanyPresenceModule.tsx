@@ -78,7 +78,7 @@ export function CompanyPresenceModule({
               setRetryState(false);
               if (onRetry) onRetry();
             }}
-            className="inline-flex items-center gap-2 rounded-full bg-royal hover:bg-blue-600 text-white px-5 py-2.5 text-xs font-semibold tracking-wider transition-colors cursor-pointer"
+            className="inline-flex items-center gap-2 rounded-full bg-royal hover:bg-royal text-white px-5 py-2.5 text-xs font-semibold tracking-wider transition-colors cursor-pointer"
           >
             <RotateCw className="w-3.5 h-3.5" />
             <span>TRY AGAIN</span>
@@ -321,7 +321,7 @@ export function CompanyPresenceModule({
               </div>
 
               {registeredHQ.operationalScope && (
-                <div className="p-4 rounded-xl bg-blue-50/50 border border-blue-100 space-y-1">
+                <div className="p-4 rounded-xl bg-royal/5 border border-royal/10 space-y-1">
                   <span className="text-[11px] font-semibold text-royal uppercase tracking-wider block">
                     Operational Scope & Capabilities
                   </span>
@@ -532,7 +532,7 @@ export function CompanyPresenceModule({
                 <div className="pt-2 flex justify-end">
                   <a
                     href={`/cities/${city.slug}`}
-                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-royal hover:text-blue-700 transition-colors"
+                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-royal hover:text-royal transition-colors"
                   >
                     <span>Explore {city.domain}</span>
                     <ArrowRight className="w-3.5 h-3.5" />

@@ -147,7 +147,7 @@ export function StripeCustomerPortalModal({
                       AI-Native Growth Plan
                     </h3>
                     <p className="text-xs text-slate-500 mt-0.5 font-light">
-                      Annual recurring corporate subscription with 15 seats and AI Copilot.
+                      Annual recurring corporate subscription with 15 seats and AI Advisor.
                     </p>
                   </div>
                   <span className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase bg-emerald-50 text-emerald-700 border border-emerald-200">

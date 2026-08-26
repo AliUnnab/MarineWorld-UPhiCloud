@@ -15,8 +15,8 @@ import {
   FileText,
   ShieldCheck,
   ArrowUpRight,
+  ArrowLeft,
   Filter,
-  Sparkles,
   Inbox,
   User,
   BadgeAlert,
@@ -58,7 +58,7 @@ function getStatusBadge(status: string) {
     case "WAITING_FOR_COMPANY":
       return {
         label: "WAITING FOR COMPANY",
-        bg: "bg-sky-50 text-sky-800 border-sky-200",
+        bg: "bg-royal/5 text-royal-dark border-royal/20",
       };
     case "CLOSED":
       return {
@@ -69,7 +69,7 @@ function getStatusBadge(status: string) {
     default:
       return {
         label: status === "IN_PROGRESS" ? "IN PROGRESS" : status === "OPEN" ? "OPEN" : "ACTIVE",
-        bg: "bg-blue-50 text-royal border-blue-200",
+        bg: "bg-royal/5 text-royal border-royal/20",
       };
   }
 }
@@ -201,6 +201,17 @@ export function MyInquiriesWorkspaceModule({
     }
   };
 
+  // Keyboard Escape listener to safely exit the room
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && selectedInquiryId) {
+        setSelectedInquiryId(null);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectedInquiryId]);
+
   // Helper to derive offering target URL
   const getOfferingUrl = (inq: InquiryEntity): string => {
     if (inq.canonicalUrl) return inq.canonicalUrl;
@@ -211,12 +222,34 @@ export function MyInquiriesWorkspaceModule({
   };
 
   const handleNavigateToOffering = (inq: InquiryEntity) => {
-    const url = getOfferingUrl(inq);
-    if (onOpenOfferingDetail && (inq.productId || inq.serviceId)) {
-      const type = inq.serviceId ? "service" : "product";
-      const id = inq.serviceId || inq.productId || "";
-      onOpenOfferingDetail(inq.companySlug || inq.companyId, id, type);
+    const compSlug = inq.companySlug || inq.companyId;
+    const targetOfferingId = inq.productId || inq.serviceId;
+    const type = inq.serviceId ? "service" : "product";
+    
+    // Dismiss room overlay before navigating
+    setSelectedInquiryId(null);
+
+    if (onOpenOfferingDetail && targetOfferingId) {
+      onOpenOfferingDetail(compSlug, targetOfferingId, type);
     } else if (onNavigate) {
+      const url = targetOfferingId
+        ? `/companies/${compSlug}/${type === "service" ? "services" : "products"}/${targetOfferingId}`
+        : `/companies/${compSlug}`;
+      onNavigate(url);
+    } else {
+      const url = targetOfferingId
+        ? `/companies/${compSlug}/${type === "service" ? "services" : "products"}/${targetOfferingId}`
+        : `/companies/${compSlug}`;
+      window.history.pushState({}, "", url);
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    }
+  };
+
+  const handleNavigateToCompany = (inq: InquiryEntity) => {
+    const compSlug = inq.companySlug || inq.companyId;
+    setSelectedInquiryId(null);
+    const url = `/companies/${compSlug}`;
+    if (onNavigate) {
       onNavigate(url);
     } else {
       window.history.pushState({}, "", url);
@@ -277,7 +310,7 @@ export function MyInquiriesWorkspaceModule({
           className="p-4 rounded-xl bg-white border border-line hover:border-slate-300 transition cursor-pointer"
         >
           <div className="text-[11px] font-mono font-bold text-stone uppercase tracking-wider">Waiting for Company</div>
-          <div className="text-2xl sm:text-3xl font-extrabold text-sky-700 mt-1">{metrics.waitingForCompany}</div>
+          <div className="text-2xl sm:text-3xl font-extrabold text-royal mt-1">{metrics.waitingForCompany}</div>
           <div className="text-[10px] text-stone mt-0.5">Under review by commercial desk</div>
         </div>
 
@@ -390,7 +423,7 @@ export function MyInquiriesWorkspaceModule({
                 window.dispatchEvent(new PopStateEvent("popstate"));
               }
             }}
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-royal hover:bg-blue-700 text-white font-bold text-xs uppercase tracking-wider transition shadow-sm cursor-pointer"
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-royal hover:bg-royal-dark text-white font-bold text-xs uppercase tracking-wider transition shadow-sm cursor-pointer"
           >
             <Building2 className="w-4 h-4" />
             <span>EXPLORE COMPANIES</span>
@@ -453,14 +486,14 @@ export function MyInquiriesWorkspaceModule({
                       </span>
 
                       {isOfferRequest && (
-                        <span className="inline-flex items-center gap-1 font-mono text-[10px] font-bold px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 uppercase">
-                          <FileText className="w-3 h-3 text-indigo-600" /> OFFICIAL OFFER REQUESTED
+                        <span className="inline-flex items-center gap-1 font-mono text-[10px] font-bold px-2 py-0.5 rounded bg-royal/5 text-royal border border-royal/20 uppercase">
+                          <FileText className="w-3 h-3 text-royal" /> OFFICIAL OFFER REQUESTED
                         </span>
                       )}
 
                       {hasUnreadCompanyReply && (
                         <span className="inline-flex items-center gap-1 font-mono text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 animate-pulse uppercase">
-                          <Sparkles className="w-3 h-3 text-emerald-600" /> NEW REPLY
+                          <MessageSquare className="w-3 h-3 text-emerald-600" /> NEW REPLY
                         </span>
                       )}
                     </div>
@@ -504,7 +537,35 @@ export function MyInquiriesWorkspaceModule({
                     )}
                   </div>
 
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <button
+                      type="button"
+                      id={`btn-view-offering-${inq.id}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleNavigateToOffering(inq);
+                      }}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-line bg-white hover:bg-slate-50 text-slate-700 font-semibold text-xs transition shadow-2xs cursor-pointer"
+                      title="View product/service"
+                    >
+                      <ExternalLink className="w-3 h-3 text-royal" />
+                      <span className="hidden sm:inline">Offering</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      id={`btn-view-company-${inq.id}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleNavigateToCompany(inq);
+                      }}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-line bg-white hover:bg-slate-50 text-slate-700 font-semibold text-xs transition shadow-2xs cursor-pointer"
+                      title="View company profile"
+                    >
+                      <Building2 className="w-3 h-3 text-slate-500" />
+                      <span className="hidden sm:inline">Company</span>
+                    </button>
+
                     <button
                       type="button"
                       id={`btn-open-inquiry-${inq.id}`}
@@ -512,9 +573,9 @@ export function MyInquiriesWorkspaceModule({
                         e.stopPropagation();
                         handleOpenDetail(inq);
                       }}
-                      className="inline-flex items-center gap-1 px-3 py-1 rounded-lg bg-royal hover:bg-blue-700 text-white font-bold text-xs uppercase tracking-wider transition shadow-2xs cursor-pointer"
+                      className="inline-flex items-center gap-1 px-3 py-1 rounded-lg bg-royal hover:bg-royal-dark text-white font-bold text-xs uppercase tracking-wider transition shadow-2xs cursor-pointer"
                     >
-                      <span>OPEN</span>
+                      <span>ROOM</span>
                       <ChevronRight className="w-3.5 h-3.5" />
                     </button>
                   </div>
@@ -529,6 +590,11 @@ export function MyInquiriesWorkspaceModule({
       {selectedInquiry && (
         <div
           id="inquiry-detail-modal"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setSelectedInquiryId(null);
+            }
+          }}
           className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/60 backdrop-blur-xs font-sans animate-in fade-in duration-200"
         >
           <div
@@ -536,6 +602,23 @@ export function MyInquiriesWorkspaceModule({
             role="dialog"
             aria-modal="true"
           >
+            {/* Top Workspace Return Bar */}
+            <div className="bg-slate-900 text-white px-5 py-2.5 flex items-center justify-between gap-3 shrink-0">
+              <button
+                type="button"
+                id="btn-return-workspace-top"
+                onClick={() => setSelectedInquiryId(null)}
+                className="inline-flex items-center gap-1.5 text-xs font-bold text-white hover:text-royal-light transition cursor-pointer"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                <span>← Return to My Workspace Inquiries</span>
+              </button>
+
+              <span className="text-[11px] font-mono text-slate-400">
+                Esc to close
+              </span>
+            </div>
+
             {/* Context Header */}
             <div className="bg-canvas border-b border-line px-5 py-4 flex flex-col gap-3 shrink-0">
               <div className="flex items-center justify-between gap-3">
@@ -551,29 +634,38 @@ export function MyInquiriesWorkspaceModule({
                     {getStatusBadge(selectedInquiry.status).label}
                   </span>
                   {selectedInquiry.inquiryKind === "OFFICIAL_OFFER" && (
-                    <span className="px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 font-mono text-[10.5px] font-bold uppercase">
+                    <span className="px-2 py-0.5 rounded bg-royal/5 text-royal border border-royal/20 font-mono text-[10.5px] font-bold uppercase">
                       OFFICIAL OFFER REQUEST
                     </span>
                   )}
                 </div>
 
-                <button
-                  type="button"
-                  id="btn-close-inquiry-detail"
-                  onClick={() => setSelectedInquiryId(null)}
-                  className="p-1.5 text-stone hover:text-graphite hover:bg-white rounded-md transition cursor-pointer"
-                  title="Close (Esc)"
-                >
-                  <X className="w-4 h-4" />
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    id="btn-close-inquiry-detail"
+                    onClick={() => setSelectedInquiryId(null)}
+                    className="p-1.5 text-stone hover:text-graphite hover:bg-white rounded-md transition cursor-pointer"
+                    title="Close room (Esc)"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
 
               {/* Company & Offering Binding */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
                 <div className="space-y-0.5">
-                  <div className="text-xs text-stone flex items-center gap-1.5">
+                  <div className="text-xs text-stone flex items-center gap-1.5 flex-wrap">
                     <span>Company:</span>
-                    <strong className="text-graphite font-bold">{selectedInquiry.companyName || selectedInquiry.companySlug}</strong>
+                    <button
+                      type="button"
+                      onClick={() => handleNavigateToCompany(selectedInquiry)}
+                      className="text-graphite font-bold hover:text-royal hover:underline transition cursor-pointer inline-flex items-center gap-1"
+                    >
+                      <span>{selectedInquiry.companyName || selectedInquiry.companySlug}</span>
+                      <ExternalLink className="w-3 h-3 text-royal" />
+                    </button>
                     {selectedInquiry.sectorCityId && (
                       <span className="text-stone font-mono">• {selectedInquiry.sectorCityId.toUpperCase()}</span>
                     )}
@@ -583,16 +675,28 @@ export function MyInquiriesWorkspaceModule({
                   </h2>
                 </div>
 
-                {/* Action to open canonical offering */}
-                <button
-                  type="button"
-                  id="btn-open-canonical-offering"
-                  onClick={() => handleNavigateToOffering(selectedInquiry)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-line bg-white hover:bg-royal hover:text-white text-graphite text-xs font-bold transition shadow-2xs uppercase tracking-wider cursor-pointer shrink-0 self-start sm:self-auto"
-                >
-                  <span>OPEN OFFERING</span>
-                  <ExternalLink className="w-3.5 h-3.5" />
-                </button>
+                {/* Actions to open canonical offering or company */}
+                <div className="flex items-center gap-2 shrink-0 self-start sm:self-auto flex-wrap">
+                  <button
+                    type="button"
+                    id="btn-view-company-profile-room"
+                    onClick={() => handleNavigateToCompany(selectedInquiry)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-line bg-white hover:bg-slate-50 text-graphite text-xs font-bold transition shadow-2xs uppercase tracking-wider cursor-pointer"
+                  >
+                    <Building2 className="w-3.5 h-3.5 text-slate-500" />
+                    <span>VIEW COMPANY</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    id="btn-open-canonical-offering"
+                    onClick={() => handleNavigateToOffering(selectedInquiry)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-royal/30 bg-royal hover:bg-royal-dark text-white text-xs font-bold transition shadow-2xs uppercase tracking-wider cursor-pointer"
+                  >
+                    <span>OPEN OFFERING</span>
+                    <ExternalLink className="w-3.5 h-3.5 text-white" />
+                  </button>
+                </div>
               </div>
 
               {/* Canonical URL Reference */}
@@ -613,39 +717,39 @@ export function MyInquiriesWorkspaceModule({
             <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-6">
               {/* If Official Offer Request, display commercial parameters */}
               {(selectedInquiry.inquiryKind === "OFFICIAL_OFFER" || selectedInquiry.incoterms || selectedInquiry.deliveryPort) && (
-                <div className="p-4 rounded-xl bg-indigo-50/70 border border-indigo-200 space-y-2.5">
-                  <div className="flex items-center gap-2 text-xs font-bold text-indigo-900 uppercase tracking-wider">
-                    <ShieldCheck className="w-4 h-4 text-indigo-700" />
+                <div className="p-4 rounded-xl bg-royal/5/70 border border-royal/20 space-y-2.5">
+                  <div className="flex items-center gap-2 text-xs font-bold text-royal-dark uppercase tracking-wider">
+                    <ShieldCheck className="w-4 h-4 text-royal" />
                     <span>Official Commercial Terms Package</span>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                     {selectedInquiry.incoterms && (
-                      <div className="p-2 bg-white rounded-lg border border-indigo-100">
+                      <div className="p-2 bg-white rounded-lg border border-royal/10">
                         <span className="text-stone font-mono text-[10px] block uppercase">Incoterms</span>
-                        <strong className="text-indigo-950 font-bold">{selectedInquiry.incoterms}</strong>
+                        <strong className="text-slate-900 font-bold">{selectedInquiry.incoterms}</strong>
                       </div>
                     )}
                     {selectedInquiry.deliveryPort && (
-                      <div className="p-2 bg-white rounded-lg border border-indigo-100">
+                      <div className="p-2 bg-white rounded-lg border border-royal/10">
                         <span className="text-stone font-mono text-[10px] block uppercase">Delivery Port / Hub</span>
-                        <strong className="text-indigo-950 font-bold">{selectedInquiry.deliveryPort}</strong>
+                        <strong className="text-slate-900 font-bold">{selectedInquiry.deliveryPort}</strong>
                       </div>
                     )}
                     {selectedInquiry.quantityOrScope && (
-                      <div className="p-2 bg-white rounded-lg border border-indigo-100">
+                      <div className="p-2 bg-white rounded-lg border border-royal/10">
                         <span className="text-stone font-mono text-[10px] block uppercase">Quantity / Scope</span>
-                        <strong className="text-indigo-950 font-bold">{selectedInquiry.quantityOrScope}</strong>
+                        <strong className="text-slate-900 font-bold">{selectedInquiry.quantityOrScope}</strong>
                       </div>
                     )}
                     {selectedInquiry.deliveryTimeline && (
-                      <div className="p-2 bg-white rounded-lg border border-indigo-100">
+                      <div className="p-2 bg-white rounded-lg border border-royal/10">
                         <span className="text-stone font-mono text-[10px] block uppercase">Target Lead Time</span>
-                        <strong className="text-indigo-950 font-bold">{selectedInquiry.deliveryTimeline}</strong>
+                        <strong className="text-slate-900 font-bold">{selectedInquiry.deliveryTimeline}</strong>
                       </div>
                     )}
                   </div>
                   {selectedInquiry.engineeringRequirements && (
-                    <div className="p-2.5 bg-white rounded-lg border border-indigo-100 text-xs">
+                    <div className="p-2.5 bg-white rounded-lg border border-royal/10 text-xs">
                       <span className="text-stone font-mono text-[10px] block uppercase">Engineering & Class Specs</span>
                       <p className="text-slate-800 font-medium mt-0.5">{selectedInquiry.engineeringRequirements}</p>
                     </div>
@@ -745,7 +849,7 @@ export function MyInquiriesWorkspaceModule({
                       type="submit"
                       id="btn-send-inquiry-reply"
                       disabled={!replyText.trim() || isSendingReply}
-                      className="px-4 py-2 bg-royal hover:bg-blue-700 disabled:opacity-50 text-white font-bold text-xs uppercase tracking-wider rounded-xl transition shadow-sm flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
+                      className="px-4 py-2 bg-royal hover:bg-royal-dark disabled:opacity-50 text-white font-bold text-xs uppercase tracking-wider rounded-xl transition shadow-sm flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
                     >
                       <Send className="w-3.5 h-3.5" />
                       <span>{isSendingReply ? "SENDING..." : "SEND REPLY"}</span>

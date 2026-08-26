@@ -58,7 +58,7 @@ export function WorkflowSteps({ steps }: { steps: WorkflowStep[] }) {
             </p>
             <p className="text-lead mt-3 text-stone">{step.description}</p>
             <p className="mt-5 inline-flex items-center gap-2.5 rounded-full bg-mist px-4 py-2.5 text-[12.5px] text-graphite">
-              <Icon name="spark" className="h-3.5 w-3.5 text-royal" />
+              <Icon name="route" className="h-3.5 w-3.5 text-royal" />
               <span className="text-mute">e.g.</span> {step.example}
             </p>
           </div>

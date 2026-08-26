@@ -2,6 +2,7 @@ import type {
   SavedCompanyReference,
   SavedProductReference,
   SavedServiceReference,
+  SavedCityReference,
   PersonalCollection,
   PersonalCollectionItem,
   PersonalActivityRecord,
@@ -10,27 +11,101 @@ import type {
   CompanyProfile,
   ProductEntity,
   ServiceEntity,
+  SectorCity,
 } from "@/lib/types";
-import { getCompanyById, generateBusinessId } from "@/lib/services/companyService";
+import { getCompanyById as getCompanyByIdFromService, generateBusinessId } from "@/lib/services/companyService";
 import { getProduct, listProducts } from "@/lib/services/productService";
 import { getService, listServices } from "@/lib/services/serviceService";
 import { marineSector } from "@/lib/sectors/marine";
-import { getCompanyProducts, getCompanyServices } from "@/lib/registry";
+import {
+  getCompanyProducts,
+  getCompanyServices,
+  getCompanies,
+  getCompanyById as getCompanyByIdFromRegistry,
+  getCompanyBySlug,
+  getCities,
+} from "@/lib/registry";
 import { checkActionEligibility, recordRiskSignal } from "@/lib/services/personalTrustService";
 
 /**
- * Stage 3.5.3 — Personal Workspace In-Memory Reference Service
+ * Stage 3.5.3 — Personal Workspace Reference Service
  * 
  * Manages personal visitor saved references, personal collections, and activity logs.
  * STAGE BOUNDARY: Stores REFERENCES only. Resolves entities dynamically from canonical sources.
  * Does NOT store private company documents, subscriptions, or governance.
  */
 
+function loadUserStore<T>(keyPrefix: string, userId: string): T[] {
+  if (typeof window === "undefined" || !window.localStorage || !userId) return [];
+  try {
+    const raw = localStorage.getItem(`mw_ws_${keyPrefix}_${userId}`);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveUserStore<T>(keyPrefix: string, userId: string, data: T[]): void {
+  if (typeof window === "undefined" || !window.localStorage || !userId) return;
+  try {
+    localStorage.setItem(`mw_ws_${keyPrefix}_${userId}`, JSON.stringify(data));
+  } catch {}
+}
+
 const savedCompaniesStore = new Map<string, SavedCompanyReference[]>();
 const savedProductsStore = new Map<string, SavedProductReference[]>();
 const savedServicesStore = new Map<string, SavedServiceReference[]>();
+const savedCitiesStore = new Map<string, SavedCityReference[]>();
 const collectionsStore = new Map<string, PersonalCollection[]>();
 const activityStore = new Map<string, PersonalActivityRecord[]>();
+
+function getOrHydrateCompanies(userId: string): SavedCompanyReference[] {
+  if (!savedCompaniesStore.has(userId)) {
+    const loaded = loadUserStore<SavedCompanyReference>("companies", userId);
+    savedCompaniesStore.set(userId, loaded);
+  }
+  return savedCompaniesStore.get(userId) || [];
+}
+
+function getOrHydrateProducts(userId: string): SavedProductReference[] {
+  if (!savedProductsStore.has(userId)) {
+    const loaded = loadUserStore<SavedProductReference>("products", userId);
+    savedProductsStore.set(userId, loaded);
+  }
+  return savedProductsStore.get(userId) || [];
+}
+
+function getOrHydrateServices(userId: string): SavedServiceReference[] {
+  if (!savedServicesStore.has(userId)) {
+    const loaded = loadUserStore<SavedServiceReference>("services", userId);
+    savedServicesStore.set(userId, loaded);
+  }
+  return savedServicesStore.get(userId) || [];
+}
+
+function getOrHydrateCities(userId: string): SavedCityReference[] {
+  if (!savedCitiesStore.has(userId)) {
+    const loaded = loadUserStore<SavedCityReference>("cities", userId);
+    savedCitiesStore.set(userId, loaded);
+  }
+  return savedCitiesStore.get(userId) || [];
+}
+
+function getOrHydrateCollections(userId: string): PersonalCollection[] {
+  if (!collectionsStore.has(userId)) {
+    const loaded = loadUserStore<PersonalCollection>("collections", userId);
+    collectionsStore.set(userId, loaded);
+  }
+  return collectionsStore.get(userId) || [];
+}
+
+function getOrHydrateActivity(userId: string): PersonalActivityRecord[] {
+  if (!activityStore.has(userId)) {
+    const loaded = loadUserStore<PersonalActivityRecord>("activity", userId);
+    activityStore.set(userId, loaded);
+  }
+  return activityStore.get(userId) || [];
+}
 
 // Listeners for reactive UI updates
 type WorkspaceListener = () => void;
@@ -57,7 +132,7 @@ function notifyWorkspaceChange(): void {
 
 export function isCompanySaved(userId: string, companyId: string): boolean {
   if (!userId || !companyId) return false;
-  const userSaves = savedCompaniesStore.get(userId) || [];
+  const userSaves = getOrHydrateCompanies(userId);
   return userSaves.some((r) => r.companyId === companyId);
 }
 
@@ -77,7 +152,7 @@ export async function saveCompanyReference(
   }
   recordRiskSignal(userId, "RAPID_SAVE_UNSAVE");
 
-  const userSaves = savedCompaniesStore.get(userId) || [];
+  const userSaves = getOrHydrateCompanies(userId);
   const existing = userSaves.find((r) => r.companyId === companyId);
   if (existing) {
     return existing;
@@ -93,10 +168,11 @@ export async function saveCompanyReference(
 
   userSaves.push(newRef);
   savedCompaniesStore.set(userId, userSaves);
+  saveUserStore("companies", userId, userSaves);
 
   // Resolve target name for activity
   const comp = resolveCanonicalCompanySync(companyId);
-  const targetName = comp?.name || companyId;
+  const targetName = comp?.displayName || comp?.name || companyId;
 
   recordPersonalActivity(userId, {
     type: "SAVE_COMPANY",
@@ -116,14 +192,15 @@ export async function removeSavedCompanyReference(
 ): Promise<boolean> {
   if (!userId || !companyId) return false;
   recordRiskSignal(userId, "RAPID_SAVE_UNSAVE");
-  const userSaves = savedCompaniesStore.get(userId) || [];
+  const userSaves = getOrHydrateCompanies(userId);
   const existing = userSaves.find((r) => r.companyId === companyId);
   const filtered = userSaves.filter((r) => r.companyId !== companyId);
   savedCompaniesStore.set(userId, filtered);
+  saveUserStore("companies", userId, filtered);
 
   if (existing) {
     const comp = resolveCanonicalCompanySync(companyId);
-    const targetName = comp?.name || companyId;
+    const targetName = comp?.displayName || comp?.name || companyId;
     recordPersonalActivity(userId, {
       type: "UNSAVE_COMPANY",
       targetId: companyId,
@@ -140,12 +217,23 @@ export async function removeSavedCompanyReference(
 export function resolveCanonicalCompanySync(
   companyId: string
 ): (CompanyProfile & { displayName?: string }) | null {
-  const fromSector = marineSector.network.companies.find(
+  const fromRegistry =
+    getCompanyByIdFromRegistry(marineSector, companyId) ||
+    getCompanyBySlug(marineSector, companyId);
+  if (fromRegistry) return fromRegistry;
+
+  const fromSector = marineSector.network?.companies?.find(
     (c) => c.id === companyId || c.slug === companyId
   );
   if (fromSector) return fromSector;
 
-  const fromService = getCompanyById(companyId);
+  const allComps = getCompanies(marineSector);
+  const fromAll = allComps.find(
+    (c) => c.id === companyId || c.slug === companyId || (c as any).companyId6Digit === companyId
+  );
+  if (fromAll) return fromAll;
+
+  const fromService = getCompanyByIdFromService(companyId);
   if (fromService) {
     return {
       id: fromService.id,
@@ -171,10 +259,110 @@ export async function getSavedCompanies(userId: string): Promise<
   }>
 > {
   if (!userId) return [];
-  const userSaves = savedCompaniesStore.get(userId) || [];
+  const userSaves = getOrHydrateCompanies(userId);
 
   return userSaves.map((ref) => {
     const entity = resolveCanonicalCompanySync(ref.companyId);
+    return {
+      reference: ref,
+      entity,
+      isAvailable: entity !== null,
+    };
+  });
+}
+
+/* ====================================================================
+   SAVED SECTOR CITIES
+   ==================================================================== */
+
+export function isCitySaved(userId: string, cityId: string): boolean {
+  if (!userId || !cityId) return false;
+  const userSaves = getOrHydrateCities(userId);
+  return userSaves.some((r) => r.cityId === cityId);
+}
+
+export async function saveCityReference(
+  userId: string,
+  cityId: string
+): Promise<SavedCityReference> {
+  if (!userId) throw new Error("User ID is required to save city reference");
+  if (!cityId) throw new Error("City ID is required");
+
+  const userSaves = getOrHydrateCities(userId);
+  const existing = userSaves.find((r) => r.cityId === cityId);
+  if (existing) return existing;
+
+  const newRef: SavedCityReference = {
+    userId,
+    cityId,
+    savedAt: new Date().toISOString(),
+  };
+
+  userSaves.push(newRef);
+  savedCitiesStore.set(userId, userSaves);
+  saveUserStore("cities", userId, userSaves);
+
+  const city = resolveCanonicalCitySync(cityId);
+  const targetName = city?.domain || cityId;
+
+  recordPersonalActivity(userId, {
+    type: "SAVE_CITY",
+    targetId: cityId,
+    targetName,
+  });
+
+  notifyWorkspaceChange();
+  return newRef;
+}
+
+export async function removeSavedCityReference(
+  userId: string,
+  cityId: string
+): Promise<boolean> {
+  if (!userId || !cityId) return false;
+  const userSaves = getOrHydrateCities(userId);
+  const existing = userSaves.find((r) => r.cityId === cityId);
+  const filtered = userSaves.filter((r) => r.cityId !== cityId);
+  savedCitiesStore.set(userId, filtered);
+  saveUserStore("cities", userId, filtered);
+
+  if (existing) {
+    const city = resolveCanonicalCitySync(cityId);
+    const targetName = city?.domain || cityId;
+    recordPersonalActivity(userId, {
+      type: "UNSAVE_CITY",
+      targetId: cityId,
+      targetName,
+    });
+  }
+
+  notifyWorkspaceChange();
+  return true;
+}
+
+export function resolveCanonicalCitySync(cityId: string): SectorCity | null {
+  const allCities = getCities(marineSector);
+  const found = allCities.find(
+    (c) =>
+      c.id === cityId ||
+      c.slug === cityId ||
+      c.code?.toLowerCase() === cityId.toLowerCase()
+  );
+  return found || null;
+}
+
+export async function getSavedCities(userId: string): Promise<
+  Array<{
+    reference: SavedCityReference;
+    entity: SectorCity | null;
+    isAvailable: boolean;
+  }>
+> {
+  if (!userId) return [];
+  const userSaves = getOrHydrateCities(userId);
+
+  return userSaves.map((ref) => {
+    const entity = resolveCanonicalCitySync(ref.cityId);
     return {
       reference: ref,
       entity,
@@ -189,7 +377,7 @@ export async function getSavedCompanies(userId: string): Promise<
 
 export function isProductSaved(userId: string, productId: string): boolean {
   if (!userId || !productId) return false;
-  const userSaves = savedProductsStore.get(userId) || [];
+  const userSaves = getOrHydrateProducts(userId);
   return userSaves.some((r) => r.productId === productId);
 }
 
@@ -234,7 +422,7 @@ export async function saveProductReference(
   }
   recordRiskSignal(userId, "RAPID_SAVE_UNSAVE");
 
-  const userSaves = savedProductsStore.get(userId) || [];
+  const userSaves = getOrHydrateProducts(userId);
   const existing = userSaves.find((r) => r.productId === productId);
   if (existing) {
     return existing;
@@ -251,6 +439,7 @@ export async function saveProductReference(
 
   userSaves.push(newRef);
   savedProductsStore.set(userId, userSaves);
+  saveUserStore("products", userId, userSaves);
 
   // Resolve product name
   const prod =
@@ -282,11 +471,12 @@ export async function removeSavedProductReference(
     productId = optionalProdId.startsWith("prod-") ? optionalProdId : productIdOrCompanyId;
   }
 
-  const userSaves = savedProductsStore.get(userId) || [];
+  const userSaves = getOrHydrateProducts(userId);
   const existing = userSaves.find((r) => r.productId === productId || r.productId === productIdOrCompanyId);
   const targetId = existing ? existing.productId : productId;
   const filtered = userSaves.filter((r) => r.productId !== targetId);
   savedProductsStore.set(userId, filtered);
+  saveUserStore("products", userId, filtered);
 
   if (existing) {
     const prod = resolveCanonicalProductSync(existing.companyId, existing.productId);
@@ -308,16 +498,18 @@ export function resolveCanonicalProductSync(
   companyId: string,
   productId: string
 ): ProductEntity | null {
-  const company = marineSector.network.companies.find(
-    (c) => c.id === companyId || c.slug === companyId
-  );
+  const company =
+    getCompanyByIdFromRegistry(marineSector, companyId) ||
+    getCompanyBySlug(marineSector, companyId) ||
+    marineSector.network?.companies?.find((c) => c.id === companyId || c.slug === companyId);
   if (company) {
     const prods = getCompanyProducts(company);
     const found = prods.find((p) => p.id === productId || p.slug === productId);
     if (found) return found;
   }
 
-  for (const comp of marineSector.network.companies) {
+  const allComps = getCompanies(marineSector);
+  for (const comp of allComps) {
     const prods = getCompanyProducts(comp);
     const found = prods.find((p) => p.id === productId || p.slug === productId);
     if (found) return found;
@@ -351,7 +543,7 @@ export async function getSavedProducts(userId: string): Promise<
   }>
 > {
   if (!userId) return [];
-  const userSaves = savedProductsStore.get(userId) || [];
+  const userSaves = getOrHydrateProducts(userId);
 
   const results = await Promise.all(
     userSaves.map(async (ref) => {
@@ -373,7 +565,7 @@ export async function getSavedProducts(userId: string): Promise<
 
 export function isServiceSaved(userId: string, serviceId: string): boolean {
   if (!userId || !serviceId) return false;
-  const userSaves = savedServicesStore.get(userId) || [];
+  const userSaves = getOrHydrateServices(userId);
   return userSaves.some((r) => r.serviceId === serviceId);
 }
 
@@ -418,7 +610,7 @@ export async function saveServiceReference(
   }
   recordRiskSignal(userId, "RAPID_SAVE_UNSAVE");
 
-  const userSaves = savedServicesStore.get(userId) || [];
+  const userSaves = getOrHydrateServices(userId);
   const existing = userSaves.find((r) => r.serviceId === serviceId);
   if (existing) {
     return existing;
@@ -435,6 +627,7 @@ export async function saveServiceReference(
 
   userSaves.push(newRef);
   savedServicesStore.set(userId, userSaves);
+  saveUserStore("services", userId, userSaves);
 
   // Resolve service name
   const serv =
@@ -466,11 +659,12 @@ export async function removeSavedServiceReference(
     serviceId = optionalServId.startsWith("serv-") ? optionalServId : serviceIdOrCompanyId;
   }
 
-  const userSaves = savedServicesStore.get(userId) || [];
+  const userSaves = getOrHydrateServices(userId);
   const existing = userSaves.find((r) => r.serviceId === serviceId || r.serviceId === serviceIdOrCompanyId);
   const targetId = existing ? existing.serviceId : serviceId;
   const filtered = userSaves.filter((r) => r.serviceId !== targetId);
   savedServicesStore.set(userId, filtered);
+  saveUserStore("services", userId, filtered);
 
   if (existing) {
     const serv = resolveCanonicalServiceSync(existing.companyId, existing.serviceId);
@@ -492,16 +686,18 @@ export function resolveCanonicalServiceSync(
   companyId: string,
   serviceId: string
 ): ServiceEntity | null {
-  const company = marineSector.network.companies.find(
-    (c) => c.id === companyId || c.slug === companyId
-  );
+  const company =
+    getCompanyByIdFromRegistry(marineSector, companyId) ||
+    getCompanyBySlug(marineSector, companyId) ||
+    marineSector.network?.companies?.find((c) => c.id === companyId || c.slug === companyId);
   if (company) {
     const servs = getCompanyServices(company);
     const found = servs.find((s) => s.id === serviceId || s.slug === serviceId);
     if (found) return found;
   }
 
-  for (const comp of marineSector.network.companies) {
+  const allComps = getCompanies(marineSector);
+  for (const comp of allComps) {
     const servs = getCompanyServices(comp);
     const found = servs.find((s) => s.id === serviceId || s.slug === serviceId);
     if (found) return found;
@@ -535,7 +731,7 @@ export async function getSavedServices(userId: string): Promise<
   }>
 > {
   if (!userId) return [];
-  const userSaves = savedServicesStore.get(userId) || [];
+  const userSaves = getOrHydrateServices(userId);
 
   const results = await Promise.all(
     userSaves.map(async (ref) => {
@@ -565,7 +761,7 @@ function findCollectionGlobally(collectionId: string): PersonalCollection | null
 
 export function getUserCollections(userId: string): PersonalCollection[] {
   if (!userId) return [];
-  return collectionsStore.get(userId) || [];
+  return getOrHydrateCollections(userId);
 }
 
 export function getCollection(userId: string, collectionId: string): PersonalCollection | null {
@@ -574,7 +770,7 @@ export function getCollection(userId: string, collectionId: string): PersonalCol
   if (globalCol && globalCol.userId !== userId) {
     return null;
   }
-  const userCollections = collectionsStore.get(userId) || [];
+  const userCollections = getOrHydrateCollections(userId);
   return userCollections.find((c) => c.id === collectionId) || null;
 }
 
@@ -595,7 +791,7 @@ export function createCollection(
     throw new Error(eligibility.message || "Action not allowed by trust policy.");
   }
 
-  const userCollections = collectionsStore.get(userId) || [];
+  const userCollections = getOrHydrateCollections(userId);
   const duplicate = userCollections.find(
     (c) => c.name.toLowerCase() === trimmedName.toLowerCase()
   );
@@ -615,6 +811,7 @@ export function createCollection(
 
   userCollections.push(newCol);
   collectionsStore.set(userId, userCollections);
+  saveUserStore("collections", userId, userCollections);
 
   recordPersonalActivity(userId, {
     type: "CREATE_COLLECTION",
@@ -643,7 +840,7 @@ export function renameCollection(
     throw new Error("Unauthorized: Collection belongs to another user");
   }
 
-  const userCollections = collectionsStore.get(userId) || [];
+  const userCollections = getOrHydrateCollections(userId);
   const collection = userCollections.find((c) => c.id === collectionId);
   if (!collection) {
     throw new Error("Collection not found or unauthorized");
@@ -659,6 +856,7 @@ export function renameCollection(
   const oldName = collection.name;
   collection.name = trimmedName;
   collection.updatedAt = new Date().toISOString();
+  saveUserStore("collections", userId, userCollections);
 
   recordPersonalActivity(userId, {
     type: "RENAME_COLLECTION",
@@ -683,7 +881,7 @@ export function updateCollection(
     throw new Error("Unauthorized: Collection belongs to another user");
   }
 
-  const userCollections = collectionsStore.get(userId) || [];
+  const userCollections = getOrHydrateCollections(userId);
   const collection = userCollections.find((c) => c.id === collectionId);
   if (!collection) {
     throw new Error("Collection not found or unauthorized");
@@ -722,6 +920,7 @@ export function updateCollection(
   }
 
   collection.updatedAt = new Date().toISOString();
+  saveUserStore("collections", userId, userCollections);
   notifyWorkspaceChange();
   return collection;
 }
@@ -742,12 +941,13 @@ export function deleteCollection(userId: string, collectionId: string): boolean 
     throw new Error("Unauthorized: Collection belongs to another user");
   }
 
-  const userCollections = collectionsStore.get(userId) || [];
+  const userCollections = getOrHydrateCollections(userId);
   const targetCol = userCollections.find((c) => c.id === collectionId);
   if (!targetCol) return false;
 
   const filtered = userCollections.filter((c) => c.id !== collectionId);
   collectionsStore.set(userId, filtered);
+  saveUserStore("collections", userId, filtered);
 
   recordPersonalActivity(userId, {
     type: "DELETE_COLLECTION",
@@ -1009,7 +1209,7 @@ export async function getCollectionWithResolvedItems(
 
 export function getUserActivities(userId: string): PersonalActivityRecord[] {
   if (!userId) return [];
-  const list = activityStore.get(userId) || [];
+  const list = getOrHydrateActivity(userId);
   // Return sorted newest first
   return [...list].sort(
     (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
@@ -1034,6 +1234,7 @@ export function getUserActivitiesFiltered(
 export function clearUserActivities(userId: string): boolean {
   if (!userId) return false;
   activityStore.set(userId, []);
+  saveUserStore("activity", userId, []);
   notifyWorkspaceChange();
   return true;
 }
@@ -1065,7 +1266,7 @@ export function recordPersonalActivity(
 
   if (!activityObj || !activityObj.type) return null;
 
-  const userActs = activityStore.get(userId) || [];
+  const userActs = getOrHydrateActivity(userId);
 
   // Deduplication & flood protection for repeated view events in immediate window (10s)
   if (activityObj.type.startsWith("VIEW_") && userActs.length > 0) {
@@ -1091,6 +1292,7 @@ export function recordPersonalActivity(
     userActs.pop();
   }
   activityStore.set(userId, userActs);
+  saveUserStore("activity", userId, userActs);
   notifyWorkspaceChange();
   return newRecord;
 }

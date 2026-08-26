@@ -172,19 +172,20 @@ export function DigiButton({
 
 /* ---- Badges ---- */
 
-type BadgeVariant = "soft" | "neutral" | "outline" | "dark";
+type BadgeVariant = "soft" | "neutral" | "outline" | "dark" | "brass";
 
 const BADGE_VARIANTS: Record<BadgeVariant, string> = {
-  soft: "bg-soft text-royal",
+  soft: "bg-soft text-royal border border-royal/15",
   neutral: "bg-mist text-stone",
   outline: "border border-line bg-white text-mute",
   dark: "border border-white/15 bg-white/8 text-white/75",
+  brass: "bg-brass-soft text-brass-dark border border-brass-border",
 };
 
 export function DigiBadge({
   variant = "soft",
   dot = false,
-  dotClass = "bg-electric",
+  dotClass = "bg-royal",
   children,
   className = "",
 }: {
@@ -200,8 +201,8 @@ export function DigiBadge({
     >
       {dot ? (
         <span className="relative flex h-1.5 w-1.5">
-          <span className={`absolute inline-flex h-full w-full rounded-full ${dotClass} breathe`} />
-          <span className={`relative inline-flex h-1.5 w-1.5 rounded-full ${dotClass}`} />
+          <span className={`absolute inline-flex h-full w-full rounded-full ${variant === "brass" ? "bg-brass" : dotClass} breathe`} />
+          <span className={`relative inline-flex h-1.5 w-1.5 rounded-full ${variant === "brass" ? "bg-brass" : dotClass}`} />
         </span>
       ) : null}
       {children}
@@ -227,14 +228,15 @@ export function DigiCard({
 
 /* ---- Standardized 40px icon container ---- */
 
-type IconMode = "solid" | "subtle" | "royal" | "dark" | "white";
+type IconMode = "solid" | "subtle" | "royal" | "dark" | "white" | "brass";
 
 const ICON_MODES: Record<IconMode, string> = {
   solid: "border-graphite bg-graphite text-white",
   subtle: "border-linesoft bg-linesoft text-graphite",
-  royal: "border-royal/12 bg-soft text-royal",
-  dark: "border-white/12 bg-white/8 text-electric",
+  royal: "border-royal/15 bg-soft text-royal",
+  dark: "border-white/12 bg-white/8 text-slate-200",
   white: "border-line bg-white text-graphite",
+  brass: "border-brass-border bg-brass-soft text-brass-dark",
 };
 
 export function DigiIconContainer({

@@ -158,8 +158,8 @@ export function SectorCityDetailsPage({
               </div>
               <div className="space-y-2 border-l-2 border-slate-300 pl-4">
                 <div className="text-[10px] text-slate-500 font-mono font-bold uppercase">03 · TECHNICAL SPECIFICATIONS</div>
-                <h4 className="text-xs font-bold text-slate-900 uppercase">IACS Class & ISO Audits</h4>
-                <p className="text-xs text-slate-600 leading-relaxed">Integration with major classification societies (DNV, Lloyd's Register) and ISO 9001/14001 benchmarks.</p>
+                <h4 className="text-xs font-bold text-slate-900 uppercase">Technical Specifications & Class Standards</h4>
+                <p className="text-xs text-slate-600 leading-relaxed">Support for classification society records, industry benchmarks, and quality management standards.</p>
               </div>
               <div className="space-y-2 border-l-2 border-slate-300 pl-4">
                 <div className="text-[10px] text-slate-500 font-mono font-bold uppercase">04 · JURISDICTION & ARBITRATION</div>

@@ -14,7 +14,6 @@ import {
   ChevronRight,
   Radio,
   Layers,
-  Sparkles,
   Info,
   Check,
   ArrowRight,
@@ -38,9 +37,10 @@ import {
   Link as LinkIcon,
   ArrowUp,
   ArrowDown,
-  Star,
+  BookmarkCheck,
   FileImage,
   ZoomIn,
+  Cpu,
 } from "lucide-react";
 import type {
   CompanyEntity,
@@ -87,9 +87,9 @@ const FACILITY_TYPES: Array<{ type: PhysicalFacilityType; label: string; iconNam
 const OPERATIONAL_STATUSES: Array<{ status: FacilityOperationalStatus; label: string; color: string }> = [
   { status: "ACTIVE", label: "Fully Operational (Active)", color: "bg-emerald-50 text-emerald-800 border-emerald-200" },
   { status: "MAINTENANCE", label: "Scheduled Maintenance / Refit", color: "bg-amber-50 text-amber-800 border-amber-200" },
-  { status: "CONSTRUCTION", label: "Under Construction / Expansion", color: "bg-sky-50 text-sky-800 border-sky-200" },
-  { status: "SEASONAL", label: "Seasonal Operational Schedule", color: "bg-indigo-50 text-indigo-800 border-indigo-200" },
-  { status: "STANDBY", label: "Standby / Emergency Response", color: "bg-blue-50 text-blue-800 border-blue-200" },
+  { status: "CONSTRUCTION", label: "Under Construction / Expansion", color: "bg-royal/5 text-royal-dark border-royal/20" },
+  { status: "SEASONAL", label: "Seasonal Operational Schedule", color: "bg-royal/5 text-royal-dark border-royal/20" },
+  { status: "STANDBY", label: "Standby / Emergency Response", color: "bg-royal/5 text-royal-dark border-royal/20" },
   { status: "INACTIVE", label: "Temporarily Inactive", color: "bg-stone/10 text-stone border-line" },
 ];
 
@@ -1186,7 +1186,7 @@ export const CompanyStudioPresenceView: React.FC<CompanyStudioPresenceViewProps>
                           />
                           <div className="absolute top-2 left-2 flex items-center gap-1.5">
                             <span className="px-2 py-0.5 rounded text-[9px] font-mono font-bold bg-royal text-white uppercase tracking-wider flex items-center gap-1 shadow-sm">
-                              <Star className="w-2.5 h-2.5 fill-white" />
+                              <BookmarkCheck className="w-2.5 h-2.5" />
                               COVER PHOTO
                             </span>
                             <span className="px-2 py-0.5 rounded text-[9px] font-mono font-bold bg-black/70 text-white uppercase tracking-wider">
@@ -1635,7 +1635,7 @@ export const CompanyStudioPresenceView: React.FC<CompanyStudioPresenceViewProps>
       {/* 06. NETWORK PRESENCE SUMMARY & AI GROUNDING VALIDATION */}
       <div className="bg-white border border-line rounded-2xl p-6 md:p-8 shadow-xs space-y-4">
         <div className="flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.14em] text-royal">
-          <Sparkles className="w-4 h-4" />
+          <Cpu className="w-4 h-4" />
           <span>AI BUSINESS TWIN GROUNDING & PUBLIC DIRECTORY SUMMARY</span>
         </div>
         <h2 className="text-lg font-bold text-graphite">
@@ -2045,7 +2045,7 @@ export const CompanyStudioPresenceView: React.FC<CompanyStudioPresenceViewProps>
                             : "text-stone hover:text-graphite hover:bg-white"
                         }`}
                       >
-                        <Sparkles className="w-3.5 h-3.5" />
+                        <ImageIcon className="w-3.5 h-3.5" />
                         CURATED PRESETS
                       </button>
                     </div>
@@ -2253,7 +2253,7 @@ export const CompanyStudioPresenceView: React.FC<CompanyStudioPresenceViewProps>
                     <div className="space-y-3 p-5 rounded-2xl bg-canvas border border-line">
                       <div>
                         <h4 className="text-xs font-bold text-graphite uppercase font-mono tracking-wider flex items-center gap-1.5">
-                          <Sparkles className="w-3.5 h-3.5 text-royal" />
+                          <ImageIcon className="w-3.5 h-3.5 text-royal" />
                           Curated Marine Infrastructure Photography
                         </h4>
                         <p className="text-[11.5px] text-stone mt-0.5">
@@ -2363,7 +2363,7 @@ export const CompanyStudioPresenceView: React.FC<CompanyStudioPresenceViewProps>
                                     <div className="flex flex-wrap items-center gap-1.5">
                                       {isCover && (
                                         <span className="px-2 py-0.5 rounded text-[9px] font-mono font-bold bg-royal text-white uppercase tracking-wider flex items-center gap-1 shadow-2xs">
-                                          <Star className="w-2.5 h-2.5 fill-white" />
+                                          <BookmarkCheck className="w-2.5 h-2.5" />
                                           PRIMARY COVER
                                         </span>
                                       )}
@@ -2451,7 +2451,7 @@ export const CompanyStudioPresenceView: React.FC<CompanyStudioPresenceViewProps>
                                       className="px-2.5 py-1 rounded-lg border border-line bg-white hover:border-royal/40 text-[10.5px] font-mono font-bold text-graphite hover:text-royal flex items-center gap-1 transition shadow-2xs"
                                       title="Set this image as primary facility cover"
                                     >
-                                      <Star className="w-3 h-3 text-stone" />
+                                      <BookmarkCheck className="w-3 h-3 text-stone" />
                                       SET AS COVER
                                     </button>
                                   ) : (

@@ -11,6 +11,7 @@ import {
   CompanyPresenceModule,
   CompanyConnectModule,
   CompanyBusinessTwinModule,
+  CompanyCorporateModule,
 } from "./CompanyModules";
 import { DigiContainer } from "@/components/digione/primitives";
 import { resolveMarineWorldCompanyDigitalId, buildCanonicalCompanyUrl } from "@/lib/services/companyIdentityService";
@@ -34,6 +35,8 @@ export function CompanyOperatingShell({
   selectedProductSlug,
   selectedServiceSlug,
   onSelectModule,
+  onSelectProduct,
+  onSelectService,
 }: {
   company: CompanyProfile;
   primaryCity?: SectorCity;
@@ -82,7 +85,6 @@ export function CompanyOperatingShell({
     switch (activeModule) {
       case "company":
       case "overview":
-      case "corporate":
         return (
           <CompanyDashboardView
             company={company}
@@ -100,12 +102,30 @@ export function CompanyOperatingShell({
       case "solutions":
       case "products":
       case "services":
-        return <CompanySolutionsModule company={company} />;
+        return (
+          <CompanySolutionsModule
+            company={company}
+            initialOfferingSlug={selectedProductSlug || selectedServiceSlug}
+            onSelectProduct={onSelectProduct}
+            onSelectService={onSelectService}
+          />
+        );
       case "presence":
       case "sector-city":
       case "network":
         return (
           <CompanyPresenceModule
+            company={company}
+            primaryCity={primaryCity}
+            parentDomain={parentDomain}
+            config={config}
+          />
+        );
+      case "identity":
+      case "corporate":
+      case "governance":
+        return (
+          <CompanyCorporateModule
             company={company}
             primaryCity={primaryCity}
             parentDomain={parentDomain}
@@ -150,6 +170,7 @@ export function CompanyOperatingShell({
         company={company}
         primaryCity={primaryCity}
         parentDomain={parentDomain}
+        config={config}
         activeModule={activeModule}
         selectedProductName={selectedProduct?.name}
         selectedServiceName={selectedService?.name}

@@ -17,7 +17,6 @@ import {
   LogOut,
   Check,
   ArrowRight,
-  Sparkles,
   User,
   LayoutDashboard,
   Bookmark,
@@ -106,16 +105,11 @@ export function Header({
       <DigiContainer>
         <div className="flex h-16 items-center justify-between gap-4 md:h-20">
           {/* Logo & Sector Identity */}
-          <a href="/" className="flex items-center gap-3 group">
-            <LogoMark className="h-9 w-9" />
-            <div>
-              <span className="font-sans text-[15px] font-bold tracking-tight text-graphite group-hover:text-royal">
-                MarineWorld<span className="text-royal">.City</span>
-              </span>
-              <span className="ml-2 rounded bg-mist px-2 py-0.5 font-sans text-[10px] font-semibold uppercase tracking-wider text-mute">
-                {sectorCode}
-              </span>
-            </div>
+          <a href="/" className="flex items-center gap-2.5 group text-graphite hover:opacity-85 transition-opacity">
+            <LogoMark className="h-6 w-2 text-graphite" />
+            <span className="font-sans text-[16px] font-bold tracking-tight text-graphite">
+              MarineWorld.City
+            </span>
           </a>
 
           {/* Desktop Navigation - Context-Specific */}
@@ -123,25 +117,25 @@ export function Header({
             {isPublicHeader ? (
               <>
                 <a
-                  href="#explorer"
+                  href="/explore"
                   className="text-[13.5px] font-medium text-stone hover:text-graphite transition-colors"
                 >
                   Explore
                 </a>
                 <a
-                  href="#explorer"
+                  href="/cities"
                   className="text-[13.5px] font-medium text-stone hover:text-graphite transition-colors"
                 >
                   Cities
                 </a>
                 <a
-                  href="#architecture"
+                  href="/sectors"
                   className="text-[13.5px] font-medium text-stone hover:text-graphite transition-colors"
                 >
                   Sectors
                 </a>
                 <a
-                  href="#network"
+                  href="/companies"
                   className="text-[13.5px] font-medium text-stone hover:text-graphite transition-colors"
                 >
                   Companies
@@ -153,7 +147,7 @@ export function Header({
                   href="/studio"
                   className="text-[13.5px] font-semibold text-royal hover:text-royal-dark transition-colors flex items-center gap-1.5"
                 >
-                  <Sparkles className="w-3.5 h-3.5" />
+                  <LayoutDashboard className="w-3.5 h-3.5" />
                   <span>Studio</span>
                 </a>
                 <a
@@ -197,7 +191,7 @@ export function Header({
               <>
                 <a
                   href="/ecosystem/dashboard"
-                  className="text-[13.5px] font-semibold text-indigo-700 hover:text-indigo-900 transition-colors flex items-center gap-1.5"
+                  className="text-[13.5px] font-semibold text-royal hover:text-royal-dark transition-colors flex items-center gap-1.5"
                 >
                   <Landmark className="w-3.5 h-3.5" />
                   <span>Organization Dashboard</span>
@@ -230,25 +224,25 @@ export function Header({
             ) : (
               <>
                 <a
-                  href="/industries/maritime"
+                  href="/explore"
                   className="text-[13.5px] font-medium text-stone hover:text-graphite transition-colors"
                 >
                   Explore
                 </a>
                 <a
-                  href="/industries/maritime"
+                  href="/cities"
                   className="text-[13.5px] font-medium text-stone hover:text-graphite transition-colors"
                 >
                   Cities
                 </a>
                 <a
-                  href="/industries"
+                  href="/sectors"
                   className="text-[13.5px] font-medium text-stone hover:text-graphite transition-colors"
                 >
                   Sectors
                 </a>
                 <a
-                  href="/companies/crest-group-materials"
+                  href="/companies"
                   className="text-[13.5px] font-medium text-stone hover:text-graphite transition-colors"
                 >
                   Companies
@@ -260,13 +254,25 @@ export function Header({
           {/* Action Area: Guest [ENTER] vs Personal Visitor (<displayName> ▾) vs Active Org Switcher */}
           <div className="flex items-center gap-3">
             {isPublicHeader || !isAuthenticated ? (
-              <a
-                id="btn-header-enter"
-                href="/gateway"
-                className="inline-flex min-h-10 items-center justify-center rounded-full bg-royal hover:bg-royal-dark px-5 text-[13px] font-bold tracking-wide text-white shadow-sm transition-all duration-200"
-              >
-                <span>ENTER</span>
-              </a>
+              <div className="flex items-center gap-2.5">
+                <a
+                  id="btn-header-signin"
+                  href="/login/personal"
+                  className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-full border border-line bg-white hover:bg-slate-50 hover:border-royal/40 px-3.5 text-xs font-semibold text-graphite shadow-2xs transition-all duration-200"
+                >
+                  <User className="w-3.5 h-3.5 text-stone" />
+                  <span>Sign In</span>
+                </a>
+
+                <a
+                  id="btn-header-enter"
+                  href="/gateway"
+                  className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-full bg-royal hover:bg-royal-dark px-4 text-xs font-bold tracking-wide text-white shadow-sm transition-all duration-200 hover:shadow"
+                >
+                  <span>ENTER GATEWAY</span>
+                  <ArrowRight className="w-3.5 h-3.5 text-white/80" />
+                </a>
+              </div>
             ) : isPersonal || !activeOrg ? (
               /* Personal Visitor User Menu (<displayName> ▾) */
               <div className="relative" ref={dropdownRef}>
@@ -370,7 +376,7 @@ export function Header({
                       <a
                         href="/company/onboarding"
                         onClick={() => setDropdownOpen(false)}
-                        className="w-full text-left px-2.5 py-2 rounded-lg text-xs font-bold bg-royal text-white hover:bg-blue-600 flex items-center justify-between transition shadow-sm"
+                        className="w-full text-left px-2.5 py-2 rounded-lg text-xs font-bold bg-royal text-white hover:bg-royal flex items-center justify-between transition shadow-sm"
                       >
                         <span>CREATE YOUR AI-NATIVE COMPANY</span>
                         <ArrowRight className="w-3.5 h-3.5" />
@@ -530,28 +536,28 @@ export function Header({
               {isPublicHeader ? (
                 <>
                   <a
-                    href="#explorer"
+                    href="/explore"
                     onClick={() => setMobileOpen(false)}
                     className="text-[14px] font-medium text-graphite py-1 px-2 rounded hover:bg-slate-50"
                   >
                     Explore
                   </a>
                   <a
-                    href="#explorer"
+                    href="/cities"
                     onClick={() => setMobileOpen(false)}
                     className="text-[14px] font-medium text-graphite py-1 px-2 rounded hover:bg-slate-50"
                   >
                     Cities
                   </a>
                   <a
-                    href="#architecture"
+                    href="/sectors"
                     onClick={() => setMobileOpen(false)}
                     className="text-[14px] font-medium text-graphite py-1 px-2 rounded hover:bg-slate-50"
                   >
                     Sectors
                   </a>
                   <a
-                    href="#network"
+                    href="/companies"
                     onClick={() => setMobileOpen(false)}
                     className="text-[14px] font-medium text-graphite py-1 px-2 rounded hover:bg-slate-50"
                   >
@@ -573,28 +579,28 @@ export function Header({
                   {isVisitor && (
                     <>
                       <a
-                        href="/industries/maritime"
+                        href="/explore"
                         onClick={() => setMobileOpen(false)}
                         className="text-[14px] font-medium text-graphite py-1 px-2 rounded hover:bg-slate-50"
                       >
                         Explore
                       </a>
                       <a
-                        href="/industries/maritime"
+                        href="/cities"
                         onClick={() => setMobileOpen(false)}
                         className="text-[14px] font-medium text-graphite py-1 px-2 rounded hover:bg-slate-50"
                       >
                         Cities
                       </a>
                       <a
-                        href="/industries"
+                        href="/sectors"
                         onClick={() => setMobileOpen(false)}
                         className="text-[14px] font-medium text-graphite py-1 px-2 rounded hover:bg-slate-50"
                       >
                         Sectors
                       </a>
                       <a
-                        href="/companies/crest-group-materials"
+                        href="/companies"
                         onClick={() => setMobileOpen(false)}
                         className="text-[14px] font-medium text-graphite py-1 px-2 rounded hover:bg-slate-50"
                       >
@@ -716,7 +722,7 @@ export function Header({
                   <a
                     href="/ecosystem/dashboard"
                     onClick={() => setMobileOpen(false)}
-                    className="text-[14px] font-bold text-indigo-700 py-1 px-2 rounded hover:bg-indigo-50"
+                    className="text-[14px] font-bold text-royal py-1 px-2 rounded hover:bg-royal/5"
                   >
                     Organization Dashboard
                   </a>

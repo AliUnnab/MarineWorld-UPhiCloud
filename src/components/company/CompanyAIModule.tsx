@@ -5,16 +5,18 @@ import {
   type AIResponsePayload,
 } from "@/lib/aiService";
 import {
-  Sparkles,
+  Cpu,
   Send,
   ShieldCheck,
   Building2,
-  Bot,
+  BrainCircuit,
   User,
   ArrowRight,
   Layers,
   FileText,
   Clock,
+  ShieldAlert,
+  Loader2,
 } from "lucide-react";
 
 /* ------------------------------------------------------------
@@ -118,7 +120,7 @@ export function CompanyAIModule({
   if (isError) {
     return (
       <div className="rounded-card-lg border border-line bg-white p-8 text-center space-y-4 max-w-[1180px] mx-auto font-sans">
-        <Sparkles className="mx-auto h-10 w-10 text-amber-500" />
+        <ShieldAlert className="mx-auto h-10 w-10 text-amber-500" />
         <h3 className="text-h3 text-graphite">AI INTELLIGENCE TEMPORARILY UNAVAILABLE</h3>
         <p className="text-[14px] text-stone max-w-md mx-auto">
           Unable to establish grounded connection to {displayName}'s verified data context. Please try again.
@@ -141,7 +143,7 @@ export function CompanyAIModule({
       <div className="rounded-card-lg border border-line bg-white p-6 md:p-8 shadow-xs flex flex-col md:flex-row md:items-center md:justify-between gap-6">
         <div>
           <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-royal">
-            <Sparkles className="h-4 w-4" />
+            <Cpu className="h-4 w-4" />
             <span>VERIFIED BUSINESS INTELLIGENCE</span>
           </div>
           <h2 className="text-h2 mt-1 text-graphite">Autonomous Intelligence Assistant</h2>
@@ -198,7 +200,7 @@ export function CompanyAIModule({
                 <div className="flex items-center justify-between border-b border-line pb-3">
                   <div className="flex items-center gap-2">
                     <div className="flex h-7 w-7 items-center justify-center rounded-md bg-royal text-white text-xs font-bold">
-                      <Bot className="h-4 w-4" />
+                      <BrainCircuit className="h-4 w-4" />
                     </div>
                     <div>
                       <span className="text-[12.5px] font-bold text-graphite block">
@@ -250,7 +252,7 @@ export function CompanyAIModule({
         {isProcessing && (
           <div className="flex justify-start">
             <div className="rounded-card-lg border border-line bg-white p-6 shadow-xs flex items-center gap-3 text-stone text-[13px]">
-              <Sparkles className="h-5 w-5 text-royal animate-spin" />
+              <Loader2 className="h-5 w-5 text-royal animate-spin" />
               <span>Analyzing verified registry data for {displayName}...</span>
             </div>
           </div>

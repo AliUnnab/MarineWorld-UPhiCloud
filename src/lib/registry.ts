@@ -8,11 +8,13 @@ import type {
   SectorConfig,
 } from "@/lib/types";
 import { marineSector } from "@/lib/sectors/marine";
-import { marineDomains } from "@/lib/sectors/marine-domains";
+import { marineDomains, LEGACY_DOMAIN_MAP } from "@/lib/sectors/marine-domains";
 import { getCompanyRecordSync, findAllCompaniesSync } from "@/lib/repositories/companyRepository";
 import { resolveMarineWorldCompanyDigitalId } from "@/lib/services/companyIdentityService";
 import { buildCanonicalOfferingUrl, initializeCanonicalOfferingDefaults } from "@/lib/services/offeringEntityService";
-export { buildCanonicalOfferingUrl, initializeCanonicalOfferingDefaults };
+import { generateScaleMaritimeCompanies } from "@/lib/services/scaleCompanyGenerator";
+import { getCityAnchor, isCompanyAnchor, type CityAnchorCredential } from "@/lib/services/propertyService";
+export { buildCanonicalOfferingUrl, initializeCanonicalOfferingDefaults, getCityAnchor, isCompanyAnchor, type CityAnchorCredential };
 
 /**
  * SectorRegistry — canonical registry of sector configurations.
@@ -46,12 +48,332 @@ export function resolveCompanyStatus(company: CompanyProfile): EntityStatus {
   return company.status ?? DEFAULT_ENTITY_STATUS;
 }
 
+export function resolveCompanyInitials(name?: string, fallback = "MW"): string {
+  if (!name || typeof name !== "string") return fallback;
+  const clean = name.trim().replace(/[^\w\s]/gi, " ");
+  const words = clean.split(/\s+/).filter(Boolean);
+  if (words.length >= 2) {
+    return (words[0][0] + words[1][0]).toUpperCase();
+  }
+  if (words.length === 1 && words[0].length >= 2) {
+    return words[0].slice(0, 2).toUpperCase();
+  }
+  if (words.length === 1 && words[0].length === 1) {
+    return words[0].toUpperCase();
+  }
+  return fallback;
+}
+
+export function formatAvatarInitials(initials?: string, name?: string, fallback = "MW"): string {
+  if (initials && typeof initials === "string") {
+    const clean = initials.trim().replace(/[^A-Za-z0-9]/g, "");
+    if (clean.length >= 1 && clean.length <= 2) {
+      return clean.toUpperCase();
+    }
+  }
+  return resolveCompanyInitials(name || initials, fallback);
+}
+
+/**
+ * Universal helper to determine whether an entity holds Flagship Registry Status.
+ * Flagship is a portable registry credential recognized across all platform views.
+ */
+export function isCompanyFlagship(company?: Partial<CompanyProfile> | null): boolean {
+  if (!company) return false;
+  if (company.isFlagship === true) return true;
+  if (company.presenceTier === "FLAGSHIP") return true;
+  if ((company as any).tier === "FLAGSHIP" || (company as any).tier === "LANDMARK") return true;
+  return false;
+}
+
+/**
+ * Canonical unified comparator for company ranking everywhere on MarineWorld:
+ * 1. Landmark Anchor Status (Anchor registry credential > non-anchor)
+ * 2. Flagship Registry Status (Flagship tier > Enterprise > Standard)
+ * 3. Verification Status (Verified > Under Review / Pending)
+ * 4. AI Twin Capability (Twin Active > Ready)
+ * 5. Alphabetical by display name
+ */
+export function compareCompaniesForRegistryRanking(
+  a: CompanyProfile,
+  b: CompanyProfile
+): number {
+  const aIsAnchor = isCompanyAnchor(a);
+  const bIsAnchor = isCompanyAnchor(b);
+  if (aIsAnchor !== bIsAnchor) {
+    return aIsAnchor ? -1 : 1;
+  }
+
+  const aIsFlagship = isCompanyFlagship(a);
+  const bIsFlagship = isCompanyFlagship(b);
+  if (aIsFlagship !== bIsFlagship) {
+    return aIsFlagship ? -1 : 1;
+  }
+
+  const aTierScore = a.presenceTier === "FLAGSHIP" || aIsFlagship ? 3 : a.presenceTier === "ENTERPRISE" ? 2 : 1;
+  const bTierScore = b.presenceTier === "FLAGSHIP" || bIsFlagship ? 3 : b.presenceTier === "ENTERPRISE" ? 2 : 1;
+  if (bTierScore !== aTierScore) {
+    return bTierScore - aTierScore;
+  }
+
+  const aVer = a.verificationStatus === "verified" ? 1 : 0;
+  const bVer = b.verificationStatus === "verified" ? 1 : 0;
+  if (bVer !== aVer) {
+    return bVer - aVer;
+  }
+
+  const aTwin = a.aiStatus === "twin" ? 1 : 0;
+  const bTwin = b.aiStatus === "twin" ? 1 : 0;
+  if (bTwin !== aTwin) {
+    return bTwin - aTwin;
+  }
+
+  return (a.displayName || a.name || "").localeCompare(b.displayName || b.name || "");
+}
+
 export function getCities(config: SectorConfig): SectorCity[] {
   return config.explorer.cities;
 }
 
 export function getCompanies(config: SectorConfig): CompanyProfile[] {
-  return config.network.companies;
+  return generateScaleMaritimeCompanies(config);
+}
+
+export interface CompanyFilterCriteria {
+  searchQuery?: string;
+  domain?: string;
+  sectorCity?: string;
+  country?: string;
+  region?: string;
+  verificationStatus?: "all" | "verified" | "review";
+  aiStatus?: "all" | "twin" | "ready";
+  presenceTier?: "all" | "FLAGSHIP" | "ENTERPRISE" | "STANDARD";
+  sortBy?: "relevance" | "name_asc" | "name_desc" | "newest" | "city" | "country" | "verified_first";
+  page?: number;
+  pageSize?: number;
+}
+
+export interface CompanyPaginatedResult {
+  items: CompanyProfile[];
+  totalCount: number;
+  totalPages: number;
+  page: number;
+  pageSize: number;
+  facets: {
+    domains: { id: string; name: string; count: number }[];
+    sectorCities: { id: string; name: string; count: number }[];
+    countries: { name: string; count: number }[];
+    regions: { id: string; name: string; count: number }[];
+    verification: { verified: number; review: number };
+    twins: { twin: number; ready: number };
+    tiers: { flagship: number; enterprise: number; standard: number };
+  };
+}
+
+export function getCompaniesPaginated(
+  config: SectorConfig,
+  criteria: CompanyFilterCriteria = {}
+): CompanyPaginatedResult {
+  const all = getCompanies(config);
+  const {
+    searchQuery = "",
+    domain = "All",
+    sectorCity = "All",
+    country = "All",
+    region = "All",
+    verificationStatus = "all",
+    aiStatus = "all",
+    presenceTier = "all",
+    sortBy = "relevance",
+    page = 1,
+    pageSize = 12,
+  } = criteria;
+
+  const q = searchQuery.toLowerCase().trim();
+
+  // Filter pass
+  const filtered = all.filter((c) => {
+    // 1. Search Query
+    if (q) {
+      const matchSearch =
+        (c.displayName || c.name || "").toLowerCase().includes(q) ||
+        (c.description || "").toLowerCase().includes(q) ||
+        (c.shortDescription || "").toLowerCase().includes(q) ||
+        (c.location || "").toLowerCase().includes(q) ||
+        (c.industry || "").toLowerCase().includes(q) ||
+        (c.primarySectorCategory || "").toLowerCase().includes(q) ||
+        (c.capabilities && c.capabilities.some((cap) => cap.toLowerCase().includes(q))) ||
+        (c.cityIds && c.cityIds.some((cid) => cid.toLowerCase().includes(q)));
+      if (!matchSearch) return false;
+    }
+
+    // 2. Domain Filter
+    if (domain && domain !== "All") {
+      const normDomain = domain.toLowerCase();
+      const matchDomain =
+        (c.industry || "").toLowerCase() === normDomain ||
+        (c.primarySectorCategory || "").toLowerCase() === normDomain;
+      if (!matchDomain) return false;
+    }
+
+    // 3. Sector City Filter
+    if (sectorCity && sectorCity !== "All") {
+      const normCity = sectorCity.toLowerCase().replace(/\.city$/, "");
+      const cityIds = [
+        ...(c.cityIds || []),
+        ...(c.sectorCityIds || []),
+        c.primarySectorCityId,
+        c.primaryRegistryNode,
+      ]
+        .filter(Boolean)
+        .map((s) => String(s).toLowerCase().replace(/\.city$/, ""));
+
+      const matchCity = cityIds.some((id) => id.includes(normCity) || normCity.includes(id));
+      if (!matchCity) return false;
+    }
+
+    // 4. Country Filter
+    if (country && country !== "All") {
+      if ((c.country || "").toLowerCase() !== country.toLowerCase()) return false;
+    }
+
+    // 5. Region Filter
+    if (region && region !== "All") {
+      const normRegion = region.toLowerCase().replace(/_/g, "-");
+      const cRegion = (c.region || "").toLowerCase().replace(/_/g, "-");
+      const cRegions = (c.regionalEditions || []).map((r) => r.toLowerCase().replace(/_/g, "-"));
+      if (!cRegion.includes(normRegion) && !cRegions.some((r) => r.includes(normRegion))) {
+        return false;
+      }
+    }
+
+    // 6. Verification Status
+    if (verificationStatus && verificationStatus !== "all") {
+      if ((c.verificationStatus || "").toLowerCase() !== verificationStatus.toLowerCase()) {
+        return false;
+      }
+    }
+
+    // 7. AI Twin Status
+    if (aiStatus && aiStatus !== "all") {
+      if ((c.aiStatus || "").toLowerCase() !== aiStatus.toLowerCase()) {
+        return false;
+      }
+    }
+
+    // 8. Presence Tier
+    if (presenceTier && presenceTier !== "all") {
+      const tier = ((c as any).presenceTier || "STANDARD").toUpperCase();
+      if (tier !== presenceTier.toUpperCase()) return false;
+    }
+
+    return true;
+  });
+
+  // Sort pass
+  const sorted = [...filtered].sort((a, b) => {
+    switch (sortBy) {
+      case "name_asc":
+        return (a.displayName || a.name || "").localeCompare(b.displayName || b.name || "");
+      case "name_desc":
+        return (b.displayName || b.name || "").localeCompare(a.displayName || a.name || "");
+      case "verified_first": {
+        const aFlag = isCompanyFlagship(a) ? 1 : 0;
+        const bFlag = isCompanyFlagship(b) ? 1 : 0;
+        const aVer = a.verificationStatus === "verified" ? 2 : 0;
+        const bVer = b.verificationStatus === "verified" ? 2 : 0;
+        const aScore = aVer + aFlag;
+        const bScore = bVer + bFlag;
+        if (bScore !== aScore) return bScore - aScore;
+        return (a.displayName || a.name || "").localeCompare(b.displayName || b.name || "");
+      }
+      case "city":
+        return (a.city || "").localeCompare(b.city || "");
+      case "country":
+        return (a.country || "").localeCompare(b.country || "");
+      case "newest": {
+        const aId = Number(a.companyId6Digit || 0);
+        const bId = Number(b.companyId6Digit || 0);
+        return bId - aId;
+      }
+      case "relevance":
+      default: {
+        return compareCompaniesForRegistryRanking(a, b);
+      }
+    }
+  });
+
+  // Calculate dynamic facets based on the currently filtered company results
+  const domainMap = new Map<string, number>();
+  const cityMap = new Map<string, number>();
+  const countryMap = new Map<string, number>();
+  const regionMap = new Map<string, number>();
+  let verifiedCount = 0;
+  let reviewCount = 0;
+  let twinCount = 0;
+  let readyCount = 0;
+  let flagshipCount = 0;
+  let enterpriseCount = 0;
+  let standardCount = 0;
+
+  filtered.forEach((c) => {
+    if (c.industry) {
+      domainMap.set(c.industry, (domainMap.get(c.industry) || 0) + 1);
+    }
+    const cCityIds = [
+      ...(c.cityIds || []),
+      ...(c.sectorCityIds || []),
+      c.primarySectorCityId,
+      c.primaryRegistryNode,
+    ].filter(Boolean) as string[];
+
+    const uniqueCityIds = new Set(cCityIds.map((cid) => String(cid).toLowerCase().replace(/\.city$/, "")));
+    uniqueCityIds.forEach((cid) => {
+      cityMap.set(cid, (cityMap.get(cid) || 0) + 1);
+    });
+
+    if (c.country) {
+      countryMap.set(c.country, (countryMap.get(c.country) || 0) + 1);
+    }
+    if (c.region) {
+      regionMap.set(c.region, (regionMap.get(c.region) || 0) + 1);
+    }
+    if (c.verificationStatus === "verified") verifiedCount++;
+    else reviewCount++;
+    if (c.aiStatus === "twin") twinCount++;
+    else readyCount++;
+    if (isCompanyFlagship(c)) {
+      flagshipCount++;
+    } else if (((c as any).presenceTier || "").toUpperCase() === "ENTERPRISE") {
+      enterpriseCount++;
+    } else {
+      standardCount++;
+    }
+  });
+
+  const totalCount = sorted.length;
+  const validPageSize = Math.max(1, pageSize);
+  const totalPages = Math.max(1, Math.ceil(totalCount / validPageSize));
+  const validPage = Math.min(Math.max(1, page), totalPages);
+  const startIndex = (validPage - 1) * validPageSize;
+  const items = sorted.slice(startIndex, startIndex + validPageSize);
+
+  return {
+    items,
+    totalCount,
+    totalPages,
+    page: validPage,
+    pageSize: validPageSize,
+    facets: {
+      domains: Array.from(domainMap.entries()).map(([name, count]) => ({ id: name, name, count })),
+      sectorCities: Array.from(cityMap.entries()).map(([id, count]) => ({ id, name: id.toUpperCase(), count })),
+      countries: Array.from(countryMap.entries()).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count),
+      regions: Array.from(regionMap.entries()).map(([id, count]) => ({ id, name: id, count })),
+      verification: { verified: verifiedCount, review: reviewCount },
+      twins: { twin: twinCount, ready: readyCount },
+      tiers: { flagship: flagshipCount, enterprise: enterpriseCount, standard: standardCount },
+    },
+  };
 }
 
 /* ------------------------------------------------------------
@@ -64,19 +386,51 @@ export function getMarineDomains(): IndustryDomainEntity[] {
 
 export function getIndustryDomainBySlug(slug: string): IndustryDomainEntity | undefined {
   if (!slug || typeof slug !== "string") return undefined;
-  const norm = slug.toLowerCase();
-  return marineDomains.find((d) => (d?.slug && d.slug.toLowerCase() === norm) || (d?.id && d.id.toLowerCase() === norm));
+  const norm = slug.toLowerCase().trim();
+  
+  // 1. Direct match on canonical domain slug or id or exact name
+  const direct = marineDomains.find(
+    (d) =>
+      (d?.slug && d.slug.toLowerCase() === norm) ||
+      (d?.id && d.id.toLowerCase() === norm) ||
+      (d?.name && d.name.toLowerCase() === norm)
+  );
+  if (direct) return direct;
+
+  // 2. Check legacy alias map
+  const mappedTarget = LEGACY_DOMAIN_MAP[norm];
+  if (mappedTarget) {
+    const mapped = marineDomains.find((d) => d.id === mappedTarget || d.slug === mappedTarget);
+    if (mapped) return mapped;
+  }
+
+  // 3. Fallback partial match on name or ID
+  return marineDomains.find(
+    (d) => d.name.toLowerCase().includes(norm) || norm.includes(d.id.toLowerCase())
+  );
 }
 
 export function getIndustryDomainById(id: string): IndustryDomainEntity | undefined {
-  return marineDomains.find((d) => d?.id === id);
+  return getIndustryDomainBySlug(id);
 }
 
 export function getCitiesByDomain(config: SectorConfig, domainSlugOrId: string): SectorCity[] {
   const domain = getIndustryDomainBySlug(domainSlugOrId) ?? getIndustryDomainById(domainSlugOrId);
   if (!domain) return [];
-  return (config?.explorer?.cities || [])
-    .filter((c) => c?.industryDomainId === domain.id)
+  const cities = config?.explorer?.cities || [];
+  return cities
+    .filter((c) => {
+      if (!c) return false;
+      // 1. Authoritative canonical match: category name matches domain name
+      if (c.category && c.category.toLowerCase() === domain.name.toLowerCase()) return true;
+      // 2. If category is explicitly present, it is authoritative (do not match other domains)
+      if (c.category && c.category.trim() !== "") return false;
+      // 3. Fallback when category is missing: match direct industryDomainId or legacy alias
+      if (c.industryDomainId === domain.id || c.industryDomainId === domain.slug) return true;
+      const legacyMapped = LEGACY_DOMAIN_MAP[c.industryDomainId?.toLowerCase()];
+      if (legacyMapped && (legacyMapped === domain.id || legacyMapped === domain.slug)) return true;
+      return false;
+    })
     .sort((a, b) => (a.sortOrder ?? 99) - (b.sortOrder ?? 99));
 }
 
@@ -167,7 +521,7 @@ export function getCompaniesInCity(config: SectorConfig, cityIdOrSlug: string): 
     return false;
   });
 
-  return matched;
+  return matched.sort(compareCompaniesForRegistryRanking);
 }
 
 export function getCompanyBySlug(config: SectorConfig, companySlug?: string): CompanyProfile | undefined {
@@ -176,7 +530,8 @@ export function getCompanyBySlug(config: SectorConfig, companySlug?: string): Co
     return config?.network?.companies?.[0];
   }
   const norm = companySlug.toLowerCase();
-  const base = config?.network?.companies?.find((c) => {
+  const allScale = generateScaleMaritimeCompanies(config);
+  const base = allScale.find((c) => {
     if (!c) return false;
     return (
       (c.slug && c.slug.toLowerCase() === norm) ||
@@ -236,7 +591,9 @@ export function getCompanyBySlug(config: SectorConfig, companySlug?: string): Co
     slug: dynamicRecord.slug || base?.slug || norm,
     name: dynamicRecord.displayName || dynamicRecord.legalName || base?.name || "Company",
     displayName: dynamicRecord.displayName || base?.displayName || base?.name || "Company",
-    initials: base?.initials || (dynamicRecord.displayName || dynamicRecord.legalName || "MW").slice(0, 2).toUpperCase(),
+    initials:
+      base?.initials ||
+      resolveCompanyInitials(dynamicRecord.displayName || dynamicRecord.legalName || base?.name || "MW"),
     recordType: base?.recordType || "PUBLIC_REGISTRY",
     industry: primarySectorCategory,
     primarySectorCategory: primarySectorCategory,
@@ -268,8 +625,10 @@ export function getCompanyBySlug(config: SectorConfig, companySlug?: string): Co
     shortDescription: dynamicRecord.shortDescription || base?.shortDescription,
     description: (dynamicRecord as any).corporateDescription || dynamicRecord.description || base?.description,
     corporateDescription: (dynamicRecord as any).corporateDescription || dynamicRecord.description || base?.description,
-    coverImage: (dynamicRecord as any).coverImage || dynamicRecord.logoUrl || dynamicRecord.heroImage || base?.coverImage,
-    logoUrl: (dynamicRecord as any).coverImage || dynamicRecord.logoUrl || dynamicRecord.heroImage || base?.coverImage,
+    coverImage: (dynamicRecord as any).coverImage || (dynamicRecord as any).heroImageUrl || base?.coverImage,
+    flagshipStatement: (dynamicRecord as any).flagshipStatement || (dynamicRecord as any).coverImageCaption || base?.flagshipStatement,
+    coverImageCaption: (dynamicRecord as any).coverImageCaption || (dynamicRecord as any).flagshipStatement || base?.coverImageCaption,
+    logoUrl: (dynamicRecord as any).logoUrl || (dynamicRecord as any).logo || base?.logoUrl || base?.logo,
     productsList: dynamicRecord.productsList || base?.productsList,
     servicesList: dynamicRecord.servicesList || base?.servicesList,
     legalName: dynamicRecord.legalName || base?.legalName,
@@ -282,6 +641,13 @@ export function getCompanyBySlug(config: SectorConfig, companySlug?: string): Co
     organizationType: dynamicRecord.organizationType || base?.organizationType,
     registrationNumber: (dynamicRecord as any).registrationNumber || base?.registrationNumber,
     foundedYear: (dynamicRecord as any).foundedYear ? String((dynamicRecord as any).foundedYear) : base?.foundedYear,
+    presenceTier: (dynamicRecord as any).presenceTier || (base as any)?.presenceTier || "STANDARD",
+    isFlagship: (dynamicRecord as any).isFlagship ?? (base as any)?.isFlagship ?? ((dynamicRecord as any).presenceTier === "FLAGSHIP" || (base as any)?.presenceTier === "FLAGSHIP"),
+    flagshipSectorCityId: (dynamicRecord as any).flagshipSectorCityId || (base as any)?.flagshipSectorCityId,
+    flagshipRegisteredAt: (dynamicRecord as any).flagshipRegisteredAt || (base as any)?.flagshipRegisteredAt,
+    isAnchor: (dynamicRecord as any).isAnchor ?? (base as any)?.isAnchor ?? ((dynamicRecord as any).tier === "LANDMARK" || (base as any)?.tier === "LANDMARK"),
+    anchorSectorCityId: (dynamicRecord as any).anchorSectorCityId || (base as any)?.anchorSectorCityId,
+    anchorRegisteredAt: (dynamicRecord as any).anchorRegisteredAt || (base as any)?.anchorRegisteredAt,
     officialEmail: dynamicRecord.officialEmail || dynamicRecord.email || base?.officialEmail,
     officialPhone: dynamicRecord.officialPhone || dynamicRecord.phone || base?.officialPhone,
   };

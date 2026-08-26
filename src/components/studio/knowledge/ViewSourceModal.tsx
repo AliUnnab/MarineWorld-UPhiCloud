@@ -4,7 +4,7 @@ import {
   FileText,
   ShieldCheck,
   Layers,
-  Sparkles,
+  Cpu,
   CheckCircle2,
   Clock,
   ExternalLink,
@@ -229,7 +229,7 @@ export const ViewSourceModal: React.FC<ViewSourceModalProps> = ({
           <div className="p-4 rounded-xl bg-canvas border border-line space-y-3">
             <div className="flex items-center justify-between border-b border-line/60 pb-2">
               <div className="text-[10px] font-mono text-stone uppercase font-bold flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5 text-royal" />
+                <Cpu className="w-3.5 h-3.5 text-royal" />
                 <span>USED BY & LINKED RELATIONSHIPS</span>
               </div>
               {onOpenScopeChange && !isArchived && (
@@ -328,7 +328,7 @@ export const ViewSourceModal: React.FC<ViewSourceModalProps> = ({
           {extractedFacts.length > 0 && (
             <div className="space-y-2">
               <div className="text-[10px] font-mono text-stone uppercase font-bold flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5 text-royal" />
+                <Cpu className="w-3.5 h-3.5 text-royal" />
                 <span>CONFIRMED EXTRACTED FACTS ({extractedFacts.length})</span>
               </div>
 

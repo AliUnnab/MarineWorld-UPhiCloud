@@ -35,6 +35,7 @@ import {
   Receipt,
   Landmark,
   Layers,
+  PhoneCall,
 } from "lucide-react";
 import type {
   StudioNavigationModule,
@@ -79,6 +80,7 @@ import { CompanyStudioAIView } from "./CompanyStudioAIView";
 import { CompanyStudioDigitalPresenceView } from "./CompanyStudioDigitalPresenceView";
 import { CompanyStudioPublishView } from "./CompanyStudioPublishView";
 import { CompanyStudioConnectView } from "./CompanyStudioConnectView";
+import { CompanyStudioContactsView } from "./CompanyStudioContactsView";
 import { CompanyStudioTeamView } from "./CompanyStudioTeamView";
 import { CompanyStudioAuditView } from "./CompanyStudioAuditView";
 import { getCompanyInquiries, subscribeInquiries } from "@/lib/connectStore";
@@ -131,9 +133,15 @@ export const CompanyStudioShell: React.FC<CompanyStudioShellProps> = ({
   onNavigateToPublicPage,
 }) => {
   const normalizedModule: StudioNavigationModule = useMemo(() => {
-    const mod = (initialModule as string)?.toUpperCase();
+    const mod = (initialModule as string)?.toUpperCase()?.replace(/-/g, "_");
     if (mod === "INVOICES" || mod === "PAYMENTS" || mod === "BILLING" || mod === "PAYMENT_METHODS") {
       return "BILLING";
+    }
+    if (mod === "DIRECT_REACH" || mod === "CONTACTS" || mod === "COMPANY_CONTACTS") {
+      return "CONTACTS";
+    }
+    if (mod === "CONNECT" || mod === "CONNECTIONS" || mod === "INQUIRIES" || mod === "RFQS") {
+      return "CONNECTIONS";
     }
     return initialModule;
   }, [initialModule]);
@@ -381,6 +389,7 @@ export const CompanyStudioShell: React.FC<CompanyStudioShellProps> = ({
       case "History": return <History className="w-4 h-4" />;
       case "Landmark": return <Landmark className="w-4 h-4" />;
       case "Layers": return <Layers className="w-4 h-4" />;
+      case "PhoneCall": return <PhoneCall className="w-4 h-4" />;
       default: return <LayoutDashboard className="w-4 h-4" />;
     }
   };
@@ -588,6 +597,7 @@ export const CompanyStudioShell: React.FC<CompanyStudioShellProps> = ({
                 [
                   "PROPERTIES",
                   "CONNECTIONS",
+                  "CONTACTS",
                   "TEAM",
                   "BILLING",
                   "AUDIT",
@@ -869,6 +879,14 @@ export const CompanyStudioShell: React.FC<CompanyStudioShellProps> = ({
               companyId={currentCompanyId}
               memberRole={member?.role || "OWNER"}
               userEmail={auth.email || auth.displayName || "authorized_member"}
+            />
+          )}
+
+          {/* Company Contacts & Direct Reach */}
+          {activeModule === "CONTACTS" && (
+            <CompanyStudioContactsView
+              companyId={currentCompanyId}
+              onSaved={() => setRefreshKey((k) => k + 1)}
             />
           )}
 

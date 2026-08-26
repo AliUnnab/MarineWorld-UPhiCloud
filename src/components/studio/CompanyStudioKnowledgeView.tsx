@@ -772,7 +772,7 @@ export const CompanyStudioKnowledgeView: React.FC<CompanyStudioKnowledgeViewProp
                 statusClass = "bg-amber-50 text-amber-800 border-amber-200";
               } else if (isIndexed) {
                 statusText = "INDEXED";
-                statusClass = "bg-sky-50 text-sky-800 border-sky-200";
+                statusClass = "bg-royal/5 text-royal-dark border-royal/20";
               }
 
               // 2. Knowledge Scope Badge

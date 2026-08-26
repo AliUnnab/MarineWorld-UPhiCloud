@@ -11,7 +11,7 @@ import {
   Trash2,
   ExternalLink,
   Shield,
-  Sparkles,
+  Cpu,
   ArrowRight,
   LogOut,
   Clock,
@@ -761,7 +761,7 @@ export function PersonalWorkspacePage({
                     className="w-full text-left px-3 py-2 rounded-xl text-xs font-bold bg-royal text-white hover:bg-royal-dark flex items-center justify-between transition shadow-sm cursor-pointer"
                   >
                     <span>CREATE YOUR AI-NATIVE COMPANY</span>
-                    <Sparkles className="w-3.5 h-3.5 text-sky-200" />
+                    <ArrowRight className="w-3.5 h-3.5 text-sky-200" />
                   </button>
                 </div>
 
@@ -822,7 +822,7 @@ export function PersonalWorkspacePage({
                 }}
                 className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-royal hover:bg-royal-dark text-white font-bold text-xs uppercase tracking-wider shadow-sm transition"
               >
-                <Sparkles className="w-4 h-4 text-sky-200" />
+                <ArrowRight className="w-4 h-4 text-sky-200" />
                 <span>CREATE YOUR AI-NATIVE COMPANY</span>
               </a>
             </div>
@@ -1007,7 +1007,7 @@ export function PersonalWorkspacePage({
                         <a
                           href={`/companies/${entity?.slug || reference.companyId}`}
                           className="p-1.5 text-stone hover:text-royal transition"
-                          title="View Profile"
+                          title="View Company"
                         >
                           <ExternalLink className="w-3.5 h-3.5" />
                         </a>
@@ -1100,7 +1100,7 @@ export function PersonalWorkspacePage({
                 href="/companies"
                 className="text-xs font-semibold text-royal hover:underline"
               >
-                Browse Companies Directory →
+                Explore AI-Native Companies →
               </a>
             </div>
 
@@ -1117,7 +1117,7 @@ export function PersonalWorkspacePage({
                   href="/companies"
                   className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-royal text-white text-xs font-bold uppercase tracking-wide hover:bg-royal-dark transition"
                 >
-                  <span>Explore Directory</span>
+                  <span>Explore Companies</span>
                   <ArrowRight className="w-3.5 h-3.5" />
                 </a>
               </div>
@@ -1204,7 +1204,7 @@ export function PersonalWorkspacePage({
                           }
                           className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-soft text-royal text-[11px] font-bold uppercase tracking-wider hover:bg-royal/10 transition cursor-pointer"
                         >
-                          <Sparkles className="w-3 h-3" />
+                          <Cpu className="w-3 h-3" />
                           <span>ASK AI</span>
                         </button>
                         <a
@@ -1342,7 +1342,7 @@ export function PersonalWorkspacePage({
                             }
                             className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-soft text-royal text-[11px] font-bold uppercase tracking-wider hover:bg-royal/10 transition cursor-pointer"
                           >
-                            <Sparkles className="w-3 h-3" />
+                            <Cpu className="w-3 h-3" />
                             <span>ASK AI</span>
                           </button>
                         )}
@@ -1485,7 +1485,7 @@ export function PersonalWorkspacePage({
                             }
                             className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-soft text-royal text-[11px] font-bold uppercase tracking-wider hover:bg-royal/10 transition cursor-pointer"
                           >
-                            <Sparkles className="w-3 h-3" />
+                            <Cpu className="w-3 h-3" />
                             <span>ASK AI</span>
                           </button>
                         )}
@@ -2199,7 +2199,7 @@ export function PersonalWorkspacePage({
               {/* Company Transition Callout */}
               <div className="p-4 rounded-xl bg-slate-50 border border-line space-y-3">
                 <div className="flex items-center gap-2 text-graphite font-bold text-xs uppercase">
-                  <Sparkles className="w-4 h-4 text-royal" />
+                  <Cpu className="w-4 h-4 text-royal" />
                   <span>Ready to operate as a company?</span>
                 </div>
                 <p className="text-xs text-stone leading-relaxed">
@@ -2246,7 +2246,7 @@ export function PersonalWorkspacePage({
               <div className="flex items-start justify-between border-b border-line pb-4">
                 <div className="flex items-center gap-3">
                   <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-soft text-royal border border-royal/20">
-                    <Sparkles className="h-5 w-5" />
+                    <Cpu className="h-5 w-5" />
                   </div>
                   <div>
                     <h3 className="font-mono text-sm font-bold uppercase tracking-wider text-graphite">

@@ -315,12 +315,12 @@ export const CompanyStudioReadinessBar: React.FC<CompanyStudioReadinessBarProps>
             className={`px-2.5 py-1 rounded-full text-[11px] font-bold border flex items-center gap-1.5 ${
               readiness.isPublishReady
                 ? "bg-emerald-50 text-emerald-800 border-emerald-200"
-                : "bg-sky-50 text-sky-800 border-sky-200"
+                : "bg-royal/5 text-royal-dark border-royal/20"
             }`}
           >
             <span
               className={`w-1.5 h-1.5 rounded-full ${
-                readiness.isPublishReady ? "bg-emerald-500" : "bg-sky-500"
+                readiness.isPublishReady ? "bg-emerald-500" : "bg-royal"
               }`}
             />
             <span>

@@ -4,6 +4,7 @@ import { getCompanyProductBySlug, getCompanyServiceBySlug } from "@/lib/registry
 import { getCurrentAuthSession } from "@/lib/services/securityService";
 import { createInquiry } from "@/lib/connectStore";
 import { resolveMarineWorldCompanyDigitalId } from "@/lib/services/companyIdentityService";
+import { checkFormAbuse, sanitizeInputString, isValidEmailAddress } from "@/lib/security/abuseProtection";
 import {
   Send,
   Building2,
@@ -16,7 +17,6 @@ import {
   FileText,
   Layers,
   ArrowRight,
-  Sparkles,
 } from "lucide-react";
 
 /* ------------------------------------------------------------
@@ -115,6 +115,8 @@ export function CompanyConnectModule({
     primarySectorCityId: company.sectorCityIds?.[0] || company.cityIds?.[0] || primaryCity?.id,
   });
 
+  const [honeypot, setHoneypot] = useState("");
+
   const displayName = company.displayName || company.name;
   const isVerified = (company.verificationStatus || "VERIFIED").toLowerCase().includes("verified");
   const headquartersCity = company.headquartersCity || company.city || "Rotterdam";
@@ -125,8 +127,29 @@ export function CompanyConnectModule({
     e.preventDefault();
     setSubmitError(null);
 
-    if (!requesterName.trim() || !requesterEmail.trim() || !message.trim()) {
+    const cleanEmail = sanitizeInputString(requesterEmail);
+    const cleanName = sanitizeInputString(requesterName);
+    const cleanMsg = sanitizeInputString(message);
+    const cleanSubject = sanitizeInputString(subject);
+    const cleanCompany = sanitizeInputString(requesterCompany);
+
+    if (!cleanName || !cleanEmail || !cleanMsg) {
       setSubmitError("Please complete all required fields (Name, Business Email, and Message).");
+      return;
+    }
+
+    if (!isValidEmailAddress(cleanEmail)) {
+      setSubmitError("Please enter a valid institutional or business email address.");
+      return;
+    }
+
+    const abuseCheck = checkFormAbuse({
+      formId: `connect_${company.id}`,
+      honeypotValue: honeypot,
+    });
+
+    if (!abuseCheck.allowed) {
+      setSubmitError(abuseCheck.reason || "Submission temporarily throttled. Please try again in a few seconds.");
       return;
     }
 
@@ -138,9 +161,9 @@ export function CompanyConnectModule({
         companySlug: company.slug || company.id,
         companyName: company.name,
         requesterId: currentAuth?.uid || `usr-pub-${Date.now()}`,
-        requesterName: requesterName.trim(),
-        requesterEmail: requesterEmail.trim(),
-        requesterCompany: requesterCompany.trim() || "Independent Maritime Buyer",
+        requesterName: cleanName,
+        requesterEmail: cleanEmail,
+        requesterCompany: cleanCompany || "Independent Maritime Buyer",
         productId: targetProduct?.id,
         productSlug: targetProduct?.slug,
         productName: targetProduct?.name,
@@ -149,8 +172,8 @@ export function CompanyConnectModule({
         serviceName: targetService?.name,
         sectorId: "marine",
         sectorCityId: primaryCity?.id || company.sectorCityIds?.[0] || "southampton",
-        subject: subject.trim(),
-        message: message.trim(),
+        subject: cleanSubject,
+        message: cleanMsg,
         source: targetProduct ? "PRODUCT" : targetService ? "SERVICE" : "COMPANY",
         contactMethod,
         priority: "HIGH",
@@ -301,6 +324,18 @@ export function CompanyConnectModule({
           {/* Form Area (2 cols) */}
           <div className="lg:col-span-2 rounded-card-lg border border-line bg-white p-6 md:p-8 shadow-xs">
             <form onSubmit={handleSubmitInquiry} className="space-y-6">
+              {/* Invisible Honeypot Trap for Spam Bots */}
+              <input
+                type="text"
+                name="website_verification_trap"
+                value={honeypot}
+                onChange={(e) => setHoneypot(e.target.value)}
+                tabIndex={-1}
+                autoComplete="off"
+                className="sr-only"
+                aria-hidden="true"
+              />
+
               {submitError && (
                 <div className="rounded-card-md border border-red-200 bg-red-50 p-4 text-[13px] text-red-800">
                   {submitError}

@@ -155,13 +155,30 @@ export const CANONICAL_DEV_IDENTITIES: DevelopmentIdentityFixture[] = [
   },
 ];
 
-class DevelopmentAuthProviderImpl implements DevelopmentAuthProvider {
-  private currentSession: AuthContext = {
+const AUTH_SESSION_KEY = "marineworld_auth_session";
+
+function loadSessionFromStorage(): AuthContext {
+  try {
+    const raw = typeof window !== "undefined" ? localStorage.getItem(AUTH_SESSION_KEY) : null;
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object" && parsed.uid) {
+        return parsed;
+      }
+    }
+  } catch (e) {
+    console.error("Failed to restore auth session from storage", e);
+  }
+  return {
     uid: null,
     email: undefined,
     displayName: undefined,
     isDevelopmentSession: true,
   };
+}
+
+class DevelopmentAuthProviderImpl implements DevelopmentAuthProvider {
+  private currentSession: AuthContext = loadSessionFromStorage();
   private listeners: Set<AuthStateCallback> = new Set();
 
   public getProviderType(): "DEVELOPMENT" {
@@ -177,6 +194,13 @@ class DevelopmentAuthProviderImpl implements DevelopmentAuthProvider {
       ...user,
       isDevelopmentSession: true,
     };
+    try {
+      if (typeof window !== "undefined") {
+        localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(this.currentSession));
+      }
+    } catch (e) {
+      console.error("Failed to save auth session to storage", e);
+    }
     this.notifyListeners();
   }
 
@@ -187,6 +211,13 @@ class DevelopmentAuthProviderImpl implements DevelopmentAuthProvider {
       displayName: undefined,
       isDevelopmentSession: true,
     };
+    try {
+      if (typeof window !== "undefined") {
+        localStorage.removeItem(AUTH_SESSION_KEY);
+      }
+    } catch (e) {
+      console.error("Failed to clear auth session from storage", e);
+    }
     this.notifyListeners();
   }
 

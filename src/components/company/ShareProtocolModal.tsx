@@ -63,7 +63,7 @@ export function ShareProtocolModal({
       label: "LinkedIn",
       icon: Linkedin,
       href: `https://www.linkedin.com/sharing/share-offsite/?url=${encodedUrl}`,
-      colorClass: "text-blue-700 hover:border-blue-300 hover:bg-blue-50/50",
+      colorClass: "text-royal hover:border-royal/30 hover:bg-royal/5/50",
     },
     {
       id: "x",
@@ -79,7 +79,7 @@ export function ShareProtocolModal({
       label: "Email",
       icon: Mail,
       href: `mailto:?subject=${encodeURIComponent(title)}&body=${encodedText}%0A%0A${encodedUrl}`,
-      colorClass: "text-sky-600 hover:border-sky-300 hover:bg-sky-50/50",
+      colorClass: "text-royal hover:border-royal/30 hover:bg-royal/5",
     },
   ];
 

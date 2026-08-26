@@ -23,6 +23,7 @@ import {
   Check,
   Tag,
   Briefcase,
+  Users,
 } from "lucide-react";
 import type { InquiryEntity, InquiryStatus, InquiryPriority } from "@/lib/types";
 import {
@@ -38,6 +39,7 @@ import {
   type CommercialNotificationLog,
 } from "@/lib/services/commercialNotificationService";
 import { getCompanyById } from "@/lib/services/companyService";
+import { CompanyStudioContactsView } from "./CompanyStudioContactsView";
 
 interface CompanyStudioConnectViewProps {
   companyId: string;
@@ -57,7 +59,7 @@ function renderStatusBadge(status: InquiryStatus | string) {
     case "OPEN":
     case "IN_PROGRESS":
       return (
-        <span className="inline-flex items-center gap-1 font-mono text-[10.5px] font-bold text-sky-800 bg-sky-50 border border-sky-200 px-2 py-0.5 rounded-md uppercase tracking-wider">
+        <span className="inline-flex items-center gap-1 font-mono text-[10.5px] font-bold text-royal-dark bg-royal/5 border border-royal/20 px-2 py-0.5 rounded-md uppercase tracking-wider">
           🔍 IN REVIEW
         </span>
       );
@@ -137,6 +139,7 @@ export function CompanyStudioConnectView({
   userEmail = "commercial@marineworld.city",
 }: CompanyStudioConnectViewProps) {
   const [inquiries, setInquiries] = useState<InquiryEntity[]>([]);
+  const [activeConnectTab, setActiveConnectTab] = useState<"INBOX" | "CONTACTS">("INBOX");
   const [selectedInquiryId, setSelectedInquiryId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
@@ -301,7 +304,7 @@ export function CompanyStudioConnectView({
             Connect & RFQs Workspace
           </h1>
           <p className="text-xs sm:text-sm text-stone mt-1">
-            Receive, review, and manage customer inquiries, official RFQs, and commercial negotiations for{" "}
+            Receive, review, and manage customer inquiries, official RFQs, and configure direct reach contacts for{" "}
             <strong className="text-graphite">{companyTitle}</strong>.
           </p>
         </div>
@@ -309,7 +312,7 @@ export function CompanyStudioConnectView({
         <div className="flex items-center gap-2 self-start md:self-auto">
           <button
             onClick={() => setShowLogDrawer(true)}
-            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border border-line bg-white hover:bg-slate-50 text-stone hover:text-graphite font-mono text-[11px] font-bold transition shadow-2xs"
+            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border border-line bg-white hover:bg-slate-50 text-stone hover:text-graphite font-mono text-[11px] font-bold transition shadow-2xs cursor-pointer"
             title="View simulated email notifications dispatched by the platform"
           >
             <Bell className="w-3.5 h-3.5 text-amber-800" />
@@ -318,7 +321,41 @@ export function CompanyStudioConnectView({
         </div>
       </div>
 
-      {/* 2. CANONICAL CONTACT ROUTING BANNER */}
+      {/* SUB-TAB SELECTOR: INBOX vs CONTACTS CONFIG */}
+      <div className="flex items-center gap-2 border-b border-line pb-3">
+        <button
+          type="button"
+          onClick={() => setActiveConnectTab("INBOX")}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
+            activeConnectTab === "INBOX"
+              ? "bg-royal text-white shadow-2xs"
+              : "bg-canvas text-stone hover:text-graphite hover:bg-slate-100"
+          }`}
+        >
+          <Inbox className="w-3.5 h-3.5" />
+          <span>RFQs &amp; Inquiries Inbox ({inquiries.length})</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveConnectTab("CONTACTS")}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
+            activeConnectTab === "CONTACTS"
+              ? "bg-royal text-white shadow-2xs"
+              : "bg-canvas text-stone hover:text-graphite hover:bg-slate-100"
+          }`}
+        >
+          <Users className="w-3.5 h-3.5" />
+          <span>Company Contacts &amp; Direct Reach</span>
+        </button>
+      </div>
+
+      {/* IF CONTACTS TAB ACTIVE */}
+      {activeConnectTab === "CONTACTS" ? (
+        <CompanyStudioContactsView companyId={companyId} />
+      ) : (
+        <>
+          {/* 2. CANONICAL CONTACT ROUTING BANNER */}
       <div className="rounded-xl border border-line bg-gradient-to-r from-slate-50 via-white to-sky-50/30 p-4 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-lg bg-royal/10 text-royal border border-royal/20 flex items-center justify-center shrink-0">
@@ -382,7 +419,7 @@ export function CompanyStudioConnectView({
         <div
           onClick={() => setStatusFilter("ALL")}
           className={`p-4 rounded-xl border transition cursor-pointer ${
-            statusFilter === "ALL" ? "bg-sky-50 border-sky-300 ring-1 ring-sky-400" : "bg-white border-line hover:border-sky-300"
+            statusFilter === "ALL" ? "bg-royal/5 border-royal/30 ring-1 ring-royal/40" : "bg-white border-line hover:border-royal/30"
           }`}
         >
           <div className="text-stone text-[11px] font-bold uppercase tracking-wider">
@@ -479,7 +516,7 @@ export function CompanyStudioConnectView({
                       key={inq.id}
                       onClick={() => handleSelectInquiry(inq)}
                       className={`cursor-pointer transition hover:bg-slate-50/80 ${
-                        isSelected ? "bg-sky-50/60 font-medium" : ""
+                        isSelected ? "bg-royal/5 font-medium" : ""
                       }`}
                     >
                       <td className="py-3.5 px-4 font-mono text-[11px] font-bold text-royal whitespace-nowrap">
@@ -701,7 +738,7 @@ export function CompanyStudioConnectView({
                           key={msg.id}
                           className={`p-3.5 rounded-xl border text-xs space-y-1.5 ${
                             isCompany
-                              ? "bg-sky-50/60 border-sky-200 ml-6"
+                              ? "bg-royal/5 border-royal/20 ml-6"
                               : "bg-slate-50 border-line mr-6"
                           }`}
                         >
@@ -821,6 +858,8 @@ export function CompanyStudioConnectView({
             </div>
           </div>
         </div>
+      )}
+        </>
       )}
     </div>
   );

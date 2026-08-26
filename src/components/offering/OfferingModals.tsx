@@ -193,7 +193,7 @@ export function DocumentViewerModal({
               type="button"
               onClick={handleDownload}
               disabled={downloading}
-              className="px-4 py-2 text-xs font-semibold text-white bg-royal hover:bg-blue-700 rounded-lg transition flex items-center gap-2 cursor-pointer shadow-xs disabled:opacity-50"
+              className="px-4 py-2 text-xs font-semibold text-white bg-royal hover:bg-royal-dark rounded-lg transition flex items-center gap-2 cursor-pointer shadow-xs disabled:opacity-50"
             >
               <Download className="w-3.5 h-3.5" />
               <span>{downloaded ? "Downloaded Record" : downloading ? "Preparing..." : "Download Authorized Copy"}</span>

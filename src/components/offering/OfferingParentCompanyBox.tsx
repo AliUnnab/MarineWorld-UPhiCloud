@@ -6,7 +6,6 @@ import {
   ExternalLink,
   Layers,
   ArrowRight,
-  Sparkles,
 } from "lucide-react";
 import type { CompanyProfile, CompanyEntity } from "@/lib/types";
 
@@ -61,7 +60,7 @@ export function OfferingParentCompanyBox({
           </button>
           <a
             href={`/companies/${companySlug}`}
-            className="px-4 py-2 rounded-lg bg-royal hover:bg-blue-700 text-white text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs group"
+            className="px-4 py-2 rounded-lg bg-royal hover:bg-royal-dark text-white text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs group"
           >
             <span>View Company Page</span>
             <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />

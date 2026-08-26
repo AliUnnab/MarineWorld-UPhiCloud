@@ -268,7 +268,11 @@ const ICON_PATHS: Record<IconName, ReactElement> = {
     </>
   ),
   spark: (
-    <path d="M12 3l1.9 5.6L19.5 10l-5.6 1.9L12 17.5l-1.9-5.6L4.5 10l5.6-1.4L12 3Z" />
+    <>
+      <rect x="6" y="6" width="12" height="12" rx="2" />
+      <circle cx="12" cy="12" r="2.5" />
+      <path d="M12 2.5v3.5M12 18v3.5M2.5 12H6M18 12h3.5" />
+    </>
   ),
   compass: (
     <>
@@ -370,15 +374,15 @@ export function Icon({ name, className = "h-5 w-5", strokeWidth = 1.5 }: IconPro
   );
 }
 
-/** MarineWorld vertical identity mark ("I") — bold, simple, clean. */
-export function LogoMark({ className = "h-8 w-8" }: { className?: string }) {
+/** MarineWorld vertical identity mark — pure vertical line, no square box, inherits brand color */
+export function LogoMark({ className = "h-5 w-1.5" }: { className?: string }) {
   return (
     <span
-      className={`inline-flex items-center justify-center rounded-[8px] bg-graphite text-white ${className}`}
+      className={`inline-flex items-center justify-center shrink-0 ${className}`}
       aria-hidden="true"
     >
-      <svg viewBox="0 0 24 24" fill="none" className="h-[60%] w-[60%]">
-        <path d="M12 4v16" stroke="currentColor" strokeWidth="4.2" strokeLinecap="round" />
+      <svg viewBox="0 0 6 24" fill="none" className="h-full w-auto block">
+        <path d="M3 2v20" stroke="currentColor" strokeWidth="4.5" strokeLinecap="round" />
       </svg>
     </span>
   );

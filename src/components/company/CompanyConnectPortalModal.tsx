@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import type { CompanyProfile, SectorCity, IndustryDomainEntity } from "@/lib/types";
 import {
   X,
@@ -20,9 +20,74 @@ import {
   ShoppingCart,
   ArrowUpRight,
   Package,
+  Store,
+  Briefcase,
 } from "lucide-react";
 import { StaffDigitalCardModal, StaffMemberInfo } from "./StaffDigitalCardModal";
 import { ShareProtocolModal } from "./ShareProtocolModal";
+import {
+  getCompanyContacts,
+  subscribeCompanyContacts,
+  type CompanyContactsPackage,
+  type CompanyETradeNode,
+  type CompanySocialChannel,
+} from "@/lib/services/companyContactService";
+
+function getETradeIcon(iconType?: string) {
+  switch (iconType) {
+    case "ShoppingCart":
+    case "Store":
+      return ShoppingCart;
+    case "Package":
+      return Package;
+    case "Briefcase":
+      return Briefcase;
+    case "Globe":
+      return Globe;
+    default:
+      return ExternalLink;
+  }
+}
+
+function getSocialStyle(type?: string) {
+  switch (type) {
+    case "linkedin":
+      return {
+        icon: Linkedin,
+        color: "text-royal bg-royal/5 border-royal/15 hover:bg-royal/10",
+      };
+    case "x":
+      return {
+        icon: () => <span className="font-bold text-xs leading-none text-slate-900">𝕏</span>,
+        color: "text-slate-900 bg-slate-100 border-slate-200 hover:bg-slate-200",
+      };
+    case "instagram":
+      return {
+        icon: Instagram,
+        color: "text-pink-600 bg-pink-50 border-pink-200/60 hover:bg-pink-100",
+      };
+    case "youtube":
+      return {
+        icon: Youtube,
+        color: "text-red-600 bg-red-50 border-red-200/60 hover:bg-red-100",
+      };
+    case "facebook":
+      return {
+        icon: Facebook,
+        color: "text-royal-dark bg-royal/5 border-royal/15 hover:bg-royal/10",
+      };
+    case "whatsapp":
+      return {
+        icon: MessageCircle,
+        color: "text-emerald-700 bg-emerald-50 border-emerald-200/60 hover:bg-emerald-100",
+      };
+    default:
+      return {
+        icon: Globe,
+        color: "text-slate-800 bg-slate-50 border-slate-200 hover:bg-slate-100",
+      };
+  }
+}
 
 export function CompanyConnectPortalModal({
   isOpen,
@@ -41,6 +106,19 @@ export function CompanyConnectPortalModal({
   const [selectedStaff, setSelectedStaff] = useState<StaffMemberInfo | null>(null);
   const [isShareCompanyOpen, setIsShareCompanyOpen] = useState(false);
   const [logoError, setLogoError] = useState(false);
+
+  // Dynamic contacts package synced with Studio
+  const [contactsPkg, setContactsPkg] = useState<CompanyContactsPackage>(() =>
+    getCompanyContacts(company)
+  );
+
+  useEffect(() => {
+    setContactsPkg(getCompanyContacts(company));
+    const unsubscribe = subscribeCompanyContacts(company.id || "company", (updated) => {
+      setContactsPkg(updated);
+    });
+    return () => unsubscribe();
+  }, [company.id, company]);
 
   // Close on Escape key
   useEffect(() => {
@@ -74,188 +152,16 @@ export function CompanyConnectPortalModal({
   const hqCity = String(company.headquartersCity || company.city || "Headquarters");
   const country = String(company.country || company.location || "Global");
 
-  // Derive domain from company website or slug
-  const companySlug = String(company.slug || company.id || "company");
-  const webDomain = company.website
-    ? company.website.replace(/^https?:\/\/(www\.)?/, "").replace(/\/.*$/, "")
-    : `${companySlug.toLowerCase()}.com`;
-
-  const officialEmail = company.officialEmail || `info@${webDomain}`;
-  const officialWebsite = company.website?.startsWith("http") ? company.website : `https://${webDomain}`;
-
-  // Grounded real-feel contact registry numbers based on geography
-  const isTurkey = country.toLowerCase().includes("turkey") || country.toLowerCase().includes("türkiye") || hqCity.toLowerCase().includes("istanbul");
-  const isGermany = country.toLowerCase().includes("germany") || country.toLowerCase().includes("deutschland") || hqCity.toLowerCase().includes("bremen") || hqCity.toLowerCase().includes("hamburg");
-  const isUK = country.toLowerCase().includes("uk") || country.toLowerCase().includes("united kingdom") || country.toLowerCase().includes("britain");
-  const isNorway = country.toLowerCase().includes("norway") || country.toLowerCase().includes("norge") || hqCity.toLowerCase().includes("oslo") || hqCity.toLowerCase().includes("bergen");
-  const isNetherlands = country.toLowerCase().includes("netherlands") || country.toLowerCase().includes("holland") || hqCity.toLowerCase().includes("rotterdam");
-
-  const phoneHq = company.officialPhone || (
-    isTurkey ? "+90 (212) 555 1255" :
-    isGermany ? "+49 (421) 6604-0" :
-    isUK ? "+44 (20) 7946 0991" :
-    isNorway ? "+47 (22) 55 99 00" :
-    isNetherlands ? "+31 (10) 799 9000" :
-    "+1 (212) 555-0199"
-  );
-
-  const phoneOperations = (
-    isTurkey ? "+90 (232) 444 8833" :
-    isGermany ? "+49 (40) 3344 8800" :
-    isUK ? "+44 (23) 8099 4433" :
-    isNorway ? "+47 (55) 30 11 00" :
-    isNetherlands ? "+31 (10) 412 8844" :
-    "+1 (305) 555-0182"
-  );
-
-  const phoneStrategic = (
-    isTurkey ? "+90 (532) 999 4400" :
-    isGermany ? "+49 (170) 552 1199" :
-    isUK ? "+44 (7700) 900822" :
-    isNorway ? "+47 (90) 12 34 56" :
-    isNetherlands ? "+31 (6) 5544 3322" :
-    "+1 (800) 555-0144"
-  );
-
+  const officialEmail = contactsPkg.generalContacts.officialEmail || company.officialEmail || `info@${company.slug || "company"}.com`;
+  const officialWebsite = contactsPkg.generalContacts.officialWebsite || company.website || `https://${company.slug || "company"}.com`;
+  const phoneHq = contactsPkg.generalContacts.phoneHq || company.officialPhone || "+1 (212) 555-0199";
+  const phoneOperations = contactsPkg.generalContacts.phoneOperations || "+1 (305) 555-0182";
+  const phoneStrategic = contactsPkg.generalContacts.phoneStrategic || "+1 (800) 555-0144";
   const cleanPhone = (phone: string) => phone.replace(/[^\d+]/g, "");
 
-  // Staff members: executive roles moderated, commercial/support roles directly contactable
-  const staffMembers: StaffMemberInfo[] = [
-    {
-      id: "staff-1",
-      name: "SARAH CHEN",
-      role: "CEO / Strategic Relations",
-      department: "Executive Office",
-      avatar: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=200&auto=format&fit=crop&q=80",
-      email: `s.chen@${webDomain}`,
-      phone: phoneStrategic,
-      whatsapp: cleanPhone(phoneStrategic),
-      linkedin: `https://linkedin.com/company/${company.slug || company.id}`,
-      twitter: "https://x.com",
-      instagram: "https://instagram.com",
-      isOnline: true,
-      isExecutive: true,
-    },
-    {
-      id: "staff-2",
-      name: "MARCUS VANE",
-      role: "Sales Engineer",
-      department: "Commercial & B2B Solutions",
-      avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80",
-      email: `m.vane@${webDomain}`,
-      phone: phoneOperations,
-      whatsapp: cleanPhone(phoneOperations),
-      linkedin: `https://linkedin.com/company/${company.slug || company.id}`,
-      twitter: "https://x.com",
-      instagram: "https://instagram.com",
-      isOnline: true,
-      isExecutive: false,
-    },
-    {
-      id: "staff-3",
-      name: "ELENA ROSTOVA",
-      role: "Operations Director",
-      department: "Global Shipyard Operations",
-      avatar: "https://images.unsplash.com/photo-1580489944761-15a19d654956?w=200&auto=format&fit=crop&q=80",
-      email: `e.rostova@${webDomain}`,
-      phone: phoneHq,
-      whatsapp: cleanPhone(phoneHq),
-      linkedin: `https://linkedin.com/company/${company.slug || company.id}`,
-      twitter: "https://x.com",
-      instagram: "https://instagram.com",
-      isOnline: true,
-      isExecutive: false,
-    },
-    {
-      id: "staff-4",
-      name: "DAVID KAEL",
-      role: "Customer Success Tech",
-      department: "Fleet Support & Warranty",
-      avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&auto=format&fit=crop&q=80",
-      email: `d.kael@${webDomain}`,
-      phone: phoneOperations,
-      whatsapp: cleanPhone(phoneOperations),
-      linkedin: `https://linkedin.com/company/${company.slug || company.id}`,
-      twitter: "https://x.com",
-      instagram: "https://instagram.com",
-      isOnline: true,
-      isExecutive: false,
-    },
-  ];
-
-  // E-Commerce & Global Procurement
-  const eTradeNodes = [
-    {
-      id: "eshop-direct",
-      title: "Official Direct Store",
-      description: "Direct parts catalog, certified marine spares, and accessories with global express courier delivery.",
-      url: `${officialWebsite}/shop`,
-      badge: "Direct Store",
-      icon: ShoppingCart,
-      buttonText: "Visit Store",
-    },
-    {
-      id: "etrade-b2b",
-      title: "B2B Procurement Portal",
-      description: "Institutional trade portal for bulk equipment orders, RFQ generation, and contractual fleet procurement.",
-      url: `${officialWebsite}/procurement`,
-      badge: "B2B Procurement",
-      icon: Package,
-      buttonText: "Procurement Portal",
-    },
-  ];
-
-  // Social Media Channels
-  const socialChannels = [
-    {
-      id: "linkedin",
-      name: "LinkedIn",
-      handle: `@${company.slug || company.id}`,
-      url: `https://linkedin.com/company/${company.slug || company.id}`,
-      icon: Linkedin,
-      color: "text-blue-700 bg-blue-50 border-blue-200/60 hover:bg-blue-100",
-    },
-    {
-      id: "x",
-      name: "X",
-      handle: `@${company.slug || company.id}_official`,
-      url: "https://x.com",
-      icon: () => <span className="font-bold text-xs leading-none text-slate-900">𝕏</span>,
-      color: "text-slate-900 bg-slate-100 border-slate-200 hover:bg-slate-200",
-    },
-    {
-      id: "instagram",
-      name: "Instagram",
-      handle: `@${company.slug || company.id}`,
-      url: "https://instagram.com",
-      icon: Instagram,
-      color: "text-pink-600 bg-pink-50 border-pink-200/60 hover:bg-pink-100",
-    },
-    {
-      id: "youtube",
-      name: "YouTube",
-      handle: `${displayName} Official`,
-      url: "https://youtube.com",
-      icon: Youtube,
-      color: "text-red-600 bg-red-50 border-red-200/60 hover:bg-red-100",
-    },
-    {
-      id: "facebook",
-      name: "Facebook",
-      handle: displayName,
-      url: "https://facebook.com",
-      icon: Facebook,
-      color: "text-blue-800 bg-blue-50 border-blue-200/60 hover:bg-blue-100",
-    },
-    {
-      id: "whatsapp-channel",
-      name: "WhatsApp Broadcast",
-      handle: "Official Corporate Feed",
-      url: `https://wa.me/${cleanPhone(phoneHq)}`,
-      icon: MessageCircle,
-      color: "text-emerald-700 bg-emerald-50 border-emerald-200/60 hover:bg-emerald-100",
-    },
-  ];
+  const staffMembers = contactsPkg.teamMembers;
+  const eTradeNodes = contactsPkg.eTradeNodes;
+  const socialChannels = contactsPkg.socialChannels;
 
   return (
     <>
@@ -460,7 +366,7 @@ export function CompanyConnectPortalModal({
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                   {eTradeNodes.map((node) => {
-                    const Icon = node.icon;
+                    const Icon = getETradeIcon(node.iconType);
                     return (
                       <div
                         key={node.id}
@@ -514,7 +420,8 @@ export function CompanyConnectPortalModal({
 
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
                   {socialChannels.map((soc) => {
-                    const Icon = soc.icon;
+                    const style = getSocialStyle(soc.colorType || soc.id);
+                    const Icon = style.icon;
                     return (
                       <a
                         key={soc.id}
@@ -523,7 +430,7 @@ export function CompanyConnectPortalModal({
                         rel="noreferrer"
                         className="flex items-center gap-2.5 rounded-card-md border border-line bg-white p-3 shadow-2xs hover:border-slate-300 hover:bg-slate-50/70 transition group"
                       >
-                        <div className={`w-8 h-8 rounded-card-sm border flex items-center justify-center shrink-0 transition-transform group-hover:scale-105 ${soc.color}`}>
+                        <div className={`w-8 h-8 rounded-card-sm border flex items-center justify-center shrink-0 transition-transform group-hover:scale-105 ${style.color}`}>
                           <Icon className="w-4 h-4" />
                         </div>
                         <div className="min-w-0 flex-1">

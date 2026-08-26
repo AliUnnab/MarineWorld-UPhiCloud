@@ -2,94 +2,150 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper functions
+    // Global Authentication Helper
     function isSignedIn() {
-      return request.auth != null;
+      return request.auth != null && request.auth.uid != null;
     }
 
+    // Tenant Membership Verification Helper
     function isCompanyMember(companyId) {
-      return true;
+      return isSignedIn() && (
+        exists(/databases/$(database)/documents/companies/$(companyId)/members/$(request.auth.uid)) ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.companyId == companyId
+      );
     }
 
-    function isCompanyOwner(companyId) {
-      return true;
+    // Role-based Access Helpers
+    function isCompanyRole(companyId, allowedRoles) {
+      return isSignedIn() && (
+        get(/databases/$(database)/documents/companies/$(companyId)/members/$(request.auth.uid)).data.role in allowedRoles
+      );
     }
 
-    function isCompanyAdmin(companyId) {
-      return true;
-    }
-
-    function isCompanyManager(companyId) {
-      return true;
-    }
-
-    function isCompanyOperations(companyId) {
-      return true;
-    }
-
-    function isCompanySales(companyId) {
-      return true;
-    }
-
-    // Default match for all documents & subcollections
+    // User Profile Documents (/users/{uid})
     match /users/{uid} {
-      allow read, write: if true;
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && request.auth.uid == uid;
 
       match /{allSubcollections=**} {
-        allow read, write: if true;
+        allow read, write: if isSignedIn() && request.auth.uid == uid;
       }
     }
 
-    match /businessIds/{businessId} {
-      allow read, write: if true;
-    }
-
-    match /platforms/{platformId} {
-      allow read, write: if true;
-    }
-
+    // Public Registry & Taxonomy Collections (Read-only for public, Admin write)
     match /sectors/{sectorId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if isSignedIn();
     }
 
     match /sectorCities/{sectorCityId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if isSignedIn();
     }
 
     match /properties/{propertyId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if isSignedIn();
     }
 
-    match /reservationIntents/{intentId} {
-      allow read, write: if true;
+    match /businessIds/{businessId} {
+      allow read: if true;
+      allow write: if isSignedIn();
     }
 
-    match /commercialOffers/{offerId} {
-      allow read, write: if true;
-    }
+    // Ecosystem Organizations (/ecosystemOrganizations/{orgId})
+    match /ecosystemOrganizations/{orgId} {
+      allow read: if true;
+      allow write: if isSignedIn();
 
-    match /commercialAgreements/{agreementId} {
-      allow read, write: if true;
-    }
-
-    match /companies/{companyId} {
-      allow read, write: if true;
-
-      match /{allSubcollections=**} {
-        allow read, write: if true;
+      match /members/{memberId} {
+        allow read: if isSignedIn();
+        allow write: if isSignedIn();
       }
     }
 
+    // Company Entity & Subcollections (/companies/{companyId})
+    match /companies/{companyId} {
+      allow read: if true; // Public company profiles are readable
+      allow write: if isSignedIn() && isCompanyMember(companyId);
+
+      // Subcollection: members
+      match /members/{memberUid} {
+        allow read: if isCompanyMember(companyId);
+        allow write: if isSignedIn() && (request.auth.uid == memberUid || isCompanyRole(companyId, ['OWNER', 'ADMIN']));
+      }
+
+      // Subcollection: offerings (products, services)
+      match /products/{productId} {
+        allow read: if true;
+        allow write: if isCompanyMember(companyId);
+      }
+
+      match /services/{serviceId} {
+        allow read: if true;
+        allow write: if isCompanyMember(companyId);
+      }
+
+      // Subcollection: documents & data spaces (Confidential)
+      match /documents/{docId} {
+        allow read: if isCompanyMember(companyId);
+        allow write: if isCompanyRole(companyId, ['OWNER', 'ADMIN', 'TECHNICAL', 'OPERATIONS']);
+      }
+
+      // Subcollection: commercial invoices & billing
+      match /commercialInvoices/{invoiceId} {
+        allow read: if isCompanyMember(companyId);
+        allow write: if isCompanyRole(companyId, ['OWNER', 'ADMIN', 'COMMERCIAL']);
+      }
+
+      // Subcollection: governance revisions
+      match /governanceRevisions/{revisionId} {
+        allow read: if isCompanyMember(companyId);
+        allow write: if isCompanyRole(companyId, ['OWNER', 'ADMIN']);
+      }
+
+      // Catch-all for other company subcollections
+      match /{subcollection}/{docId} {
+        allow read: if isCompanyMember(companyId);
+        allow write: if isCompanyMember(companyId);
+      }
+    }
+
+    // Inquiries & RFQs (/inquiries/{inquiryId})
+    match /inquiries/{inquiryId} {
+      allow read: if isSignedIn() && (
+        resource.data.requesterUid == request.auth.uid ||
+        isCompanyMember(resource.data.targetCompanyId)
+      );
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && (
+        resource.data.requesterUid == request.auth.uid ||
+        isCompanyMember(resource.data.targetCompanyId)
+      );
+    }
+
+    // Commercial Agreements & Lease Intents
+    match /commercialAgreements/{agreementId} {
+      allow read: if isSignedIn() && (
+        resource.data.companyId == null ||
+        isCompanyMember(resource.data.companyId)
+      );
+      allow write: if isSignedIn();
+    }
+
+    match /reservationIntents/{intentId} {
+      allow read, write: if isSignedIn();
+    }
+
+    // Company Analytics & Telemetry
     match /companyAnalytics/{companyId}/events/{eventId} {
-      allow read, write: if true;
+      allow read: if isCompanyMember(companyId);
+      allow create: if true; // Telemetry event ingest
     }
 
-    match /aiInteractions/{interactionId} {
-      allow read, write: if true;
-    }
-
+    // Fallback: Deny any unspecified access
     match /{document=**} {
-      allow read, write: if true;
+      allow read, write: if false;
     }
   }
 }

@@ -174,7 +174,7 @@ export function OfferingEntityHeader({
             <button
               type="button"
               onClick={onRequestOffer}
-              className="px-5 py-2 rounded-lg bg-royal hover:bg-blue-700 text-white text-xs font-bold transition flex items-center gap-2 cursor-pointer shadow-xs"
+              className="px-5 py-2 rounded-lg bg-royal hover:bg-royal-dark text-white text-xs font-bold transition flex items-center gap-2 cursor-pointer shadow-xs"
             >
               <span>Request Official Offer</span>
             </button>

@@ -105,7 +105,7 @@ export function CommercialReceiptModal({
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
                 Invoice Reference
               </span>
-              <span className="font-mono font-bold text-blue-600 text-[11px]">
+              <span className="font-mono font-bold text-royal text-[11px]">
                 {invoice?.invoiceNumber || (payment.invoiceId ? `INV-${payment.invoiceId.slice(-8).toUpperCase()}` : "N/A")}
               </span>
             </div>
@@ -126,11 +126,11 @@ export function CommercialReceiptModal({
               <span className="font-semibold text-slate-800 text-[11px] flex items-center gap-1.5">
                 {isGcp ? (
                   <>
-                    <Cloud className="w-3.5 h-3.5 text-blue-600" /> Google Cloud Marketplace
+                    <Cloud className="w-3.5 h-3.5 text-royal" /> Google Cloud Marketplace
                   </>
                 ) : (
                   <>
-                    <CreditCard className="w-3.5 h-3.5 text-indigo-600" /> Stripe Corporate Direct
+                    <CreditCard className="w-3.5 h-3.5 text-royal" /> Stripe Corporate Direct
                   </>
                 )}
               </span>

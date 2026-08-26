@@ -59,8 +59,8 @@ export function CommercialInvoiceModal({
             <div
               className={`w-10 h-10 rounded-2xl flex items-center justify-center border ${
                 isGcp
-                  ? "bg-blue-50 text-blue-600 border-blue-200"
-                  : "bg-indigo-50 text-indigo-600 border-indigo-200"
+                  ? "bg-royal/5 text-royal border-royal/20"
+                  : "bg-royal/5 text-royal border-royal/20"
               }`}
             >
               {isGcp ? <Cloud className="w-5 h-5" /> : <CreditCard className="w-5 h-5" />}
@@ -71,7 +71,7 @@ export function CommercialInvoiceModal({
                   MARINEWORLD.CITY
                 </span>
                 <span className="text-slate-300">&bull;</span>
-                <span className="text-[10px] font-mono font-bold tracking-wider text-blue-600 uppercase">
+                <span className="text-[10px] font-mono font-bold tracking-wider text-royal uppercase">
                   COMMERCIAL INVOICE
                 </span>
               </div>
@@ -87,7 +87,7 @@ export function CommercialInvoiceModal({
                 invoice.status === "PAID"
                   ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
                   : invoice.status === "OPEN"
-                  ? "bg-blue-50 text-blue-700 border border-blue-200"
+                  ? "bg-royal/5 text-royal border border-royal/20"
                   : invoice.status === "DRAFT"
                   ? "bg-slate-100 text-slate-600 border border-slate-200"
                   : "bg-amber-50 text-amber-700 border border-amber-200"
@@ -108,19 +108,19 @@ export function CommercialInvoiceModal({
         <div className="p-6 overflow-y-auto space-y-6 flex-1 text-xs">
           {/* PROVIDER NOTICE / STATUS BANNER */}
           {isGcp ? (
-            <div className="p-4 rounded-2xl bg-blue-50/70 border border-blue-200 space-y-2">
-              <div className="flex items-center justify-between text-blue-900">
+            <div className="p-4 rounded-2xl bg-royal/5 border border-royal/20 space-y-2">
+              <div className="flex items-center justify-between text-royal-dark">
                 <span className="font-bold uppercase tracking-wider text-[10px] flex items-center gap-1.5">
-                  <Cloud className="w-3.5 h-3.5 text-blue-600" /> SOURCE: GOOGLE CLOUD MARKETPLACE
+                  <Cloud className="w-3.5 h-3.5 text-royal" /> SOURCE: GOOGLE CLOUD MARKETPLACE
                 </span>
-                <span className="font-mono text-[11px] font-semibold text-blue-800">
+                <span className="font-mono text-[11px] font-semibold text-royal-dark">
                   BILLING STATUS: {invoice.status}
                 </span>
               </div>
-              <p className="text-[11px] text-blue-900/80 font-light leading-relaxed">
+              <p className="text-[11px] text-royal-dark/80 font-light leading-relaxed">
                 This transaction is an authorized Enterprise SaaS Private Offer billed directly through your Google Cloud Billing Account. Google Cloud Marketplace processes the consolidated invoice and disbursement.
               </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2 border-t border-blue-200/60 font-mono text-[11px]">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2 border-t border-royal/15 font-mono text-[11px]">
                 <div>
                   <span className="text-slate-500 block text-[10px] uppercase font-sans">BILLING ACCOUNT:</span>
                   <span className="font-bold text-slate-800">{invoice.cloudBillingAccountReference || "01A2B3-45C6D7-89E0F1"}</span>
@@ -135,7 +135,7 @@ export function CommercialInvoiceModal({
             <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1.5">
               <div className="flex items-center justify-between text-slate-700">
                 <span className="font-bold uppercase tracking-wider text-[10px] flex items-center gap-1.5">
-                  <CreditCard className="w-3.5 h-3.5 text-indigo-600" /> SOURCE: STRIPE CORPORATE DIRECT
+                  <CreditCard className="w-3.5 h-3.5 text-royal" /> SOURCE: STRIPE CORPORATE DIRECT
                 </span>
                 <div className="flex items-center gap-2">
                   {invoice.isSimulated && (
@@ -220,7 +220,7 @@ export function CommercialInvoiceModal({
                 </div>
                 <div>
                   <span className="text-[10px] text-slate-400 uppercase block">Commercial Agreement ID</span>
-                  <span className="font-mono font-semibold text-blue-600">{invoice.agreementId}</span>
+                  <span className="font-mono font-semibold text-royal">{invoice.agreementId}</span>
                 </div>
                 <div>
                   <span className="text-[10px] text-slate-400 uppercase block">Placement Tier</span>
@@ -250,7 +250,7 @@ export function CommercialInvoiceModal({
                     </div>
                     <div className="text-[11px] text-slate-400 mt-0.5">
                       {isPlatform
-                        ? "15 Seats, Parametric Digital Twin, AI Maritime Copilot & Dedicated Advisor"
+                        ? "15 Seats, Parametric Digital Twin, AI Maritime Intelligence & Dedicated Advisor"
                         : `Commercial placement & editorial rights on ${invoice.propertyKey}`}
                     </div>
                   </td>
@@ -279,7 +279,7 @@ export function CommercialInvoiceModal({
               </div>
               <div className="flex justify-between text-slate-900 font-bold pt-2 border-t border-slate-200 text-sm">
                 <span>Total Invoice Amount:</span>
-                <span className="font-mono text-blue-600">
+                <span className="font-mono text-royal">
                   ${invoice.total.toLocaleString()} {invoice.currency}
                 </span>
               </div>
@@ -337,7 +337,7 @@ export function CommercialInvoiceModal({
                 href="https://console.cloud.google.com/marketplace"
                 target="_blank"
                 rel="noreferrer"
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm"
+                className="px-4 py-2 bg-royal hover:bg-royal-dark text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm"
               >
                 View Marketplace Offer <ExternalLink className="w-3.5 h-3.5" />
               </a>
@@ -346,7 +346,7 @@ export function CommercialInvoiceModal({
                 href={invoice.hostedInvoiceUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm"
+                className="px-4 py-2 bg-royal hover:bg-royal-dark text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm"
               >
                 View Invoice <ExternalLink className="w-3.5 h-3.5" />
               </a>

@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { CompanyProfile, CompanyEntity } from "@/lib/types";
+import { marineSector } from "@/lib/sectors/marine";
 import {
   saveCompanyRecordSync,
   getCompanyRecordSync,
@@ -24,6 +25,10 @@ import {
   Anchor,
   FileText,
   Calendar,
+  Upload,
+  Image as ImageIcon,
+  UploadCloud,
+  Trash2,
 } from "lucide-react";
 
 interface CanonicalCompanyProfileModalProps {
@@ -34,14 +39,10 @@ interface CanonicalCompanyProfileModalProps {
   onProfileUpdated?: (updated: CompanyProfile) => void;
 }
 
-const AVAILABLE_SECTOR_CITIES = [
-  { id: "supplychain", label: "Supply Chain & Logistics" },
-  { id: "shipyard", label: "Shipyard & Refit Engineering" },
-  { id: "charter", label: "Yacht Charter & Fleet Ops" },
-  { id: "brokerage", label: "Yacht Brokerage & Sales" },
-  { id: "procurement", label: "Marine Equipment Procurement" },
-  { id: "marina", label: "Marina & Docking Hub" },
-];
+const AVAILABLE_SECTOR_CITIES = marineSector.explorer.cities.map((c) => ({
+  id: c.id,
+  label: `${c.domain} · ${c.shortDescription}`,
+}));
 
 const AVAILABLE_REGIONAL_EDITIONS = [
   { code: "MEDITERRANEAN", label: "Mediterranean Edition" },
@@ -89,7 +90,9 @@ export function CanonicalCompanyProfileModal({
     legalName: company.legalName || company.name || "",
     brandName: company.tradingName || (company as any).brandName || company.name || "",
     companyId6Digit: initial6Digit,
-    logoUrl: company.logoUrl || company.coverImage || "",
+    logoUrl: company.logoUrl || (company as any).logo || "",
+    coverImage: company.coverImage || (company as any).heroImageUrl || "",
+    flagshipStatement: company.flagshipStatement || (company as any).coverImageCaption || "",
     verificationStatus: company.verificationStatus || "VERIFIED",
 
     primarySectorCategory: company.primarySectorCategory || company.industry || "Marine Services",
@@ -109,6 +112,38 @@ export function CanonicalCompanyProfileModal({
 
   const [validationError, setValidationError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState<boolean>(false);
+  const [logoUploadMsg, setLogoUploadMsg] = useState<string | null>(null);
+  const [coverUploadMsg, setCoverUploadMsg] = useState<string | null>(null);
+
+  const handleLogoFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const dataUrl = event.target?.result as string;
+      if (dataUrl) {
+        setFormData((prev) => ({ ...prev, logoUrl: dataUrl }));
+        setLogoUploadMsg(`Uploaded logo: ${file.name}`);
+        setTimeout(() => setLogoUploadMsg(null), 4000);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleCoverFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const dataUrl = event.target?.result as string;
+      if (dataUrl) {
+        setFormData((prev) => ({ ...prev, coverImage: dataUrl }));
+        setCoverUploadMsg(`Uploaded flagship photo: ${file.name}`);
+        setTimeout(() => setCoverUploadMsg(null), 4000);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
 
   if (!isOpen) return null;
 
@@ -221,6 +256,11 @@ export function CanonicalCompanyProfileModal({
       shortDescription: formData.corporateDescription.slice(0, 160) || `${formData.displayName} corporate profile.`,
       industry: formData.primarySectorCategory,
       logoUrl: formData.logoUrl,
+      logo: formData.logoUrl,
+      coverImage: formData.coverImage,
+      heroImageUrl: formData.coverImage,
+      flagshipStatement: formData.flagshipStatement,
+      coverImageCaption: formData.flagshipStatement,
       websiteUrl: formData.websiteUrl,
       website: formData.websiteUrl,
       email: formData.officialEmail,
@@ -601,16 +641,121 @@ export function CanonicalCompanyProfileModal({
                     />
                   </div>
 
-                  <div>
-                    <label className="text-[11px] font-semibold text-graphite block mb-1">
-                      Logo URL
-                    </label>
+                  {/* Company Logo Editor */}
+                  <div className="sm:col-span-2 bg-slate-50 border border-line p-4 rounded-xl space-y-3">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[11px] font-bold text-graphite flex items-center gap-1.5">
+                        <span>COMPANY BRAND MARK / LOGO</span>
+                      </label>
+                      <span className="text-[10px] font-mono text-royal font-bold">DESKTOP UPLOAD READY</span>
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row items-center gap-3">
+                      <div className="w-14 h-14 rounded-xl bg-white border border-line flex items-center justify-center shrink-0 overflow-hidden font-bold text-sm text-royal">
+                        {formData.logoUrl && (formData.logoUrl.startsWith("http") || formData.logoUrl.startsWith("data:")) ? (
+                          <img src={formData.logoUrl} alt="Logo" className="w-full h-full object-contain p-1" referrerPolicy="no-referrer" />
+                        ) : (
+                          <span>{(formData.brandName || "MW").slice(0, 2).toUpperCase()}</span>
+                        )}
+                      </div>
+
+                      <div className="flex-1 space-y-1.5 w-full">
+                        <div className="flex items-center gap-2">
+                          <label
+                            htmlFor="modal-logo-file"
+                            className="px-3 py-1.5 bg-royal hover:bg-royal text-white rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer transition"
+                          >
+                            <Upload className="w-3.5 h-3.5" />
+                            <span>Upload Logo File</span>
+                            <input
+                              type="file"
+                              id="modal-logo-file"
+                              accept="image/*"
+                              onChange={handleLogoFileUpload}
+                              className="hidden"
+                            />
+                          </label>
+                          {logoUploadMsg && <span className="text-[10px] text-emerald-600 font-mono">{logoUploadMsg}</span>}
+                        </div>
+                        <input
+                          type="text"
+                          value={formData.logoUrl}
+                          onChange={(e) => setFormData({ ...formData, logoUrl: e.target.value })}
+                          className="w-full bg-white border border-line rounded-lg px-3 py-1.5 text-xs text-graphite focus:outline-none focus:border-royal font-mono"
+                          placeholder="Or specify Logo URL..."
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Flagship Company Presence Photo Editor */}
+                  <div className="sm:col-span-2 bg-slate-50 border border-line p-4 rounded-xl space-y-3">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[11px] font-bold text-graphite flex items-center gap-1.5">
+                        <Building2 className="w-3.5 h-3.5 text-royal" />
+                        <span>FLAGSHIP COMPANY PRESENCE PHOTO (COVER IMAGE)</span>
+                      </label>
+                      <span className="text-[10px] font-mono text-emerald-700 font-bold">16:9 BANNER MEDIA</span>
+                    </div>
+
+                    <div className="relative w-full h-36 rounded-lg overflow-hidden border border-line bg-slate-900">
+                      {formData.coverImage ? (
+                        <img src={formData.coverImage} alt="Flagship Banner" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-slate-500 text-xs font-mono">
+                          No Flagship Facility Photo Uploaded
+                        </div>
+                      )}
+                      <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-950/30 to-transparent pointer-events-none" />
+                      <div className="absolute bottom-2.5 left-3 right-3 text-white text-xs font-sans pointer-events-none space-y-0.5">
+                        <div className="font-mono text-[8px] uppercase tracking-widest text-emerald-400 font-bold">
+                          REAL-WORLD OPERATING PRESENCE OVERLAY
+                        </div>
+                        <p className="text-[11px] text-white/95 font-light line-clamp-2 leading-snug">
+                          {formData.flagshipStatement || "Physical operational facilities, marine yards, and engineering logistics infrastructure maintained under verified international standards."}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label htmlFor="modal-flagship-statement" className="text-[11px] font-bold text-graphite flex items-center justify-between">
+                        <span>BANNER OVERLAY STATEMENT</span>
+                        <span className="text-[9px] font-mono text-royal font-bold">LIVE OVERLAY TEXT</span>
+                      </label>
+                      <textarea
+                        id="modal-flagship-statement"
+                        rows={2}
+                        value={formData.flagshipStatement}
+                        onChange={(e) => setFormData({ ...formData, flagshipStatement: e.target.value })}
+                        placeholder="Physical operational facilities, marine yards, and engineering logistics infrastructure maintained under verified international standards."
+                        className="w-full p-2.5 rounded-lg border border-line bg-white focus:border-royal focus:outline-none text-xs text-graphite font-sans"
+                      />
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <label
+                        htmlFor="modal-cover-file"
+                        className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer transition"
+                      >
+                        <UploadCloud className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>Upload Facility Photo from Desktop</span>
+                        <input
+                          type="file"
+                          id="modal-cover-file"
+                          accept="image/*"
+                          onChange={handleCoverFileUpload}
+                          className="hidden"
+                        />
+                      </label>
+                      {coverUploadMsg && <span className="text-[10px] text-emerald-600 font-mono">{coverUploadMsg}</span>}
+                    </div>
+
                     <input
                       type="text"
-                      value={formData.logoUrl}
-                      onChange={(e) => setFormData({ ...formData, logoUrl: e.target.value })}
-                      className="w-full bg-white border border-line rounded-xl px-3.5 py-2 text-xs text-graphite focus:outline-none focus:border-royal"
-                      placeholder="https://images.unsplash.com/... or /icon.png"
+                      value={formData.coverImage}
+                      onChange={(e) => setFormData({ ...formData, coverImage: e.target.value })}
+                      className="w-full bg-white border border-line rounded-lg px-3 py-1.5 text-xs text-graphite focus:outline-none focus:border-royal font-mono"
+                      placeholder="Or specify Facility Image URL..."
                     />
                   </div>
 
@@ -848,7 +993,7 @@ export function CanonicalCompanyProfileModal({
                 </button>
                 <button
                   type="submit"
-                  className="px-6 py-2.5 bg-royal text-white rounded-xl text-xs font-semibold hover:bg-blue-700 transition-colors flex items-center gap-2 shadow-xs"
+                  className="px-6 py-2.5 bg-royal text-white rounded-xl text-xs font-semibold hover:bg-royal-dark transition-colors flex items-center gap-2 shadow-xs"
                 >
                   <Save className="w-3.5 h-3.5" />
                   <span>Save Canonical Profile</span>

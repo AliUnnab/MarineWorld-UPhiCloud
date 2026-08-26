@@ -16,12 +16,12 @@ import {
   Building2,
   LogOut,
   ArrowRight,
-  Sparkles,
   User,
   Compass,
   LayoutDashboard,
   Bookmark,
   ChevronRight,
+  Package,
 } from "lucide-react";
 import type { AccessContext } from "@/lib/types";
 
@@ -94,13 +94,12 @@ export function SectorCityTopChrome({
             {/* Small inline logo */}
             <a
               href="/"
-              className="inline-flex items-center gap-1.5 shrink-0 text-slate-900 hover:opacity-90 transition-opacity"
+              className="inline-flex items-center gap-1.5 shrink-0 text-graphite hover:opacity-90 transition-opacity"
               aria-label="MarineWorld.City — Home"
             >
-              <LogoMark className="h-5 w-5 shrink-0 text-blue-600" />
-              <span className="text-[12.5px] font-bold tracking-tight text-slate-900 hidden sm:inline">
-                {config.sectorName}
-                <span className="text-blue-600 font-semibold">{config.sectorTld}</span>
+              <LogoMark className="h-5 w-5 shrink-0 text-graphite" />
+              <span className="text-[12.5px] font-bold tracking-tight text-graphite hidden sm:inline">
+                {config.sectorName}{config.sectorTld}
               </span>
             </a>
 
@@ -112,7 +111,7 @@ export function SectorCityTopChrome({
                 href="/explore"
                 className={`transition-colors ${
                   typeof window !== "undefined" && window.location.pathname === "/explore"
-                    ? "text-blue-600 font-bold"
+                    ? "text-royal font-bold"
                     : "hover:text-slate-900"
                 }`}
               >
@@ -122,17 +121,17 @@ export function SectorCityTopChrome({
                 href="/cities"
                 className={`transition-colors ${
                   typeof window !== "undefined" && window.location.pathname.startsWith("/cities")
-                    ? "text-blue-600 font-bold"
+                    ? "text-royal font-bold"
                     : "hover:text-slate-900"
                 }`}
               >
                 Cities
               </a>
               <a
-                href="/industries"
+                href="/sectors"
                 className={`transition-colors ${
-                  typeof window !== "undefined" && (window.location.pathname.startsWith("/industries") || window.location.pathname.startsWith("/sectors"))
-                    ? "text-blue-600 font-bold"
+                  typeof window !== "undefined" && (window.location.pathname.startsWith("/sectors") || window.location.pathname.startsWith("/industries") || window.location.pathname.startsWith("/categories"))
+                    ? "text-royal font-bold"
                     : "hover:text-slate-900"
                 }`}
               >
@@ -142,7 +141,7 @@ export function SectorCityTopChrome({
                 href="/companies"
                 className={`transition-colors ${
                   typeof window !== "undefined" && window.location.pathname.startsWith("/companies")
-                    ? "text-blue-600 font-bold"
+                    ? "text-royal font-bold"
                     : "hover:text-slate-900"
                 }`}
               >
@@ -184,72 +183,26 @@ export function SectorCityTopChrome({
             )}
           </div>
 
-          {/* Right: Compact Platform Controls (Visitor / Sign In / Enter) */}
+          {/* Right: Compact Platform Controls (Sign In + Enter) */}
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             {!isAuthenticated ? (
-              <div className="flex items-center gap-1.5">
-                {/* Guest Visitor Dropdown */}
-                <div className="relative" ref={dropdownRef}>
-                  <button
-                    type="button"
-                    id="btn-sector-city-visitor-menu"
-                    onClick={() => setDropdownOpen((v) => !v)}
-                    className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white hover:bg-slate-50 px-2 sm:px-2.5 py-1 text-[11px] font-semibold text-slate-700 shadow-2xs transition"
-                  >
-                    <Compass className="w-3 h-3 text-slate-500 shrink-0" />
-                    <span className="hidden sm:inline">Visitor</span>
-                    <ChevronDown className="w-2.5 h-2.5 text-slate-400 shrink-0" />
-                  </button>
-
-                  {dropdownOpen && (
-                    <div
-                      id="dropdown-sector-city-visitor-menu"
-                      className="absolute right-0 top-full mt-1.5 w-60 rounded-xl border border-slate-200 bg-white p-3 shadow-xl z-50 space-y-2 animate-in fade-in slide-in-from-top-1 duration-150"
-                    >
-                      <div className="p-2 bg-slate-50 rounded-lg space-y-1">
-                        <div className="text-xs font-bold text-slate-900">Public Visitor</div>
-                        <div className="text-[11px] text-slate-500 leading-tight">
-                          Explore MarineWorld.City sector city expositions and registries.
-                        </div>
-                      </div>
-                      <div className="pt-1 border-t border-slate-100 space-y-1">
-                        <a
-                          id="btn-visitor-signin"
-                          href="/login/personal"
-                          onClick={() => setDropdownOpen(false)}
-                          className="w-full text-left px-2 py-1.5 rounded-md text-xs font-semibold text-blue-600 hover:bg-blue-50 flex items-center justify-between transition"
-                        >
-                          <span>Personal Sign In</span>
-                          <ArrowRight className="w-3 h-3" />
-                        </a>
-                        <a
-                          id="btn-visitor-create-company"
-                          href="/company/onboarding"
-                          onClick={() => setDropdownOpen(false)}
-                          className="w-full text-left px-2 py-1.5 rounded-md text-xs font-semibold text-slate-700 hover:bg-slate-100 flex items-center justify-between transition"
-                        >
-                          <span>Create Company</span>
-                          <Sparkles className="w-3 h-3 text-blue-600" />
-                        </a>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
+              <div className="flex items-center gap-2">
                 <a
                   id="btn-sector-city-signin"
                   href="/login/personal"
-                  className="inline-flex h-7 sm:h-7.5 items-center justify-center rounded-full border border-slate-200 bg-white hover:bg-slate-50 px-2.5 sm:px-3 text-[11px] font-bold tracking-wide text-slate-800 shadow-2xs transition-all duration-200"
+                  className="inline-flex h-7 sm:h-7.5 items-center justify-center gap-1 rounded-full border border-slate-200 bg-white hover:bg-slate-50 hover:border-royal/40 px-2.5 sm:px-3 text-[11px] font-semibold text-slate-800 shadow-2xs transition-all duration-200"
                 >
-                  <span>SIGN IN</span>
+                  <User className="w-3 h-3 text-slate-500" />
+                  <span>Sign In</span>
                 </a>
 
                 <a
                   id="btn-sector-city-enter"
                   href="/gateway"
-                  className="inline-flex h-7 sm:h-7.5 items-center justify-center rounded-full bg-blue-600 hover:bg-blue-700 px-3 sm:px-3.5 text-[11px] font-bold tracking-wide text-white shadow-2xs transition-all duration-200"
+                  className="inline-flex h-7 sm:h-7.5 items-center justify-center gap-1 rounded-full bg-royal hover:bg-royal-dark px-3 sm:px-3.5 text-[11px] font-bold tracking-wide text-white shadow-2xs transition-all duration-200"
                 >
-                  <span>ENTER</span>
+                  <span>GATEWAY</span>
+                  <ArrowRight className="w-2.5 h-2.5 text-white/80" />
                 </a>
               </div>
             ) : accessContext.contextType === "VISITOR" || !activeOrg ? (
@@ -261,7 +214,7 @@ export function SectorCityTopChrome({
                   onClick={() => setDropdownOpen((v) => !v)}
                   className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white hover:bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-800 shadow-2xs transition"
                 >
-                  <User className="w-3 h-3 text-blue-600 shrink-0" />
+                  <User className="w-3 h-3 text-royal shrink-0" />
                   <span className="truncate max-w-[90px] sm:max-w-[130px]">
                     {accessContext.personalUser?.displayName || "Personal Visitor"}
                   </span>
@@ -291,20 +244,28 @@ export function SectorCityTopChrome({
 
                     <div className="pt-2 border-t border-slate-100 space-y-1">
                       <a
-                        href="/visitor/dashboard"
+                        href="/workspace"
                         onClick={() => setDropdownOpen(false)}
                         className="w-full text-left px-2.5 py-2 rounded-lg text-xs font-medium text-slate-800 hover:bg-slate-50 flex items-center gap-2 transition"
                       >
                         <LayoutDashboard className="w-3.5 h-3.5 text-slate-500" />
-                        <span>Visitor Dashboard</span>
+                        <span>My Workspace</span>
                       </a>
                       <a
-                        href="/visitor/dashboard?tab=saved-companies"
+                        href="/saved/companies"
                         onClick={() => setDropdownOpen(false)}
                         className="w-full text-left px-2.5 py-2 rounded-lg text-xs font-medium text-slate-800 hover:bg-slate-50 flex items-center gap-2 transition"
                       >
                         <Bookmark className="w-3.5 h-3.5 text-slate-500" />
                         <span>Saved Companies</span>
+                      </a>
+                      <a
+                        href="/workspace/inquiries"
+                        onClick={() => setDropdownOpen(false)}
+                        className="w-full text-left px-2.5 py-2 rounded-lg text-xs font-medium text-slate-800 hover:bg-slate-50 flex items-center gap-2 transition"
+                      >
+                        <Package className="w-3.5 h-3.5 text-slate-500" />
+                        <span>My Inquiries</span>
                       </a>
                     </div>
 
@@ -328,16 +289,16 @@ export function SectorCityTopChrome({
                   type="button"
                   id="btn-sector-city-org-switcher"
                   onClick={() => setDropdownOpen((v) => !v)}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50/80 hover:bg-blue-100/80 px-2.5 py-1 text-[11px] font-bold text-blue-700 shadow-2xs transition"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-royal/20 bg-royal/5 hover:bg-royal/10/80 px-2.5 py-1 text-[11px] font-bold text-royal shadow-2xs transition"
                 >
-                  <Building2 className="w-3 h-3 text-blue-600 shrink-0" />
+                  <Building2 className="w-3 h-3 text-royal shrink-0" />
                   <span className="truncate max-w-[110px] sm:max-w-[150px]">
                     {(activeOrg as any)?.displayName ||
                       (activeOrg as any)?.name ||
                       (activeOrg as any)?.orgName ||
                       "Company"}
                   </span>
-                  <ChevronDown className="w-2.5 h-2.5 text-blue-400 shrink-0" />
+                  <ChevronDown className="w-2.5 h-2.5 text-slate-300 shrink-0" />
                 </button>
 
                 {dropdownOpen && (
@@ -363,7 +324,7 @@ export function SectorCityTopChrome({
                         onClick={() => setDropdownOpen(false)}
                         className="w-full text-left px-2.5 py-2 rounded-lg text-xs font-medium text-slate-800 hover:bg-slate-50 flex items-center gap-2 transition"
                       >
-                        <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+                        <LayoutDashboard className="w-3.5 h-3.5 text-royal" />
                         <span>Company Studio</span>
                       </a>
                       <a

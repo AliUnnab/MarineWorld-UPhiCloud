@@ -490,7 +490,7 @@ export function reconcileBilling(companyId: string): {
         createdAt: issueDate,
         updatedAt: paidAt,
         isSimulated: true,
-        notes: `MarineWorld ${plan.name} Platform Subscription — Annual Corporate Contract (${plan.limits?.maxMembers || 15} Seats, Parametric Business Twin, AI Maritime Copilot & Dedicated Advisor)`,
+        notes: `MarineWorld ${plan.name} Platform Subscription — Annual Corporate Contract (${plan.limits?.maxMembers || 15} Seats, Parametric Business Twin, AI Maritime Intelligence & Dedicated Advisor)`,
       };
       commercialInvoicesStore.set(existingInv.invoiceId, existingInv);
     } else {
@@ -1084,7 +1084,7 @@ function seedInitialBillingRecords(): void {
     pdfUrl: "https://pay.stripe.com/invoice/in_argento_growth_annual_2026/pdf",
     createdAt: "2026-08-19T00:00:00.000Z",
     updatedAt: "2026-08-19T00:05:00.000Z",
-    notes: "MarineWorld AI-Native Growth Platform Subscription — Annual Corporate Contract (15 Seats, Parametric Business Twin, AI Maritime Copilot & Dedicated Advisor)",
+    notes: "MarineWorld AI-Native Growth Platform Subscription — Annual Corporate Contract (15 Seats, Parametric Business Twin, AI Maritime Intelligence & Dedicated Advisor)",
   };
   commercialInvoicesStore.set(platformSubInvArgento.invoiceId, platformSubInvArgento);
 

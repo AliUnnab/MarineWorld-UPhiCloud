@@ -18,7 +18,6 @@ import {
   LogOut,
   Check,
   ArrowRight,
-  Sparkles,
   User,
   Compass,
   LayoutDashboard,
@@ -128,11 +127,10 @@ export function GlobalHeader({
       <DigiContainer>
         <div className="flex h-16 items-center justify-between gap-4 md:h-[72px]">
           {/* Identity */}
-          <a href="/" className="flex min-h-11 items-center gap-2.5" aria-label={`${config.wordmark} — home`}>
-            <LogoMark className="h-8 w-8" />
-            <span className="text-[15.5px] font-semibold tracking-[-0.02em] text-graphite">
-              {config.sectorName}
-              <span className="text-royal">{config.sectorTld}</span>
+          <a href="/" className="flex min-h-11 items-center gap-2.5 text-graphite hover:opacity-85 transition-opacity" aria-label={`${config.wordmark} — home`}>
+            <LogoMark className="h-6 w-2 text-graphite" />
+            <span className="text-[15.5px] font-bold tracking-[-0.02em] text-graphite">
+              {config.sectorName}{config.sectorTld}
             </span>
           </a>
 
@@ -141,25 +139,25 @@ export function GlobalHeader({
             {isVisitor && (
               <>
                 <a
-                  href="/industries/maritime"
+                  href="/explore"
                   className="text-[13.5px] font-medium text-stone hover:text-graphite transition-colors"
                 >
                   Explore
                 </a>
                 <a
-                  href="/industries/maritime"
+                  href="/cities"
                   className="text-[13.5px] font-medium text-stone hover:text-graphite transition-colors"
                 >
                   Cities
                 </a>
                 <a
-                  href="/industries"
+                  href="/sectors"
                   className="text-[13.5px] font-medium text-stone hover:text-graphite transition-colors"
                 >
                   Sectors
                 </a>
                 <a
-                  href="/companies/crest-group-materials"
+                  href="/companies"
                   className="text-[13.5px] font-medium text-stone hover:text-graphite transition-colors"
                 >
                   Companies
@@ -173,7 +171,7 @@ export function GlobalHeader({
                   href="/studio"
                   className="text-[13.5px] font-semibold text-royal hover:text-royal-dark transition-colors flex items-center gap-1.5"
                 >
-                  <Sparkles className="w-3.5 h-3.5" />
+                  <LayoutDashboard className="w-3.5 h-3.5" />
                   <span>Studio</span>
                 </a>
                 <a
@@ -219,7 +217,7 @@ export function GlobalHeader({
               <>
                 <a
                   href="/ecosystem/dashboard"
-                  className="text-[13.5px] font-semibold text-indigo-700 hover:text-indigo-900 transition-colors flex items-center gap-1.5"
+                  className="text-[13.5px] font-semibold text-royal hover:text-royal-dark transition-colors flex items-center gap-1.5"
                 >
                   <Landmark className="w-3.5 h-3.5" />
                   <span>Organization Dashboard</span>
@@ -252,72 +250,26 @@ export function GlobalHeader({
             )}
           </nav>
 
-          {/* Action Area: Guest (Visitor ▾ + SIGN IN) vs Personal Visitor (<displayName> ▾) vs Active Organization Switcher */}
+          {/* Action Area: Guest (Sign In + Enter Gateway) vs Personal Visitor (<displayName> ▾) vs Active Organization Switcher */}
           <div className="flex items-center gap-3">
             {!isAuthenticated ? (
-              <div className="flex items-center gap-2">
-                {/* Guest Visitor Dropdown */}
-                <div className="relative" ref={dropdownRef}>
-                  <button
-                    type="button"
-                    id="btn-global-visitor-menu"
-                    onClick={() => setDropdownOpen((v) => !v)}
-                    className="inline-flex items-center gap-1.5 rounded-full border border-line bg-white hover:bg-slate-50 px-3 py-1.5 text-xs font-semibold text-graphite shadow-sm transition"
-                  >
-                    <Compass className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                    <span>Visitor</span>
-                    <ChevronDown className="w-3 h-3 text-stone shrink-0" />
-                  </button>
-
-                  {dropdownOpen && (
-                    <div
-                      id="dropdown-global-visitor-menu"
-                      className="absolute right-0 top-full mt-2 w-60 rounded-xl border border-line bg-white p-3 shadow-xl z-50 space-y-2 animate-in fade-in slide-in-from-top-1 duration-150"
-                    >
-                      <div className="p-2 bg-slate-50 rounded-lg space-y-1">
-                        <div className="text-xs font-bold text-graphite">Public Visitor</div>
-                        <div className="text-[11px] text-stone leading-tight">
-                          Explore MarineWorld.City public sector discovery and catalogs.
-                        </div>
-                      </div>
-                      <div className="pt-1 border-t border-line/60 space-y-1">
-                        <a
-                          id="btn-visitor-signin"
-                          href="/login/personal"
-                          onClick={() => setDropdownOpen(false)}
-                          className="w-full text-left px-2 py-1.5 rounded-md text-xs font-semibold text-royal hover:bg-royal/5 flex items-center justify-between transition"
-                        >
-                          <span>Personal Sign In</span>
-                          <ArrowRight className="w-3 h-3" />
-                        </a>
-                        <a
-                          id="btn-visitor-create-company"
-                          href="/company/onboarding"
-                          onClick={() => setDropdownOpen(false)}
-                          className="w-full text-left px-2 py-1.5 rounded-md text-xs font-semibold text-slate-700 hover:bg-slate-100 flex items-center justify-between transition"
-                        >
-                          <span>Create Company</span>
-                          <Sparkles className="w-3 h-3 text-royal" />
-                        </a>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
+              <div className="flex items-center gap-2.5">
                 <a
                   id="btn-global-header-signin"
                   href="/login/personal"
-                  className="inline-flex min-h-9 items-center justify-center rounded-full border border-line bg-white hover:bg-slate-50 px-4 text-xs font-bold tracking-wide text-graphite shadow-sm transition-all duration-200"
+                  className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-full border border-line bg-white hover:bg-slate-50 hover:border-royal/40 px-3.5 text-xs font-semibold text-graphite shadow-2xs transition-all duration-200"
                 >
-                  <span>SIGN IN</span>
+                  <User className="w-3.5 h-3.5 text-stone" />
+                  <span>Sign In</span>
                 </a>
 
                 <a
                   id="btn-global-header-enter"
                   href="/gateway"
-                  className="inline-flex min-h-9 items-center justify-center rounded-full bg-royal hover:bg-royal-dark px-4 text-xs font-bold tracking-wide text-white shadow-sm transition-all duration-200"
+                  className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-full bg-royal hover:bg-royal-dark px-4 text-xs font-bold tracking-wide text-white shadow-sm transition-all duration-200 hover:shadow"
                 >
-                  <span>ENTER</span>
+                  <span>ENTER GATEWAY</span>
+                  <ArrowRight className="w-3.5 h-3.5 text-white/80" />
                 </a>
               </div>
             ) : accessContext.contextType === "VISITOR" || !activeOrg ? (
@@ -431,7 +383,7 @@ export function GlobalHeader({
                         id="btn-personal-create-company"
                         href="/company/onboarding"
                         onClick={() => setDropdownOpen(false)}
-                        className="w-full text-left px-2.5 py-2 rounded-lg text-xs font-bold bg-royal text-white hover:bg-blue-600 flex items-center justify-between transition shadow-sm"
+                        className="w-full text-left px-2.5 py-2 rounded-lg text-xs font-bold bg-royal text-white hover:bg-royal flex items-center justify-between transition shadow-sm"
                       >
                         <span>CREATE YOUR AI-NATIVE COMPANY</span>
                         <ArrowRight className="w-3.5 h-3.5" />
@@ -596,28 +548,28 @@ export function GlobalHeader({
               {isVisitor && (
                 <>
                   <a
-                    href="/industries/maritime"
+                    href="/explore"
                     onClick={() => setOpen(false)}
                     className="text-[14px] font-medium text-graphite py-1 px-2 rounded hover:bg-slate-50"
                   >
                     Explore
                   </a>
                   <a
-                    href="/industries/maritime"
+                    href="/cities"
                     onClick={() => setOpen(false)}
                     className="text-[14px] font-medium text-graphite py-1 px-2 rounded hover:bg-slate-50"
                   >
                     Cities
                   </a>
                   <a
-                    href="/industries"
+                    href="/sectors"
                     onClick={() => setOpen(false)}
                     className="text-[14px] font-medium text-graphite py-1 px-2 rounded hover:bg-slate-50"
                   >
                     Sectors
                   </a>
                   <a
-                    href="/companies/crest-group-materials"
+                    href="/companies"
                     onClick={() => setOpen(false)}
                     className="text-[14px] font-medium text-graphite py-1 px-2 rounded hover:bg-slate-50"
                   >
@@ -706,7 +658,7 @@ export function GlobalHeader({
                   <a
                     href="/ecosystem/dashboard"
                     onClick={() => setOpen(false)}
-                    className="text-[14px] font-bold text-indigo-700 py-1 px-2 rounded hover:bg-indigo-50"
+                    className="text-[14px] font-bold text-royal py-1 px-2 rounded hover:bg-royal/5"
                   >
                     Organization Dashboard
                   </a>

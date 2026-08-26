@@ -58,8 +58,8 @@ export function CityEntrancePage({
                   PLACEMENT APPLICATION
                 </DigiBadge>
 
-                <h1 className="text-display mt-4 text-graphite">
-                  Join {city.domain}
+                <h1 className="text-2xl sm:text-3xl md:text-4xl font-extrabold mt-4 text-graphite tracking-tight break-words leading-tight max-w-full">
+                  Join <span className="break-all">{city.domain}</span>
                 </h1>
 
                 <p className="text-lead mt-5 text-stone">

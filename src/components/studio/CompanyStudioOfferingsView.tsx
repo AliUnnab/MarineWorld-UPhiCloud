@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import {
   Package,
   Wrench,
-  Sparkles,
+  Cpu,
   Plus,
   Edit2,
   Trash2,
@@ -495,7 +495,7 @@ export const CompanyStudioOfferingsView: React.FC<CompanyStudioOfferingsViewProp
                     onClick={() => handleOpenCreateWizard(activeTab === "SERVICES" ? "service" : "product")}
                     className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-royal text-white text-xs font-bold shadow-md hover:bg-royal/90 transition uppercase tracking-wider cursor-pointer"
                   >
-                    <Sparkles className="w-4 h-4" />
+                    <Cpu className="w-4 h-4" />
                     <span>Create with AI Ingestion</span>
                   </button>
                 </div>

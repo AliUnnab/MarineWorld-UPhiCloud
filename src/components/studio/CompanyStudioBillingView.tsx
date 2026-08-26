@@ -349,7 +349,7 @@ export function CompanyStudioBillingView({
               MARINEWORLD FINANCE CENTER
             </span>
             <span className="text-slate-300">&bull;</span>
-            <span className="text-[10px] font-mono uppercase font-bold tracking-wider text-blue-600">
+            <span className="text-[10px] font-mono uppercase font-bold tracking-wider text-royal">
               {companyRecord?.displayName || "Enterprise Organization"}
             </span>
           </div>
@@ -373,7 +373,7 @@ export function CompanyStudioBillingView({
           {canModifyBilling && (
             <button
               onClick={openAddPaymentMethodGeneral}
-              className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-2 shadow-xs"
+              className="px-4 py-2.5 bg-royal hover:bg-royal-dark text-white rounded-xl text-xs font-bold transition flex items-center gap-2 shadow-xs"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>Add Payment Method</span>
@@ -399,7 +399,7 @@ export function CompanyStudioBillingView({
           }}
           className={`px-4 py-3 text-xs font-bold rounded-t-xl transition flex items-center gap-2 whitespace-nowrap border-b-2 ${
             activeSubView === "OVERVIEW"
-              ? "border-blue-600 text-blue-600 bg-white"
+              ? "border-royal text-royal bg-white"
               : "border-transparent text-slate-500 hover:text-slate-900 hover:bg-slate-100/50"
           }`}
         >
@@ -414,13 +414,13 @@ export function CompanyStudioBillingView({
           }}
           className={`px-4 py-3 text-xs font-bold rounded-t-xl transition flex items-center gap-2 whitespace-nowrap border-b-2 ${
             activeSubView === "PLATFORM_SUBSCRIPTION"
-              ? "border-blue-600 text-blue-600 bg-white"
+              ? "border-royal text-royal bg-white"
               : "border-transparent text-slate-500 hover:text-slate-900 hover:bg-slate-100/50"
           }`}
         >
           <Zap className="w-3.5 h-3.5" />
           <span>PLATFORM SUBSCRIPTION</span>
-          <span className="px-1.5 py-0.5 rounded-full text-[9px] bg-blue-50 text-blue-700 font-mono">
+          <span className="px-1.5 py-0.5 rounded-full text-[9px] bg-royal/5 text-royal font-mono">
             Active
           </span>
         </button>
@@ -432,7 +432,7 @@ export function CompanyStudioBillingView({
           }}
           className={`px-4 py-3 text-xs font-bold rounded-t-xl transition flex items-center gap-2 whitespace-nowrap border-b-2 ${
             activeSubView === "COMMERCIAL_AGREEMENTS"
-              ? "border-blue-600 text-blue-600 bg-white"
+              ? "border-royal text-royal bg-white"
               : "border-transparent text-slate-500 hover:text-slate-900 hover:bg-slate-100/50"
           }`}
         >
@@ -450,7 +450,7 @@ export function CompanyStudioBillingView({
           }}
           className={`px-4 py-3 text-xs font-bold rounded-t-xl transition flex items-center gap-2 whitespace-nowrap border-b-2 ${
             activeSubView === "INVOICES"
-              ? "border-blue-600 text-blue-600 bg-white"
+              ? "border-royal text-royal bg-white"
               : "border-transparent text-slate-500 hover:text-slate-900 hover:bg-slate-100/50"
           }`}
         >
@@ -468,7 +468,7 @@ export function CompanyStudioBillingView({
           }}
           className={`px-4 py-3 text-xs font-bold rounded-t-xl transition flex items-center gap-2 whitespace-nowrap border-b-2 ${
             activeSubView === "PAYMENTS"
-              ? "border-blue-600 text-blue-600 bg-white"
+              ? "border-royal text-royal bg-white"
               : "border-transparent text-slate-500 hover:text-slate-900 hover:bg-slate-100/50"
           }`}
         >
@@ -486,7 +486,7 @@ export function CompanyStudioBillingView({
           }}
           className={`px-4 py-3 text-xs font-bold rounded-t-xl transition flex items-center gap-2 whitespace-nowrap border-b-2 ${
             activeSubView === "PAYMENT_METHODS"
-              ? "border-blue-600 text-blue-600 bg-white"
+              ? "border-royal text-royal bg-white"
               : "border-transparent text-slate-500 hover:text-slate-900 hover:bg-slate-100/50"
           }`}
         >
@@ -496,7 +496,7 @@ export function CompanyStudioBillingView({
 
         {activeSubView === "AGREEMENT_DETAIL" && selectedAgreement && (
           <button
-            className="px-4 py-3 text-xs font-bold rounded-t-xl transition flex items-center gap-2 whitespace-nowrap border-b-2 border-indigo-600 text-indigo-700 bg-white"
+            className="px-4 py-3 text-xs font-bold rounded-t-xl transition flex items-center gap-2 whitespace-nowrap border-b-2 border-royal text-royal bg-white"
           >
             <Eye className="w-3.5 h-3.5" />
             <span>AGREEMENT DETAIL ({selectedAgreement.canonicalPropertyKey})</span>
@@ -547,7 +547,7 @@ export function CompanyStudioBillingView({
                 <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-400">
                   PROPERTY AGREEMENTS
                 </span>
-                <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase bg-blue-50 text-blue-700 border border-blue-200">
+                <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase bg-royal/5 text-royal border border-royal/20">
                   {contractualValue?.propertyAgreementsCount ?? 0} Active
                 </span>
               </div>
@@ -625,7 +625,7 @@ export function CompanyStudioBillingView({
               <div className="flex items-start justify-between border-b border-slate-100 pb-4">
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                    <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-royal bg-royal/5 px-2 py-0.5 rounded border border-royal/20">
                       DOMAIN A: PLATFORM SUBSCRIPTION
                     </span>
                   </div>
@@ -668,7 +668,7 @@ export function CompanyStudioBillingView({
                 </div>
                 <button
                   onClick={() => setActiveSubView("PLATFORM_SUBSCRIPTION")}
-                  className="text-xs font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1"
+                  className="text-xs font-bold text-royal hover:text-royal flex items-center gap-1"
                 >
                   Details <ArrowRight className="w-3.5 h-3.5" />
                 </button>
@@ -680,7 +680,7 @@ export function CompanyStudioBillingView({
               <div className="flex items-start justify-between border-b border-slate-100 pb-4">
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
+                    <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-royal bg-royal/5 px-2 py-0.5 rounded border border-royal/20">
                       DOMAIN B: DIGITAL REAL ESTATE
                     </span>
                   </div>
@@ -707,7 +707,7 @@ export function CompanyStudioBillingView({
                         <span className="font-mono font-bold text-slate-900">
                           {ag.canonicalPropertyKey}
                         </span>
-                        <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-blue-50 text-blue-700 border border-blue-200">
+                        <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-royal/5 text-royal border border-royal/20">
                           {ag.tier}
                         </span>
                       </div>
@@ -790,8 +790,8 @@ export function CompanyStudioBillingView({
                         <span
                           className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
                             item.domain === "PLATFORM"
-                              ? "bg-blue-50 text-blue-700 border border-blue-200"
-                              : "bg-indigo-50 text-indigo-700 border border-indigo-200"
+                              ? "bg-royal/5 text-royal border border-royal/20"
+                              : "bg-royal/5 text-royal border border-royal/20"
                           }`}
                         >
                           {item.domain}
@@ -804,11 +804,11 @@ export function CompanyStudioBillingView({
                         <div className="flex items-center gap-1.5 font-semibold text-slate-800">
                           {item.provider === "GOOGLE_CLOUD_MARKETPLACE" ? (
                             <>
-                              <Cloud className="w-3.5 h-3.5 text-blue-600" /> Google Cloud
+                              <Cloud className="w-3.5 h-3.5 text-royal" /> Google Cloud
                             </>
                           ) : (
                             <>
-                              <CreditCard className="w-3.5 h-3.5 text-indigo-600" /> Stripe
+                              <CreditCard className="w-3.5 h-3.5 text-royal" /> Stripe
                             </>
                           )}
                         </div>
@@ -830,7 +830,7 @@ export function CompanyStudioBillingView({
                             item.status === "PAID" || item.status === "SUCCEEDED"
                               ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
                               : item.status === "OPEN"
-                              ? "bg-blue-50 text-blue-700 border border-blue-200"
+                              ? "bg-royal/5 text-royal border border-royal/20"
                               : "bg-slate-100 text-slate-700 border border-slate-200"
                           }`}
                         >
@@ -851,7 +851,7 @@ export function CompanyStudioBillingView({
                           {item.rawInvoice ? (
                             <button
                               onClick={() => setSelectedInvoice(item.rawInvoice!)}
-                              className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-xs font-semibold transition"
+                              className="px-2.5 py-1 bg-royal/5 hover:bg-royal/10 text-royal rounded-lg text-xs font-semibold transition"
                             >
                               Invoice
                             </button>
@@ -877,7 +877,7 @@ export function CompanyStudioBillingView({
             <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 border-b border-slate-100 pb-6">
               <div className="space-y-1.5">
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                  <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-royal bg-royal/5 px-2 py-0.5 rounded border border-royal/20">
                     CANONICAL COMPANY PLAN
                   </span>
                   <span className="text-slate-300">&bull;</span>
@@ -889,7 +889,7 @@ export function CompanyStudioBillingView({
                   {companyPlan.name}
                 </h2>
                 <p className="text-xs text-slate-500 max-w-xl font-light">
-                  Enterprise platform software plan empowering digital twin configuration, maritime intelligence copilot, and global sector access.
+                  Enterprise platform software plan empowering digital twin configuration, maritime intelligence advisor, and global sector access.
                 </p>
               </div>
 
@@ -956,7 +956,7 @@ export function CompanyStudioBillingView({
 
                 <button
                   onClick={() => setIsCustomerPortalOpen(true)}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs"
+                  className="px-4 py-2 bg-royal hover:bg-royal-dark text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs"
                 >
                   <span>Manage Subscription</span>
                   <ExternalLink className="w-3.5 h-3.5" />
@@ -1080,7 +1080,7 @@ export function CompanyStudioBillingView({
                           <span className="font-mono font-bold text-base text-slate-900">
                             {ag.canonicalPropertyKey}
                           </span>
-                          <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-blue-50 text-blue-700 border border-blue-200">
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-royal/5 text-royal border border-royal/20">
                             {ag.tier}
                           </span>
                           <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-50 text-emerald-700 border border-emerald-200">
@@ -1106,13 +1106,13 @@ export function CompanyStudioBillingView({
                       <div className="flex items-center gap-2">
                         <span className="text-slate-400 font-medium">Billing Rail:</span>
                         {ag.billingMethod === "GOOGLE_CLOUD_MARKETPLACE" ? (
-                          <span className="font-semibold text-blue-700 flex items-center gap-1.5 bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-200">
-                            <Cloud className="w-3.5 h-3.5 text-blue-600" />
+                          <span className="font-semibold text-royal flex items-center gap-1.5 bg-royal/5 px-2.5 py-1 rounded-lg border border-royal/20">
+                            <Cloud className="w-3.5 h-3.5 text-royal" />
                             Google Cloud Marketplace Private Offer
                           </span>
                         ) : (
-                          <span className="font-semibold text-indigo-700 flex items-center gap-1.5 bg-indigo-50 px-2.5 py-1 rounded-lg border border-indigo-200">
-                            <CreditCard className="w-3.5 h-3.5 text-indigo-600" />
+                          <span className="font-semibold text-royal flex items-center gap-1.5 bg-royal/5 px-2.5 py-1 rounded-lg border border-royal/20">
+                            <CreditCard className="w-3.5 h-3.5 text-royal" />
                             Stripe Corporate Direct Invoicing
                           </span>
                         )}
@@ -1132,7 +1132,7 @@ export function CompanyStudioBillingView({
                             setSelectedAgreementId(ag.agreementId);
                             setActiveSubView("AGREEMENT_DETAIL");
                           }}
-                          className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition shadow-2xs"
+                          className="px-4 py-1.5 bg-royal hover:bg-royal-dark text-white rounded-xl text-xs font-bold transition shadow-2xs"
                         >
                           Agreement Details
                         </button>
@@ -1169,14 +1169,14 @@ export function CompanyStudioBillingView({
                     placeholder="Search invoices..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-blue-500 transition w-44"
+                    className="pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-royal transition w-44"
                   />
                 </div>
 
                 <select
                   value={filterDomain}
                   onChange={(e) => setFilterDomain(e.target.value)}
-                  className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 font-medium focus:outline-none focus:border-blue-500"
+                  className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 font-medium focus:outline-none focus:border-royal"
                 >
                   <option value="ALL">All Domains</option>
                   <option value="PLATFORM">Platform Subscription</option>
@@ -1186,7 +1186,7 @@ export function CompanyStudioBillingView({
                 <select
                   value={filterProvider}
                   onChange={(e) => setFilterProvider(e.target.value)}
-                  className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 font-medium focus:outline-none focus:border-blue-500"
+                  className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 font-medium focus:outline-none focus:border-royal"
                 >
                   <option value="ALL">All Providers</option>
                   <option value="STRIPE">Stripe</option>
@@ -1221,8 +1221,8 @@ export function CompanyStudioBillingView({
                         <span
                           className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
                             inv.domain === "PLATFORM"
-                              ? "bg-blue-50 text-blue-700 border border-blue-200"
-                              : "bg-indigo-50 text-indigo-700 border border-indigo-200"
+                              ? "bg-royal/5 text-royal border border-royal/20"
+                              : "bg-royal/5 text-royal border border-royal/20"
                           }`}
                         >
                           {inv.domain}
@@ -1240,11 +1240,11 @@ export function CompanyStudioBillingView({
                         <div className="flex items-center gap-1.5 font-semibold text-slate-800">
                           {inv.provider === "GOOGLE_CLOUD_MARKETPLACE" ? (
                             <>
-                              <Cloud className="w-3.5 h-3.5 text-blue-600" /> Google Cloud
+                              <Cloud className="w-3.5 h-3.5 text-royal" /> Google Cloud
                             </>
                           ) : (
                             <>
-                              <CreditCard className="w-3.5 h-3.5 text-indigo-600" /> Stripe
+                              <CreditCard className="w-3.5 h-3.5 text-royal" /> Stripe
                             </>
                           )}
                         </div>
@@ -1264,7 +1264,7 @@ export function CompanyStudioBillingView({
                             inv.status === "PAID"
                               ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
                               : inv.status === "OPEN"
-                              ? "bg-blue-50 text-blue-700 border border-blue-200"
+                              ? "bg-royal/5 text-royal border border-royal/20"
                               : "bg-slate-100 text-slate-700 border border-slate-200"
                           }`}
                         >
@@ -1337,15 +1337,15 @@ export function CompanyStudioBillingView({
                       <td className="px-4 py-3.5 font-mono font-bold text-slate-900 whitespace-nowrap">
                         {pmt.paymentId}
                       </td>
-                      <td className="px-4 py-3.5 font-mono text-blue-600 whitespace-nowrap">
+                      <td className="px-4 py-3.5 font-mono text-royal whitespace-nowrap">
                         {pmt.invoiceId || "Direct Settlement"}
                       </td>
                       <td className="px-4 py-3.5 whitespace-nowrap">
                         <span
                           className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
                             pmt.domain === "PLATFORM"
-                              ? "bg-blue-50 text-blue-700 border border-blue-200"
-                              : "bg-indigo-50 text-indigo-700 border border-indigo-200"
+                              ? "bg-royal/5 text-royal border border-royal/20"
+                              : "bg-royal/5 text-royal border border-royal/20"
                           }`}
                         >
                           {pmt.domain}
@@ -1355,11 +1355,11 @@ export function CompanyStudioBillingView({
                         <div className="flex items-center gap-1.5 font-semibold text-slate-800">
                           {pmt.provider === "GOOGLE_CLOUD_MARKETPLACE" ? (
                             <>
-                              <Cloud className="w-3.5 h-3.5 text-blue-600" /> Google Cloud
+                              <Cloud className="w-3.5 h-3.5 text-royal" /> Google Cloud
                             </>
                           ) : (
                             <>
-                              <CreditCard className="w-3.5 h-3.5 text-indigo-600" /> Stripe
+                              <CreditCard className="w-3.5 h-3.5 text-royal" /> Stripe
                             </>
                           )}
                         </div>
@@ -1390,7 +1390,7 @@ export function CompanyStudioBillingView({
                                 const matchingInv = invoices.find((i) => i.invoiceId === pmt.invoiceId);
                                 if (matchingInv) setSelectedInvoice(matchingInv);
                               }}
-                              className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-xs font-semibold transition"
+                              className="px-2.5 py-1 bg-royal/5 hover:bg-royal/10 text-royal rounded-lg text-xs font-semibold transition"
                             >
                               Invoice
                             </button>
@@ -1414,7 +1414,7 @@ export function CompanyStudioBillingView({
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
+                  <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-royal bg-royal/5 px-2 py-0.5 rounded border border-royal/20">
                     RAIL 1: STRIPE CORPORATE DIRECT
                   </span>
                 </div>
@@ -1438,7 +1438,7 @@ export function CompanyStudioBillingView({
                 {canModifyBilling && (
                   <button
                     onClick={openAddPaymentMethodGeneral}
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs"
+                    className="px-4 py-2 bg-royal hover:bg-royal-dark text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     <span>Add Corporate Card</span>
@@ -1465,7 +1465,7 @@ export function CompanyStudioBillingView({
                           •••• •••• •••• {pm.last4}
                         </span>
                         {pm.isDefault && (
-                          <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase bg-blue-50 text-blue-700 border border-blue-200">
+                          <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase bg-royal/5 text-royal border border-royal/20">
                             Default Organization Method
                           </span>
                         )}
@@ -1508,7 +1508,7 @@ export function CompanyStudioBillingView({
 
             {/* SECURITY & PCI GUARANTEE */}
             <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex items-start gap-3 text-xs text-slate-600">
-              <ShieldCheck className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
+              <ShieldCheck className="w-5 h-5 text-royal shrink-0 mt-0.5" />
               <div>
                 <span className="font-bold text-slate-900 block">PCI DSS Level 1 Certified Tokenization</span>
                 <span className="font-light leading-relaxed">
@@ -1523,7 +1523,7 @@ export function CompanyStudioBillingView({
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                  <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-royal bg-royal/5 px-2 py-0.5 rounded border border-royal/20">
                     RAIL 2: GOOGLE CLOUD MARKETPLACE
                   </span>
                 </div>
@@ -1550,7 +1550,7 @@ export function CompanyStudioBillingView({
                   href="https://console.cloud.google.com/marketplace"
                   target="_blank"
                   rel="noreferrer"
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs"
+                  className="px-4 py-2 bg-royal hover:bg-royal-dark text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs"
                 >
                   <span>View Marketplace Offer</span>
                   <ExternalLink className="w-3.5 h-3.5" />
@@ -1580,13 +1580,13 @@ export function CompanyStudioBillingView({
             </div>
 
             {/* INSTITUTIONAL GCP CONSOLE NOTICE */}
-            <div className="p-4 bg-blue-50/60 border border-blue-200 rounded-2xl space-y-2 text-xs">
-              <div className="flex items-center justify-between text-blue-900 font-bold">
+            <div className="p-4 bg-royal/5 border border-royal/20 rounded-2xl space-y-2 text-xs">
+              <div className="flex items-center justify-between text-royal-dark font-bold">
                 <span className="flex items-center gap-2">
-                  <Cloud className="w-4 h-4 text-blue-600" />
+                  <Cloud className="w-4 h-4 text-royal" />
                   Direct Google Cloud Invoicing & Drawdown
                 </span>
-                <span className="px-2 py-0.5 rounded text-[10px] bg-blue-100 text-blue-800 border border-blue-300">
+                <span className="px-2 py-0.5 rounded text-[10px] bg-royal/10 text-royal-dark border border-royal/30">
                   NO CREDIT CARD REQUIRED
                 </span>
               </div>
@@ -1622,7 +1622,7 @@ export function CompanyStudioBillingView({
             <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 border-b border-slate-100 pb-6">
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                  <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-royal bg-royal/5 px-2 py-0.5 rounded border border-royal/20">
                     DIGITAL REAL ESTATE AGREEMENT
                   </span>
                   <span className="text-slate-300">&bull;</span>
@@ -1659,7 +1659,7 @@ export function CompanyStudioBillingView({
 
               <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-1">
                 <span className="text-[10px] text-slate-400 uppercase font-bold block">Placement Tier</span>
-                <span className="font-bold text-blue-600 text-sm">{selectedAgreement.tier}</span>
+                <span className="font-bold text-royal text-sm">{selectedAgreement.tier}</span>
                 <span className="text-[11px] text-slate-500 block">Sector City Showroom</span>
               </div>
 
@@ -1676,7 +1676,7 @@ export function CompanyStudioBillingView({
             <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200 space-y-3 text-xs">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-slate-900 flex items-center gap-2">
-                  <CreditCard className="w-4 h-4 text-blue-600" />
+                  <CreditCard className="w-4 h-4 text-royal" />
                   Payment Instrument & Billing Configuration
                 </span>
 
@@ -1710,9 +1710,9 @@ export function CompanyStudioBillingView({
                   </span>
                 </div>
               ) : (
-                <div className="p-3 bg-blue-50/60 rounded-xl border border-blue-200 space-y-1">
-                  <div className="font-bold text-blue-900 flex items-center gap-2">
-                    <Cloud className="w-4 h-4 text-blue-600" /> Google Cloud Marketplace Private Offer Order
+                <div className="p-3 bg-royal/5 rounded-xl border border-royal/20 space-y-1">
+                  <div className="font-bold text-royal-dark flex items-center gap-2">
+                    <Cloud className="w-4 h-4 text-royal" /> Google Cloud Marketplace Private Offer Order
                   </div>
                   <p className="text-[11px] text-slate-600">
                     Billed directly against Google Cloud Billing Account <span className="font-mono font-semibold">{selectedAgreement.billingCustomerRef || "01A2B3-45C6D7-89E0F1"}</span> under Entitlement <span className="font-mono font-semibold">{selectedAgreement.billingSubscriptionRef || "ent-mw-argento-482001"}</span>.

@@ -15,7 +15,6 @@ import {
   CheckCircle2,
   Lock,
   ChevronRight,
-  Sparkles,
 } from "lucide-react";
 import {
   updateSubscriptionIntentCommercialRoute,

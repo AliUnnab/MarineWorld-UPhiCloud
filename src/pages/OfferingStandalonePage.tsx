@@ -266,10 +266,17 @@ export function OfferingStandalonePage({
       {/* Institutional Footer */}
       <footer className="bg-white border-t border-line mt-12 py-8 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-xs font-mono text-stone">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="font-bold text-graphite">MarineWorld.City</span>
             <span>&bull;</span>
-            <span>Sovereign Maritime Digital Twin Operating System</span>
+            <a
+              href="https://uphi.cloud"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-stone hover:text-graphite font-sans transition-colors"
+            >
+              <span className="font-bold text-graphite">UPhi.Cloud</span> — AI-Native Industry & Enterprise Platform
+            </a>
           </div>
           <div className="flex items-center gap-4">
             <span>CANONICAL: {canonicalUrl.replace("https://", "")}</span>

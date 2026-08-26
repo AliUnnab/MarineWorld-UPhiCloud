@@ -31,7 +31,7 @@ export function SectorHero({ config }: { config: SectorConfig }) {
     accentIndex >= 0 ? hero.statement.slice(accentIndex + hero.accentPhrase.length) : "";
 
   return (
-    <section id="top" className="relative overflow-hidden pt-28 md:pt-40">
+    <section id="top" className="relative overflow-hidden pt-12 md:pt-16">
       {/* Ambient architectural background */}
       <div
         aria-hidden="true"
@@ -43,20 +43,17 @@ export function SectorHero({ config }: { config: SectorConfig }) {
       />
 
       <DigiContainer className="relative">
-        <div className="grid items-center gap-16 lg:grid-cols-12 lg:gap-10">
+        <div className="grid items-center gap-10 lg:grid-cols-12 lg:gap-8">
           {/* ---- Narrative column ---- */}
           <div className="lg:col-span-6">
             <Reveal>
-              <div className="flex flex-wrap items-center gap-3">
+              <div className="flex flex-wrap items-center gap-2.5">
                 <DigiBadge variant="soft" dot>
                   {hero.eyebrow}
                 </DigiBadge>
-                <span className="font-sans text-[11px] font-semibold uppercase tracking-wider text-mute">
-                  {config.sectorCode} / {config.sectorId}
-                </span>
               </div>
 
-              <h1 className="text-display mt-7 text-graphite">
+              <h1 className="text-display mt-4 max-w-[540px] text-graphite uppercase tracking-tight font-extrabold leading-[1.08]">
                 {before}
                 {accent ? (
                   <span className="relative inline-block whitespace-nowrap">
@@ -67,32 +64,44 @@ export function SectorHero({ config }: { config: SectorConfig }) {
                 {after}
               </h1>
 
-              <p className="text-lead mt-7 max-w-[540px] text-stone">{hero.support}</p>
+              <p className="text-lead mt-3.5 max-w-[560px] text-stone font-normal leading-relaxed">
+                {hero.support}
+              </p>
 
-              <div className="mt-9 flex flex-wrap items-center gap-3.5">
-                <DigiButton href="/gateway" icon="arrowRight" id="btn-hero-enter">
-                  ENTER
+              <div className="mt-5 flex flex-wrap items-center gap-3">
+                <DigiButton href="/company/onboarding" icon="arrowRight" id="btn-hero-create-company">
+                  CREATE YOUR AI-NATIVE COMPANY
                 </DigiButton>
-                <DigiButton href="#explorer" variant="secondary" id="btn-hero-explore">
-                  Explore MarineWorld
+                <DigiButton href="#explorer" variant="secondary" icon="arrowRight" id="btn-hero-explore">
+                  EXPLORE MARINEWORLD
                 </DigiButton>
               </div>
             </Reveal>
 
             <Reveal delay={140}>
-              <dl className="mt-12 grid gap-5 border-t border-line pt-7 sm:grid-cols-3">
-                {hero.trust.map((item, i) => (
-                  <div key={item} className="flex items-start gap-3">
-                    <dt className="sr-only">Platform assurance {i + 1}</dt>
-                    <dd className="eyebrow leading-[1.5] text-mute">
-                      <span className="mb-1.5 block font-sans text-[11px] font-bold tracking-wider text-royal/80">
-                        {String(i + 1).padStart(2, "0")}
-                      </span>
-                      {item}
-                    </dd>
-                  </div>
-                ))}
-              </dl>
+              <div className="mt-6 border-t border-line pt-4">
+                <div className="grid gap-4 sm:grid-cols-3">
+                  {hero.trust.map((item, i) => {
+                    const isObject = typeof item === "object" && item !== null;
+                    const indexStr: string = isObject ? item.index : String(i + 1).padStart(2, "0");
+                    const titleStr: string = isObject ? item.title : String(item);
+                    const descStr: string | null = isObject ? item.desc : null;
+
+                    return (
+                      <div key={i} className="flex flex-col space-y-1">
+                        <span className="font-sans text-[11.5px] font-bold uppercase tracking-wide text-royal/95">
+                          {indexStr} — {titleStr}
+                        </span>
+                        {descStr && (
+                          <p className="text-[12px] text-stone font-normal leading-snug">
+                            {descStr}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             </Reveal>
           </div>
 
@@ -107,8 +116,8 @@ export function SectorHero({ config }: { config: SectorConfig }) {
                 <figure className="relative overflow-hidden rounded-card-lg border border-line bg-white shadow-[0_24px_64px_rgba(17,17,19,0.08)]">
                   <div className="aspect-[6/5] overflow-hidden sm:aspect-[5/4] bg-slate-900">
                     <img
-                      src="https://images.unsplash.com/photo-1518241353330-0f7941c2d9b5?auto=format&fit=crop&w=1600&q=80"
-                      alt="Commercial deep-water port, container vessels and maritime shipyard infrastructure"
+                      src="https://images.unsplash.com/photo-1567899378494-47b22a2ae96a?auto=format&fit=crop&w=1600&q=80"
+                      alt="Luxury mega yacht cruising on deep ocean waters across the marine ecosystem"
                       className="kenburns h-full w-full object-cover"
                       referrerPolicy="no-referrer"
                       fetchPriority="high"
@@ -189,7 +198,7 @@ export function SectorHero({ config }: { config: SectorConfig }) {
       </DigiContainer>
 
       {/* Demonstration activity feed */}
-      <div className="relative mt-20 md:mt-24">
+      <div className="relative mt-10 md:mt-12">
         <DigiTicker items={config.activityFeed} label="Demonstration Feed" />
       </div>
     </section>

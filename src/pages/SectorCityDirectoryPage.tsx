@@ -46,7 +46,7 @@ export function SectorCityDirectoryPage({
   const breadcrumbs = [
     { label: "MarineWorld.City", href: "/" },
     { label: "Sector Cities", href: "/cities" },
-    { label: parentDomainName, href: `/explore` },
+    { label: parentDomainName, href: `/industries/${parentDomain?.slug || "maritime-services"}` },
     { label: city.domain.toUpperCase(), href: `/cities/${city.slug}` },
     { label: "Company Presence" },
   ];

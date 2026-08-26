@@ -2,11 +2,13 @@ import React from "react";
 import type { IconName } from "@/lib/types";
 import { Icon } from "@/components/digione/icons";
 import {
+  LayoutDashboard,
   Building2,
   Layers,
   Globe2,
   ShieldCheck,
-  Sparkles,
+  Cpu,
+  Link2,
   MessageSquare,
   ChevronRight,
   Lock,
@@ -31,10 +33,10 @@ export const defaultCompanyNavigationConfig: NavigationNavSection[] = [
     title: "PUBLIC DIGITAL HEADQUARTERS",
     items: [
       {
-        id: "company",
-        label: "COMPANY",
-        icon: "building",
-        meta: "Corporate Identity & Overview",
+        id: "overview",
+        label: "OVERVIEW",
+        icon: "dashboard",
+        meta: "Executive Summary & Operations",
       },
       {
         id: "offerings",
@@ -49,10 +51,10 @@ export const defaultCompanyNavigationConfig: NavigationNavSection[] = [
         meta: "Sector Cities & Nodes",
       },
       {
-        id: "business-twin",
-        label: "BUSINESS TWIN",
-        icon: "twin",
-        meta: "AI Grounded Twin Intelligence",
+        id: "identity",
+        label: "IDENTITY",
+        icon: "shield",
+        meta: "Corporate Entity & Verification",
       },
       {
         id: "connect",
@@ -65,28 +67,35 @@ export const defaultCompanyNavigationConfig: NavigationNavSection[] = [
 ];
 
 const ITEM_ICONS: Record<string, React.ReactNode> = {
-  company: <Building2 className="w-4 h-4 shrink-0 text-royal" />,
+  overview: <LayoutDashboard className="w-4 h-4 shrink-0 text-royal" />,
+  company: <LayoutDashboard className="w-4 h-4 shrink-0 text-royal" />,
   offerings: <Layers className="w-4 h-4 shrink-0 text-royal" />,
   showroom: <Layers className="w-4 h-4 shrink-0 text-royal" />,
   solutions: <Layers className="w-4 h-4 shrink-0 text-royal" />,
   presence: <Globe2 className="w-4 h-4 shrink-0 text-royal" />,
+  identity: <ShieldCheck className="w-4 h-4 shrink-0 text-royal" />,
   corporate: <ShieldCheck className="w-4 h-4 shrink-0 text-royal" />,
-  "business-twin": <Sparkles className="w-4 h-4 shrink-0 text-electric" />,
-  connect: <MessageSquare className="w-4 h-4 shrink-0 text-royal" />,
+  "business-twin": <Cpu className="w-4 h-4 shrink-0 text-royal" />,
+  connect: <Link2 className="w-4 h-4 shrink-0 text-royal" />,
 };
 
 function isItemActive(itemId: string, activeModule: string): boolean {
   if (itemId === activeModule) return true;
 
   switch (itemId) {
+    case "overview":
     case "company":
-      return activeModule === "overview" || activeModule === "corporate" || activeModule === "governance";
+      return activeModule === "overview" || activeModule === "company";
     case "offerings":
     case "showroom":
     case "solutions":
       return activeModule === "offerings" || activeModule === "showroom" || activeModule === "solutions" || activeModule === "products" || activeModule === "services";
     case "presence":
       return activeModule === "sector-city" || activeModule === "network" || activeModule === "presence";
+    case "identity":
+    case "corporate":
+    case "governance":
+      return activeModule === "identity" || activeModule === "corporate" || activeModule === "governance";
     case "business-twin":
       return activeModule === "chat" || activeModule === "ai" || activeModule === "business-twin";
     case "connect":
@@ -198,7 +207,7 @@ export function CompanySidebar({
                 ) : (
                   <ChevronRight
                     className={`w-3.5 h-3.5 shrink-0 transition-transform ${
-                      active ? "text-blue-400 translate-x-0.5" : "text-slate-300 group-hover:text-slate-500"
+                      active ? "text-slate-300 translate-x-0.5" : "text-slate-300 group-hover:text-slate-500"
                     }`}
                   />
                 )}

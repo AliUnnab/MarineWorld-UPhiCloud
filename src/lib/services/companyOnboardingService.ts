@@ -363,12 +363,20 @@ export function registerSubscription(sub: Subscription): Subscription {
   return sub;
 }
 
+import {
+  validateOrganizationEnrollmentCode,
+  getEcosystemOrganizationById,
+  clearEcosystemMemberCache,
+} from "./ecosystemOrganizationService";
+
 /**
- * Creates a subscription intent for a company selecting a plan
+ * Creates a subscription intent for a company selecting a plan, automatically calculating
+ * server-authoritative discounts if the company has an enrolled ecosystem organization.
  */
 export function createSubscriptionIntent(
   companyId: string,
-  planCode: PlanCode
+  planCode: PlanCode,
+  overrideEnrollmentCode?: string
 ): SubscriptionIntent {
   const plan = AVAILABLE_PLANS[planCode];
   if (!plan) {
@@ -378,12 +386,40 @@ export function createSubscriptionIntent(
   const comp = getCompanyById(companyId) || createdCompaniesRegistry.get(companyId);
   const businessId = comp?.businessId || generateBusinessId(companyId);
 
+  let catalogAmount = plan.price;
+  let finalAmount = plan.price;
+  let discountPercentage = 0;
+  let enrolledOrgId = comp?.enrolledOrganizationId;
+  let enrolledOrgName = comp?.enrolledOrganizationName;
+  let enrolledOrgCode = overrideEnrollmentCode || comp?.enrolledOrganizationCode;
+
+  // Resolve canonical organization from code or id
+  if (enrolledOrgCode || enrolledOrgId) {
+    const val = validateOrganizationEnrollmentCode(enrolledOrgCode || "");
+    const org = val.organization || (enrolledOrgId ? getEcosystemOrganizationById(enrolledOrgId) : undefined);
+    if (org) {
+      enrolledOrgId = org.id;
+      enrolledOrgName = org.name;
+      enrolledOrgCode = org.enrollmentCode || enrolledOrgCode;
+      if (org.discountPercentage && org.discountPercentage > 0) {
+        discountPercentage = org.discountPercentage;
+        const discountVal = (catalogAmount * discountPercentage) / 100;
+        finalAmount = Math.max(0, Math.round((catalogAmount - discountVal) * 100) / 100);
+      }
+    }
+  }
+
   const intent: SubscriptionIntent = {
     id: `intent-${companyId}-${Date.now()}`,
     companyId,
     businessId,
     planId: plan.id,
-    amount: plan.price,
+    amount: finalAmount,
+    catalogAmount,
+    discountPercentage: discountPercentage > 0 ? discountPercentage : undefined,
+    enrolledOrganizationId: enrolledOrgId,
+    enrolledOrganizationName: enrolledOrgName,
+    enrolledOrganizationCode: enrolledOrgCode,
     currency: plan.currency,
     status: "PENDING",
     paymentReference: null,
@@ -610,6 +646,27 @@ export function startCompanyOnboarding(
     };
   }
 
+  // Resolve optional ecosystem enrollment code
+  let enrolledOrgId = existingComp?.enrolledOrganizationId;
+  let enrolledOrgName = existingComp?.enrolledOrganizationName;
+  let enrolledOrgCode = existingComp?.enrolledOrganizationCode;
+  let enrolledOrgCountry = existingComp?.enrolledOrganizationCountry;
+  let enrolledOrgType = existingComp?.enrolledOrganizationType;
+  let enrolledOrgDiscount = existingComp?.enrolledOrganizationDiscount;
+
+  if (request.enrollmentCode) {
+    const val = validateOrganizationEnrollmentCode(request.enrollmentCode);
+    if (val.valid && val.organization) {
+      enrolledOrgId = val.organization.id;
+      enrolledOrgName = val.organization.name;
+      enrolledOrgCode = val.organization.enrollmentCode || request.enrollmentCode;
+      enrolledOrgCountry = val.organization.country;
+      enrolledOrgType = val.organization.organizationType;
+      enrolledOrgDiscount = val.organization.discountPercentage;
+      clearEcosystemMemberCache(val.organization.id);
+    }
+  }
+
   // Create canonical CompanyEntity in DRAFT / PENDING_PAYMENT lifecycle state
   const companyEntity: CompanyEntity = {
     ...(existingComp || {}),
@@ -633,6 +690,12 @@ export function startCompanyOnboarding(
     status: existingComp?.status || "DRAFT",
     verificationStatus: existingComp?.verificationStatus || "PENDING",
     ownerId: currentAuth.uid || existingComp?.ownerId,
+    enrolledOrganizationId: enrolledOrgId,
+    enrolledOrganizationName: enrolledOrgName,
+    enrolledOrganizationCode: enrolledOrgCode,
+    enrolledOrganizationCountry: enrolledOrgCountry,
+    enrolledOrganizationType: enrolledOrgType,
+    enrolledOrganizationDiscount: enrolledOrgDiscount,
     offerings: existingComp?.offerings,
     products: existingComp?.products,
     services: existingComp?.services,

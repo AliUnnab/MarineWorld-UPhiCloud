@@ -1,7 +1,7 @@
-import type { SectorConfig, CompanyProfile } from "@/lib/types";
+import type { SectorConfig, CompanyProfile, SectorCity } from "@/lib/types";
 import { getCompaniesInCity, getCompanyProducts, getCompanyServices, getCompanyBySlug, formatCompactLocation } from "@/lib/registry";
 import { getActivePublications } from "@/lib/services/propertyGovernanceService";
-import { getCommercialProperty } from "@/lib/services/commercialPropertyService";
+import { getCommercialProperty, getAllCommercialInventory, getCompanyCommercialHoldings } from "@/lib/services/commercialPropertyService";
 import { CANONICAL_CITY_REGIONS, type CanonicalCityRegion } from "@/lib/constants/regions";
 
 export { CANONICAL_CITY_REGIONS, type CanonicalCityRegion };
@@ -421,3 +421,163 @@ export function getCountryPavilions(
     };
   });
 }
+
+export interface CityAnchorCredential {
+  company: CompanyProfile;
+  city: SectorCity;
+  formattedCityDomain: string; // e.g. "SUPPLYCHAIN.CITY"
+  regionCode?: string;
+  regionName?: string;
+  propertyName?: string;
+  slotCode?: string;
+}
+
+/**
+ * Surface the Landmark Anchor company for a single sector city.
+ * Reads directly from the real property & commercial inventory single source of truth.
+ * Returns null if the Landmark position is unsold/available.
+ */
+export function getCityAnchor(
+  config: SectorConfig,
+  cityIdOrSlug?: string | null
+): CityAnchorCredential | null {
+  if (!cityIdOrSlug || cityIdOrSlug.toLowerCase() === "all") return null;
+
+  const cleanCityId = cityIdOrSlug.toLowerCase().replace(/\.city$/i, "");
+  const city = config.explorer.cities.find(
+    (c) =>
+      c.slug.toLowerCase() === cleanCityId ||
+      c.id.toLowerCase() === cleanCityId ||
+      c.domain.toLowerCase() === cleanCityId
+  );
+  if (!city) return null;
+
+  const formattedCityDomain = city.domain.toUpperCase().endsWith(".CITY")
+    ? city.domain.toUpperCase()
+    : `${city.domain.toUpperCase()}.CITY`;
+
+  // 1. Check all commercial inventory with tier LANDMARK for this city
+  try {
+    const allInventory = getAllCommercialInventory({ cityId: city.id, tier: "LANDMARK" });
+    const activeHolding = allInventory.find(
+      (p) =>
+        (p.commercialStatus === "ACTIVE" || p.availabilityStatus === "ACTIVE" || p.commercialStatus === "RESERVED") &&
+        p.tenantCompanyId
+    );
+
+    if (activeHolding && activeHolding.tenantCompanyId) {
+      const comp = getCompanyBySlug(config, activeHolding.tenantCompanyId);
+      if (comp) {
+        return {
+          company: comp,
+          city,
+          formattedCityDomain,
+          regionCode: activeHolding.regionCode,
+          propertyName: activeHolding.propertyName,
+          slotCode: activeHolding.slotId,
+        };
+      }
+    }
+  } catch (e) {
+    // safe fallback
+  }
+
+  // 2. Check active governance publications for tier LANDMARK
+  try {
+    const activePubs = getActivePublications().filter(
+      (p) =>
+        p.cityId?.toLowerCase() === city.id.toLowerCase() &&
+        p.tier === "LANDMARK" &&
+        p.status === "PUBLISHED" &&
+        p.companyId
+    );
+
+    if (activePubs.length > 0) {
+      const firstPub = activePubs[0];
+      const comp = getCompanyBySlug(config, firstPub.companyId);
+      if (comp) {
+        return {
+          company: comp,
+          city,
+          formattedCityDomain,
+          regionCode: firstPub.regionCode,
+          propertyName: firstPub.creative?.headline,
+          slotCode: firstPub.slotId,
+        };
+      }
+    }
+  } catch (e) {
+    // safe fallback
+  }
+
+  // 3. Check regional property projections
+  try {
+    const availableRegions = getAvailableCityRegions(config, city.id);
+    for (const reg of availableRegions) {
+      const proj = getPublicPropertyProjections(config, city.id, reg.code);
+      if (proj.landmark && proj.landmark.companyId) {
+        const comp = getCompanyBySlug(config, proj.landmark.companyId);
+        if (comp) {
+          return {
+            company: comp,
+            city,
+            formattedCityDomain,
+            regionCode: reg.code,
+            regionName: reg.name,
+            propertyName: proj.landmark.creative?.headline,
+            slotCode: proj.landmark.slotCode,
+          };
+        }
+      }
+    }
+  } catch (e) {
+    // safe fallback
+  }
+
+  return null;
+}
+
+/**
+ * Universal helper to determine whether an entity holds Landmark Anchor Status.
+ * Real, exclusive civic-registry credential recognized across all platform views.
+ */
+export function isCompanyAnchor(
+  company?: Partial<CompanyProfile> | null
+): boolean {
+  if (!company) return false;
+  if (company.isAnchor === true) return true;
+  if ((company as any).tier === "LANDMARK") return true;
+
+  const targetId = (company.id || (company as any).slug || "").toLowerCase();
+  const targetSlug = ((company as any).slug || company.id || "").toLowerCase();
+
+  // 1. Check direct commercial holdings for active landmark placement
+  try {
+    const holdings = getCompanyCommercialHoldings(company.id || (company as any).slug || "");
+    const hasActiveLandmarkHolding = holdings.some(
+      (h) =>
+        h.tier === "LANDMARK" &&
+        (h.commercialStatus === "ACTIVE" || h.availabilityStatus === "ACTIVE" || h.commercialStatus === "RESERVED")
+    );
+    if (hasActiveLandmarkHolding) return true;
+  } catch (e) {
+    // safe fallback
+  }
+
+  // 2. Check active governance publications for published landmark revision
+  try {
+    const pubs = getActivePublications();
+    const hasActiveLandmarkPub = pubs.some(
+      (p) =>
+        p.tier === "LANDMARK" &&
+        p.status === "PUBLISHED" &&
+        (p.companyId?.toLowerCase() === targetId || p.companyId?.toLowerCase() === targetSlug)
+    );
+    if (hasActiveLandmarkPub) return true;
+  } catch (e) {
+    // safe fallback
+  }
+
+  return false;
+}
+

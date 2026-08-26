@@ -580,7 +580,7 @@ export function CompanyServicesModule({
                     href={`/companies/${companySlug}/corporate`}
                     className="inline-flex items-center gap-1 font-mono text-[11.5px] font-bold text-royal hover:underline shrink-0"
                   >
-                    <span>View Profile</span>
+                    <span>View Company</span>
                     <Icon name="arrowRight" className="h-3.5 w-3.5" />
                   </a>
                 </div>

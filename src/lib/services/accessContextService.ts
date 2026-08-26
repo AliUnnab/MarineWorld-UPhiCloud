@@ -23,7 +23,35 @@ import { recordCanonicalAuditEvent, AuditModuleType } from "@/lib/services/audit
  * Supports GUEST_VISITOR, PERSONAL_VISITOR, COMPANY, and ECOSYSTEM_ORGANIZATION contexts.
  */
 
-const userActiveOrgMap = new Map<string, string>(); // userId -> active organizationId/companyId
+const ACTIVE_ORG_MAP_KEY = "marineworld_active_org_map";
+
+function loadActiveOrgMapFromStorage(): Map<string, string> {
+  const map = new Map<string, string>();
+  try {
+    const raw = typeof window !== "undefined" ? localStorage.getItem(ACTIVE_ORG_MAP_KEY) : null;
+    if (raw) {
+      const entries = JSON.parse(raw);
+      if (Array.isArray(entries)) {
+        entries.forEach(([k, v]: [string, string]) => map.set(k, v));
+      }
+    }
+  } catch (e) {
+    console.error("Failed to load active org map", e);
+  }
+  return map;
+}
+
+function saveActiveOrgMapToStorage(map: Map<string, string>) {
+  try {
+    if (typeof window !== "undefined") {
+      localStorage.setItem(ACTIVE_ORG_MAP_KEY, JSON.stringify(Array.from(map.entries())));
+    }
+  } catch (e) {
+    console.error("Failed to save active org map", e);
+  }
+}
+
+const userActiveOrgMap = loadActiveOrgMapFromStorage(); // userId -> active organizationId/companyId
 
 /**
  * Derives a typed personal user identity model from AuthContext without duplicating canonical stores.
@@ -72,6 +100,7 @@ export function setPersonalVisitorMode(userId?: string): void {
   const uid = userId || getCurrentAuthSession().uid;
   if (uid) {
     userActiveOrgMap.set(uid, "NONE");
+    saveActiveOrgMapToStorage(userActiveOrgMap);
     clearUserAIContextCache(uid);
   }
 }
@@ -81,6 +110,7 @@ export function setPersonalVisitorMode(userId?: string): void {
  */
 export function clearAllUserActiveOrgContexts(): void {
   userActiveOrgMap.clear();
+  saveActiveOrgMapToStorage(userActiveOrgMap);
 }
 
 /**
@@ -163,6 +193,7 @@ export function setActiveOrganizationContext(
 
   if (!targetOrgId) {
     userActiveOrgMap.set(uid, "NONE");
+    saveActiveOrgMapToStorage(userActiveOrgMap);
     clearUserAIContextCache(uid);
     return true;
   }
@@ -175,6 +206,7 @@ export function setActiveOrganizationContext(
   if (!targetMembership) {
     if (typeof arg1 === "object") {
       userActiveOrgMap.set(uid, targetOrgId);
+      saveActiveOrgMapToStorage(userActiveOrgMap);
       clearUserAIContextCache(uid);
       return true;
     }
@@ -182,6 +214,7 @@ export function setActiveOrganizationContext(
   }
 
   userActiveOrgMap.set(uid, targetMembership.organizationId);
+  saveActiveOrgMapToStorage(userActiveOrgMap);
   clearUserAIContextCache(uid);
   return true;
 }

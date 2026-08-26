@@ -120,7 +120,7 @@ export function SectorAI({ config }: { config: SectorConfig }) {
 
                     <div className="mt-5 rounded-card-sm border border-white/12 bg-white/5 p-4">
                       <div className="flex items-center gap-2 text-electric">
-                        <Icon name="spark" className="h-4 w-4" />
+                        <Icon name="chip" className="h-4 w-4" />
                         <span className="font-sans text-[11px] font-semibold uppercase tracking-wider">Twin Resolution</span>
                       </div>
                       <p className="mt-2 font-sans text-[13px] leading-relaxed text-white/90">

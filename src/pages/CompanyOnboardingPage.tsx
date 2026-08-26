@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 import type { SectorConfig, PlanCode, CompanyEntity, SubscriptionIntent } from "@/lib/types";
 import { LogoMark } from "@/components/digione/icons";
-import { GlobalFooter } from "@/components/foundation/GlobalFooter";
 import { CommercialPaymentModal } from "@/components/company/CommercialPaymentModal";
 import {
   startCompanyOnboarding,
@@ -19,6 +18,11 @@ import { setActiveOrganizationContext, getUserMemberships } from "@/lib/services
 import { getCurrentAuthSession, setCurrentAuthSession, getCompanyMember, type AuthContext } from "@/lib/services/securityService";
 import { getCompanyVerificationStatus, submitCompanyVerification } from "@/lib/services/governanceService";
 import { verifyAndSyncStripeSessionStatus } from "@/lib/services/stripeService";
+import {
+  validateOrganizationEnrollmentCode,
+  applyOrganizationEnrollmentToCompany,
+  type EcosystemOrganizationSummary,
+} from "@/lib/services/ecosystemOrganizationService";
 import {
   Building2,
   ShieldCheck,
@@ -42,15 +46,16 @@ interface CompanyOnboardingPageProps {
 }
 
 export function CompanyOnboardingPage({ config, onEnterStudio }: CompanyOnboardingPageProps) {
-  // 7 Canonical Steps:
-  // 1: COMPANY IDENTITY
-  // 2: ORGANIZATIONAL DIGITAL IDENTITY
-  // 3: MARINEWORLD BUSINESS ID
-  // 4: PLAN
-  // 5: SUBSCRIPTION
-  // 6: VERIFICATION
-  // 7: ACTIVATION
+  // Canonical 7 Steps State
   const [currentStep, setCurrentStep] = useState<number>(1);
+
+  // Helper to change step deterministically with instant scroll
+  const goToStep = (stepNum: number) => {
+    setCurrentStep(stepNum);
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "instant" });
+    }
+  };
   const [mode, setMode] = useState<"COMPANY" | "ECOSYSTEM">("COMPANY");
   const [authSession, setAuthSession] = useState<AuthContext>(() => getCurrentAuthSession());
 
@@ -72,6 +77,12 @@ export function CompanyOnboardingPage({ config, onEnterStudio }: CompanyOnboardi
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [showAuthModal, setShowAuthModal] = useState<boolean>(false);
 
+  // Ecosystem Membership Enrollment State
+  const [enrollmentCodeInput, setEnrollmentCodeInput] = useState<string>("");
+  const [codeValidationState, setCodeValidationState] = useState<"EMPTY" | "VALIDATING" | "VALID" | "INVALID" | "EXPIRED">("EMPTY");
+  const [validatedOrg, setValidatedOrg] = useState<EcosystemOrganizationSummary | null>(null);
+  const [codeErrorMsg, setCodeErrorMsg] = useState<string | null>(null);
+
   // Sync auth session and restore canonical company lifecycle state on refresh/mount
   useEffect(() => {
     const auth = getCurrentAuthSession();
@@ -91,22 +102,32 @@ export function CompanyOnboardingPage({ config, onEnterStudio }: CompanyOnboardi
           if (comp.email) setOfficialEmail(comp.email);
           if (comp.website) setOfficialWebsite(comp.website);
 
+          // Restore Ecosystem Membership state if company already has affiliation
+          if (comp.enrolledOrganizationCode || comp.enrolledOrganizationId) {
+            const val = validateOrganizationEnrollmentCode(comp.enrolledOrganizationCode || "");
+            if (val.valid && val.organization) {
+              setValidatedOrg(val.organization);
+              setCodeValidationState("VALID");
+              setEnrollmentCodeInput(comp.enrolledOrganizationCode || val.organization.enrollmentCode || "");
+            }
+          }
+
           // Resolve current onboarding step dynamically from canonical state
           const sub = getCompanySubscription(comp.id);
           const verif = comp.verificationStatus;
 
           if (comp.lifecycleStatus === "ACTIVE") {
-            setCurrentStep(7); // ACTIVATION
+            goToStep(7); // ACTIVATION
           } else if (verif === "VERIFIED") {
-            setCurrentStep(7); // ACTIVATION
+            goToStep(7); // ACTIVATION
           } else if (sub?.status === "ACTIVE") {
-            setCurrentStep(6); // VERIFICATION
+            goToStep(6); // VERIFICATION
           } else if (comp.lifecycleStatus === "PENDING_PAYMENT") {
-            setCurrentStep(5); // SUBSCRIPTION
+            goToStep(5); // SUBSCRIPTION
           } else if (comp.businessId) {
-            setCurrentStep(3); // BUSINESS ID
+            goToStep(3); // BUSINESS ID
           } else if (comp.id) {
-            setCurrentStep(2); // ORGANIZATIONAL DIGITAL IDENTITY
+            goToStep(2); // ORGANIZATIONAL DIGITAL IDENTITY
           }
         }
       }
@@ -129,10 +150,10 @@ export function CompanyOnboardingPage({ config, onEnterStudio }: CompanyOnboardi
             if (data.success && data.status === "PAID") {
               setSuccessMessage("Stripe payment authorized & verified. Subscription active.");
               if (data.intent) setSubscriptionIntent(data.intent);
-              setCurrentStep(6); // PROCEED TO VERIFICATION
+              goToStep(6); // PROCEED TO VERIFICATION
             } else {
               setErrorMessage("Payment pending authorization or webhook confirmation. Status: " + (data.status || "PENDING"));
-              setCurrentStep(5);
+              goToStep(5);
             }
           })
           .catch(() => {
@@ -140,16 +161,16 @@ export function CompanyOnboardingPage({ config, onEnterStudio }: CompanyOnboardi
               if (res.success && res.status === "PAID") {
                 setSuccessMessage("Stripe payment verified. Subscription active.");
                 if (res.intent) setSubscriptionIntent(res.intent);
-                setCurrentStep(6);
+                goToStep(6);
               } else {
                 setErrorMessage("Payment pending webhook confirmation.");
-                setCurrentStep(5);
+                goToStep(5);
               }
             });
           });
       } else if (stripeStatus === "canceled") {
         setErrorMessage("Stripe Checkout was canceled. Your company onboarding state and Business ID are preserved.");
-        setCurrentStep(5);
+        goToStep(5);
       }
     }
   }, []);
@@ -158,6 +179,49 @@ export function CompanyOnboardingPage({ config, onEnterStudio }: CompanyOnboardi
     setDisplayName(name);
     const generatedSlug = name.toLowerCase().replace(/[^a-z0-9]/g, "-").replace(/-+/g, "-");
     setSlug(generatedSlug);
+  };
+
+  // Ecosystem Enrollment Code Validation Handlers
+  const handleApplyEnrollmentCode = () => {
+    if (!enrollmentCodeInput.trim()) {
+      setCodeValidationState("INVALID");
+      setCodeErrorMsg("Enrollment code cannot be empty.");
+      return;
+    }
+
+    setCodeValidationState("VALIDATING");
+    setCodeErrorMsg(null);
+
+    setTimeout(() => {
+      const res = validateOrganizationEnrollmentCode(enrollmentCodeInput);
+      if (res.valid && res.organization) {
+        setValidatedOrg(res.organization);
+        setCodeValidationState("VALID");
+        if (activeCompanyId) {
+          applyOrganizationEnrollmentToCompany(activeCompanyId, enrollmentCodeInput);
+        }
+      } else if (res.status === "EXPIRED") {
+        setCodeValidationState("EXPIRED");
+        setValidatedOrg(null);
+        setCodeErrorMsg("This enrollment code is no longer active.");
+      } else {
+        setCodeValidationState("INVALID");
+        setValidatedOrg(null);
+        setCodeErrorMsg("Enrollment code could not be verified.");
+      }
+    }, 350);
+  };
+
+  const handleRemoveEnrollmentCode = () => {
+    setEnrollmentCodeInput("");
+    setCodeValidationState("EMPTY");
+    setValidatedOrg(null);
+    setCodeErrorMsg(null);
+    if (companyEntity) {
+      companyEntity.enrolledOrganizationId = undefined;
+      companyEntity.enrolledOrganizationName = undefined;
+      companyEntity.enrolledOrganizationCode = undefined;
+    }
   };
 
   // Step 1: Collect & Validate Company Identity
@@ -187,6 +251,7 @@ export function CompanyOnboardingPage({ config, onEnterStudio }: CompanyOnboardi
         slug,
         requestedPlanCode: selectedPlanCode,
         creatorEmail: officialEmail,
+        enrollmentCode: codeValidationState === "VALID" ? enrollmentCodeInput : undefined,
       },
       auth
     );
@@ -201,7 +266,7 @@ export function CompanyOnboardingPage({ config, onEnterStudio }: CompanyOnboardi
     setCompanyEntity(comp || null);
     setSubscriptionIntent(res.result.subscriptionIntent);
     setSuccessMessage(`Company identity established. Assigned ID: ${res.result.companyId}`);
-    setCurrentStep(2); // ORGANIZATIONAL DIGITAL IDENTITY
+    goToStep(2); // ORGANIZATIONAL DIGITAL IDENTITY
   };
 
   // Sign In as Founder for Unauthenticated Visitors
@@ -236,7 +301,7 @@ export function CompanyOnboardingPage({ config, onEnterStudio }: CompanyOnboardi
       setActiveCompanyId(res.result.companyId);
       setCompanyEntity(comp || null);
       setSubscriptionIntent(res.result.subscriptionIntent);
-      setCurrentStep(2);
+      goToStep(2);
     }
   };
 
@@ -249,14 +314,14 @@ export function CompanyOnboardingPage({ config, onEnterStudio }: CompanyOnboardi
       return;
     }
     setSuccessMessage(`Digital identity confirmed for ${companyEntity.displayName}. MarineWorld Business ID generated.`);
-    setCurrentStep(3); // MARINEWORLD BUSINESS ID
+    goToStep(3); // MARINEWORLD BUSINESS ID
   };
 
   // Step 3 -> Step 4: Proceed to Plan
   const handleProceedToPlan = () => {
     setErrorMessage(null);
     setSuccessMessage(null);
-    setCurrentStep(4); // PLAN
+    goToStep(4); // PLAN
   };
 
   // Step 4: Plan Selection & Intent Creation & Modal Trigger
@@ -264,10 +329,11 @@ export function CompanyOnboardingPage({ config, onEnterStudio }: CompanyOnboardi
     setSelectedPlanCode(code);
     setErrorMessage(null);
     const compId = activeCompanyId || "argento-marine";
-    const intent = createSubscriptionIntent(compId, code);
+    const codeToPass = codeValidationState === "VALID" ? enrollmentCodeInput : companyEntity?.enrolledOrganizationCode;
+    const intent = createSubscriptionIntent(compId, code, codeToPass);
     setSubscriptionIntent(intent);
     setSuccessMessage(`Selected Plan: ${code}. Subscription Intent created.`);
-    setCurrentStep(5); // SUBSCRIPTION
+    goToStep(5); // SUBSCRIPTION
     setIsPaymentModalOpen(true); // Open Commercial Payment Method Modal
   };
 
@@ -288,7 +354,7 @@ export function CompanyOnboardingPage({ config, onEnterStudio }: CompanyOnboardi
         const comp = getCompanyById(activeCompanyId);
         if (comp) setCompanyEntity(comp);
       }
-      setCurrentStep(6); // VERIFICATION
+      goToStep(6); // VERIFICATION
     } else {
       setErrorMessage(`Payment authorization failed: ${res.reason}. Your company record is safely preserved.`);
       if (activeCompanyId) {
@@ -388,15 +454,14 @@ export function CompanyOnboardingPage({ config, onEnterStudio }: CompanyOnboardi
         {/* Dedicated Clean Onboarding Header */}
         <header className="sticky top-0 z-50 border-b border-line bg-white/95 backdrop-blur-md">
           <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
-            <a href="/" className="flex items-center gap-2.5" aria-label={`${config.wordmark} — home`}>
-              <LogoMark className="h-8 w-8" />
-              <span className="text-[15.5px] font-semibold tracking-[-0.02em] text-graphite">
-                {config.sectorName}
-                <span className="text-royal">{config.sectorTld}</span>
+            <a href="/" className="flex items-center gap-2.5 text-graphite" aria-label={`${config.wordmark} — home`}>
+              <LogoMark className="h-6 w-2 text-graphite" />
+              <span className="text-[15.5px] font-bold tracking-[-0.02em] text-graphite">
+                {config.sectorName}{config.sectorTld}
               </span>
             </a>
             <div className="flex items-center gap-3">
-              <span className="hidden sm:inline-block text-xs font-semibold text-stone">
+              <span className="hidden sm:inline-block text-xs font-bold text-slate-500 uppercase tracking-wider">
                 Company Registration &amp; Onboarding
               </span>
               <a
@@ -412,44 +477,54 @@ export function CompanyOnboardingPage({ config, onEnterStudio }: CompanyOnboardi
         <main className="pt-8 md:pt-10 pb-20 px-4 max-w-6xl mx-auto space-y-8">
           {/* Header Banner & Corporate Context Area */}
           <div className="bg-white border border-line rounded-2xl p-6 md:p-8 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 shadow-sm">
-            <div className="space-y-2">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="px-3 py-1 rounded-full text-[10px] font-mono font-bold bg-royal/10 text-royal border border-royal/20 uppercase tracking-widest">
-                  COMPANY ONBOARDING
+            <div className="space-y-1.5 max-w-3xl">
+              <div className="flex items-center gap-2.5">
+                <span className="text-[11px] font-extrabold text-royal uppercase tracking-wider bg-royal/10 px-2.5 py-0.5 rounded-full">
+                  PLATFORM GUIDE
                 </span>
-                <span className="text-stone font-mono text-xs">| MarineWorld.City</span>
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                  Company Registration &amp; Onboarding
+                </span>
               </div>
-              <h1 className="text-2xl md:text-3xl font-bold text-graphite tracking-tight">
-                CREATE YOUR AI-NATIVE COMPANY
+              <h1 className="text-2xl sm:text-3xl font-extrabold text-graphite tracking-tight">
+                Build Your Verified Marine Business Presence
               </h1>
-              <p className="text-xs md:text-sm text-stone max-w-2xl leading-relaxed">
-                Step {currentStep} of 7 — <strong className="text-graphite">{steps[currentStep - 1]?.label}</strong>
+              <p className="text-sm text-slate-600 leading-relaxed font-medium">
+                Step {currentStep} of 7 — <strong className="text-graphite font-extrabold">{steps[currentStep - 1]?.label}</strong>
               </p>
             </div>
           </div>
 
-          {/* Access Context Summary Card */}
-          <div className="bg-slate-50/80 border border-line rounded-2xl p-4 md:p-5 grid grid-cols-2 md:grid-cols-4 gap-4 text-xs font-mono">
+          {/* Company Context Bar — Canonical State Domains */}
+          <div className="bg-slate-50/90 border border-line rounded-2xl p-4 md:p-5 grid grid-cols-2 md:grid-cols-5 gap-3 text-xs font-mono shadow-xs">
             <div>
-              <span className="text-stone font-sans">Current Step:</span>
-              <div className="text-royal font-bold mt-0.5">{steps[currentStep - 1]?.label}</div>
-            </div>
-            <div>
-              <span className="text-stone font-sans">Company:</span>
-              <div className="text-graphite font-bold font-sans mt-0.5 truncate">
+              <span className="text-stone font-sans text-[11px] uppercase tracking-wider block">Company</span>
+              <div className="text-graphite font-bold font-sans mt-0.5 truncate" title={companyEntity?.displayName || displayName}>
                 {companyEntity?.displayName || displayName || "Pending Creation"}
               </div>
             </div>
             <div>
-              <span className="text-stone font-sans">Business ID:</span>
-              <div className="text-graphite font-bold mt-0.5">
+              <span className="text-stone font-sans text-[11px] uppercase tracking-wider block">Business ID</span>
+              <div className="text-royal font-bold mt-0.5 truncate">
                 {companyEntity?.businessId || "Assigned on Step 3"}
               </div>
             </div>
             <div>
-              <span className="text-stone font-sans">Account Status:</span>
+              <span className="text-stone font-sans text-[11px] uppercase tracking-wider block">Role</span>
+              <div className="text-graphite font-bold mt-0.5">
+                {activeCompanyId ? (getCompanyMember(activeCompanyId, authSession)?.role || "OWNER") : "OWNER"}
+              </div>
+            </div>
+            <div>
+              <span className="text-stone font-sans text-[11px] uppercase tracking-wider block">Lifecycle</span>
               <div className="text-emerald-700 font-bold mt-0.5">
-                {companyEntity?.lifecycleStatus || "REGISTRATION"}
+                {companyEntity?.lifecycleStatus || "DRAFT"}
+              </div>
+            </div>
+            <div>
+              <span className="text-stone font-sans text-[11px] uppercase tracking-wider block">Plan</span>
+              <div className="text-graphite font-bold mt-0.5">
+                {selectedPlanCode || "NOT_SELECTED"}
               </div>
             </div>
           </div>
@@ -548,35 +623,48 @@ export function CompanyOnboardingPage({ config, onEnterStudio }: CompanyOnboardi
           ) : (
             /* COMMERCIAL COMPANY ONBOARDING JOURNEY */
             <>
-              {/* 7-Step Progress Header */}
+              {/* 7-Step Progress Navigator — Global Onboarding Shell */}
               <div className="bg-white border border-line rounded-2xl p-4 md:p-6 shadow-sm">
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
                   {steps.map((s) => {
                     const isActive = currentStep === s.num;
                     const isDone = isStepComplete(s.num) || currentStep > s.num;
+                    const maxUnlocked = Math.max(
+                      1,
+                      ...(companyEntity?.lifecycleStatus === "ACTIVE" ? [7] : []),
+                      ...(companyEntity?.verificationStatus === "VERIFIED" ? [7] : []),
+                      ...(activeCompanyId && getCompanySubscription(activeCompanyId)?.status === "ACTIVE" ? [6] : []),
+                      ...(subscriptionIntent || companyEntity?.businessId ? [5] : []),
+                      ...(companyEntity?.businessId ? [4] : []),
+                      ...(companyEntity?.id ? [2] : [])
+                    );
+                    const isNavigable = isDone || isActive || s.num <= maxUnlocked || s.num === currentStep + 1;
 
                     return (
                       <button
                         key={s.num}
                         type="button"
+                        disabled={!isNavigable && !isActive && !isDone}
                         onClick={() => {
-                          if (isDone || isActive || s.num === currentStep - 1) {
-                            setCurrentStep(s.num);
+                          if (isNavigable) {
+                            goToStep(s.num);
                           }
                         }}
                         className={`p-2.5 md:p-3 rounded-xl border text-left transition-all ${
                           isActive
-                            ? "bg-royal/10 border-royal text-royal font-bold shadow-sm ring-1 ring-royal/30"
+                            ? "bg-royal/10 border-royal text-royal font-bold shadow-sm ring-2 ring-royal/40"
                             : isDone
-                            ? "bg-emerald-50/70 border-emerald-200 text-emerald-800 font-medium"
-                            : "bg-slate-50 border-line text-stone opacity-70 cursor-not-allowed"
+                            ? "bg-emerald-50/80 border-emerald-300 text-emerald-800 font-medium hover:bg-emerald-100/80 cursor-pointer"
+                            : isNavigable
+                            ? "bg-white border-line text-graphite hover:border-royal/50 cursor-pointer"
+                            : "bg-slate-50 border-line/60 text-stone/50 opacity-60 cursor-not-allowed"
                         }`}
                       >
                         <div className="flex items-center justify-between text-[10px] font-mono">
-                          <span>0{s.num}</span>
+                          <span className={isActive ? "text-royal font-bold" : "text-stone"}>0{s.num}</span>
                           {isDone ? (
                             <span className="flex items-center gap-1 text-emerald-700 font-bold">
-                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                               <span className="hidden xl:inline">DONE</span>
                             </span>
                           ) : isActive ? (
@@ -584,8 +672,10 @@ export function CompanyOnboardingPage({ config, onEnterStudio }: CompanyOnboardi
                               <span className="w-2 h-2 rounded-full bg-royal animate-pulse" />
                               <span className="hidden xl:inline">CURRENT</span>
                             </span>
+                          ) : isNavigable ? (
+                            <span className="text-stone font-mono text-[9px]">AVAILABLE</span>
                           ) : (
-                            <span className="text-stone font-mono text-[9px]">STEP</span>
+                            <span className="text-stone/70 font-mono text-[9px]">LOCKED</span>
                           )}
                         </div>
                         <div className="text-[11px] font-semibold mt-1 truncate">{s.label}</div>
@@ -648,7 +738,7 @@ export function CompanyOnboardingPage({ config, onEnterStudio }: CompanyOnboardi
 
               {/* STEP 01 — COMPANY IDENTITY */}
               {currentStep === 1 && (
-                <div className="bg-white border border-line rounded-2xl p-6 md:p-8 space-y-6 shadow-sm">
+                <div className="bg-white border border-line rounded-2xl p-6 md:p-8 min-h-[560px] flex flex-col justify-between space-y-6 shadow-sm">
                   <div>
                     <div className="text-xs font-mono text-royal font-bold uppercase tracking-wider">
                       STEP 01 — COMPANY IDENTITY
@@ -733,6 +823,164 @@ export function CompanyOnboardingPage({ config, onEnterStudio }: CompanyOnboardi
                     </div>
                   </div>
 
+                  {/* ECOSYSTEM MEMBERSHIP SECTION */}
+                  <div className="pt-5 border-t border-line space-y-3">
+                    <div>
+                      <div className="flex items-center gap-2 text-xs font-mono font-bold text-royal uppercase tracking-wider">
+                        <ShieldCheck className="w-4 h-4 text-royal" />
+                        <span>ECOSYSTEM MEMBERSHIP (OPTIONAL)</span>
+                      </div>
+                      <p className="text-xs text-stone mt-0.5">
+                        Are you a member of a MarineWorld ecosystem, association, chamber, federation or institutional organization?
+                      </p>
+                    </div>
+
+                    {codeValidationState === "EMPTY" && (
+                      <div className="flex flex-col sm:flex-row gap-2.5">
+                        <input
+                          type="text"
+                          value={enrollmentCodeInput}
+                          onChange={(e) => setEnrollmentCodeInput(e.target.value)}
+                          placeholder="Enter enrollment code (e.g. MW-WMA-8F42)"
+                          className="flex-1 px-3.5 py-2.5 rounded-xl bg-slate-50 border border-line text-graphite font-mono text-xs focus:outline-none focus:border-royal focus:bg-white uppercase tracking-wider"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleApplyEnrollmentCode}
+                          className="px-5 py-2.5 rounded-xl bg-royal text-white font-bold text-xs hover:bg-blue-600 transition-all flex items-center justify-center gap-1.5 shrink-0 shadow-2xs"
+                        >
+                          <span>APPLY CODE</span>
+                          <ArrowRight className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    )}
+
+                    {codeValidationState === "VALIDATING" && (
+                      <div className="p-4 rounded-xl bg-slate-50 border border-royal/30 flex items-center gap-3">
+                        <div className="w-4 h-4 border-2 border-royal border-t-transparent rounded-full animate-spin shrink-0" />
+                        <div>
+                          <div className="text-xs font-bold font-mono text-graphite uppercase">VERIFYING ENROLLMENT CODE...</div>
+                          <div className="text-[11px] text-stone">Resolving issuing organization, country &amp; member benefits...</div>
+                        </div>
+                      </div>
+                    )}
+
+                    {codeValidationState === "VALID" && validatedOrg && (
+                      <div className="p-4 rounded-xl bg-emerald-50/90 border border-emerald-300 space-y-3 shadow-2xs">
+                        <div className="flex items-center justify-between pb-2 border-b border-emerald-200">
+                          <div className="flex items-center gap-2">
+                            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                            <span className="text-xs font-bold font-mono text-emerald-950 uppercase tracking-wider">
+                              ✓ ECOSYSTEM MEMBERSHIP VERIFIED
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={handleRemoveEnrollmentCode}
+                            className="text-[11px] font-bold text-emerald-700 hover:text-emerald-900 underline"
+                          >
+                            Remove / Change Code
+                          </button>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 text-xs">
+                          <div className="p-3 bg-white border border-emerald-200 rounded-xl">
+                            <span className="text-[10px] font-bold text-stone uppercase tracking-wider block font-mono">ISSUED BY</span>
+                            <div className="text-graphite font-bold text-xs mt-0.5 flex items-center gap-1.5">
+                              <Building2 className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                              <span>{validatedOrg.name}</span>
+                            </div>
+                          </div>
+
+                          <div className="p-3 bg-white border border-emerald-200 rounded-xl">
+                            <span className="text-[10px] font-bold text-stone uppercase tracking-wider block font-mono">COUNTRY</span>
+                            <div className="text-graphite font-bold text-xs mt-0.5 flex items-center gap-1.5">
+                              <Globe className="w-3.5 h-3.5 text-slate-600 shrink-0" />
+                              <span>{validatedOrg.country || "Global"}</span>
+                            </div>
+                          </div>
+
+                          <div className="p-3 bg-white border border-emerald-200 rounded-xl">
+                            <span className="text-[10px] font-bold text-stone uppercase tracking-wider block font-mono">MARINEWORLD ECOSYSTEM</span>
+                            <div className="text-graphite font-bold text-xs mt-0.5">{validatedOrg.name} Ecosystem</div>
+                          </div>
+
+                          <div className="p-3 bg-white border border-emerald-200 rounded-xl">
+                            <span className="text-[10px] font-bold text-stone uppercase tracking-wider block font-mono">MEMBERSHIP STATUS</span>
+                            <div className="text-emerald-700 font-bold text-xs mt-0.5 flex items-center gap-1">
+                              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                              <span>ACTIVE</span>
+                            </div>
+                          </div>
+
+                          <div className="p-3 bg-white border border-emerald-200 rounded-xl">
+                            <span className="text-[10px] font-bold text-stone uppercase tracking-wider block font-mono">MEMBER BENEFIT</span>
+                            <div className="text-blue-700 font-bold text-xs mt-0.5">
+                              {validatedOrg.discountPercentage ? `${validatedOrg.discountPercentage}% Member Benefit` : "Standard Member Affiliation"}
+                            </div>
+                          </div>
+
+                          <div className="p-3 bg-white border border-emerald-200 rounded-xl">
+                            <span className="text-[10px] font-bold text-stone uppercase tracking-wider block font-mono">ENROLLMENT CODE</span>
+                            <div className="text-graphite font-mono font-bold text-xs mt-0.5">{enrollmentCodeInput.toUpperCase()}</div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {codeValidationState === "INVALID" && (
+                      <div className="space-y-2">
+                        <div className="flex flex-col sm:flex-row gap-2.5">
+                          <input
+                            type="text"
+                            value={enrollmentCodeInput}
+                            onChange={(e) => setEnrollmentCodeInput(e.target.value)}
+                            placeholder="Enter enrollment code (e.g. MW-WMA-8F42)"
+                            className="flex-1 px-3.5 py-2.5 rounded-xl bg-slate-50 border border-red-300 text-graphite font-mono text-xs focus:outline-none focus:border-red-500 uppercase tracking-wider"
+                          />
+                          <button
+                            type="button"
+                            onClick={handleApplyEnrollmentCode}
+                            className="px-5 py-2.5 rounded-xl bg-royal text-white font-bold text-xs hover:bg-blue-600 transition-all flex items-center justify-center gap-1.5 shrink-0 shadow-2xs"
+                          >
+                            <span>RETRY CODE</span>
+                            <ArrowRight className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                        <div className="p-3 bg-red-50 border border-red-200 rounded-xl flex items-center gap-2 text-xs text-red-800">
+                          <XCircle className="w-4 h-4 text-red-600 shrink-0" />
+                          <span>{codeErrorMsg || "Enrollment code could not be verified."}</span>
+                        </div>
+                      </div>
+                    )}
+
+                    {codeValidationState === "EXPIRED" && (
+                      <div className="space-y-2">
+                        <div className="flex flex-col sm:flex-row gap-2.5">
+                          <input
+                            type="text"
+                            value={enrollmentCodeInput}
+                            onChange={(e) => setEnrollmentCodeInput(e.target.value)}
+                            placeholder="Enter enrollment code (e.g. MW-WMA-8F42)"
+                            className="flex-1 px-3.5 py-2.5 rounded-xl bg-slate-50 border border-amber-300 text-graphite font-mono text-xs focus:outline-none focus:border-amber-500 uppercase tracking-wider"
+                          />
+                          <button
+                            type="button"
+                            onClick={handleApplyEnrollmentCode}
+                            className="px-5 py-2.5 rounded-xl bg-royal text-white font-bold text-xs hover:bg-blue-600 transition-all flex items-center justify-center gap-1.5 shrink-0 shadow-2xs"
+                          >
+                            <span>TRY ANOTHER CODE</span>
+                            <ArrowRight className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                        <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center gap-2 text-xs text-amber-800">
+                          <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                          <span>This enrollment code is no longer active.</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
                   <div className="flex items-center justify-between pt-4 border-t border-line">
                     <div className="text-stone text-xs">
                       All registrations are secured by MarineWorld verification standards.
@@ -752,7 +1000,7 @@ export function CompanyOnboardingPage({ config, onEnterStudio }: CompanyOnboardi
 
               {/* STEP 02 — ORGANIZATIONAL DIGITAL IDENTITY */}
               {currentStep === 2 && (
-                <div className="bg-white border border-line rounded-2xl p-6 md:p-8 space-y-6 shadow-sm">
+                <div className="bg-white border border-line rounded-2xl p-6 md:p-8 min-h-[560px] flex flex-col justify-between space-y-6 shadow-sm">
                   <div>
                     <div className="text-xs font-mono text-royal font-bold uppercase tracking-wider">
                       STEP 02 — ORGANIZATIONAL DIGITAL IDENTITY
@@ -792,7 +1040,7 @@ export function CompanyOnboardingPage({ config, onEnterStudio }: CompanyOnboardi
                   <div className="flex justify-between pt-4 border-t border-line">
                     <button
                       type="button"
-                      onClick={() => setCurrentStep(1)}
+                      onClick={() => goToStep(1)}
                       className="px-4 py-2.5 rounded-xl bg-slate-100 text-stone hover:text-graphite text-xs font-semibold border border-line"
                     >
                       Back
@@ -812,7 +1060,7 @@ export function CompanyOnboardingPage({ config, onEnterStudio }: CompanyOnboardi
 
               {/* STEP 03 — MARINEWORLD BUSINESS ID */}
               {currentStep === 3 && (
-                <div className="bg-white border border-line rounded-2xl p-6 md:p-8 space-y-6 shadow-sm">
+                <div className="bg-white border border-line rounded-2xl p-6 md:p-8 min-h-[560px] flex flex-col justify-between space-y-6 shadow-sm">
                   <div>
                     <div className="text-xs font-mono text-royal font-bold uppercase tracking-wider">
                       STEP 03 — MARINEWORLD BUSINESS ID
@@ -859,7 +1107,7 @@ export function CompanyOnboardingPage({ config, onEnterStudio }: CompanyOnboardi
                   <div className="flex justify-between pt-4 border-t border-line">
                     <button
                       type="button"
-                      onClick={() => setCurrentStep(2)}
+                      onClick={() => goToStep(2)}
                       className="px-4 py-2.5 rounded-xl bg-slate-100 text-stone hover:text-graphite text-xs font-semibold border border-line"
                     >
                       Back
@@ -879,7 +1127,7 @@ export function CompanyOnboardingPage({ config, onEnterStudio }: CompanyOnboardi
 
               {/* STEP 04 — PLAN */}
               {currentStep === 4 && (
-                <div className="bg-white border border-line rounded-2xl p-6 md:p-8 space-y-6 shadow-sm">
+                <div className="bg-white border border-line rounded-2xl p-6 md:p-8 min-h-[560px] flex flex-col justify-between space-y-6 shadow-sm">
                   <div>
                     <div className="text-xs font-mono text-royal font-bold uppercase tracking-wider">
                       STEP 04 — SUBSCRIPTION PLAN
@@ -955,7 +1203,7 @@ export function CompanyOnboardingPage({ config, onEnterStudio }: CompanyOnboardi
                   <div className="flex justify-between pt-4 border-t border-line">
                     <button
                       type="button"
-                      onClick={() => setCurrentStep(3)}
+                      onClick={() => goToStep(3)}
                       className="px-4 py-2.5 rounded-xl bg-slate-100 text-stone hover:text-graphite text-xs font-semibold border border-line"
                     >
                       Back
@@ -975,7 +1223,7 @@ export function CompanyOnboardingPage({ config, onEnterStudio }: CompanyOnboardi
 
               {/* STEP 05 — SUBSCRIPTION */}
               {currentStep === 5 && (
-                <div className="bg-white border border-line rounded-2xl p-6 md:p-8 space-y-6 shadow-sm">
+                <div className="bg-white border border-line rounded-2xl p-6 md:p-8 min-h-[560px] flex flex-col justify-between space-y-6 shadow-sm">
                   <div>
                     <div className="text-xs font-mono text-royal font-bold uppercase tracking-wider">
                       STEP 05 — PAYMENT &amp; SUBSCRIPTION
@@ -1048,7 +1296,7 @@ export function CompanyOnboardingPage({ config, onEnterStudio }: CompanyOnboardi
                   <div className="flex justify-between pt-4 border-t border-line">
                     <button
                       type="button"
-                      onClick={() => setCurrentStep(4)}
+                      onClick={() => goToStep(4)}
                       className="px-4 py-2.5 rounded-xl bg-slate-100 text-stone hover:text-graphite text-xs font-semibold border border-line"
                     >
                       Back
@@ -1056,7 +1304,7 @@ export function CompanyOnboardingPage({ config, onEnterStudio }: CompanyOnboardi
 
                     <button
                       type="button"
-                      onClick={() => setCurrentStep(6)}
+                      onClick={() => goToStep(6)}
                       className="px-6 py-3 rounded-xl bg-royal text-white font-bold text-xs hover:bg-blue-600 transition-all flex items-center gap-2 shadow-sm"
                     >
                       <span>PROCEED TO VERIFICATION</span>
@@ -1068,7 +1316,7 @@ export function CompanyOnboardingPage({ config, onEnterStudio }: CompanyOnboardi
 
               {/* STEP 06 — VERIFICATION */}
               {currentStep === 6 && (
-                <div className="bg-white border border-line rounded-2xl p-6 md:p-8 space-y-6 shadow-sm">
+                <div className="bg-white border border-line rounded-2xl p-6 md:p-8 min-h-[560px] flex flex-col justify-between space-y-6 shadow-sm">
                   <div>
                     <div className="text-xs font-mono text-royal font-bold uppercase tracking-wider">
                       STEP 06 — OFFICIAL COMPANY VERIFICATION
@@ -1109,7 +1357,7 @@ export function CompanyOnboardingPage({ config, onEnterStudio }: CompanyOnboardi
                   <div className="flex justify-between pt-4 border-t border-line">
                     <button
                       type="button"
-                      onClick={() => setCurrentStep(5)}
+                      onClick={() => goToStep(5)}
                       className="px-4 py-2.5 rounded-xl bg-slate-100 text-stone hover:text-graphite text-xs font-semibold border border-line"
                     >
                       Back
@@ -1117,7 +1365,7 @@ export function CompanyOnboardingPage({ config, onEnterStudio }: CompanyOnboardi
 
                     <button
                       type="button"
-                      onClick={() => setCurrentStep(7)}
+                      onClick={() => goToStep(7)}
                       className="px-6 py-3 rounded-xl bg-royal text-white font-bold text-xs hover:bg-blue-600 transition-all flex items-center gap-2 shadow-sm"
                     >
                       <span>PROCEED TO ACTIVATION</span>
@@ -1129,7 +1377,7 @@ export function CompanyOnboardingPage({ config, onEnterStudio }: CompanyOnboardi
 
               {/* STEP 07 — ACTIVATION */}
               {currentStep === 7 && (
-                <div className="bg-white border border-line rounded-2xl p-6 md:p-8 space-y-6 shadow-sm">
+                <div className="bg-white border border-line rounded-2xl p-6 md:p-8 min-h-[560px] flex flex-col justify-between space-y-6 shadow-sm">
                   <div>
                     <div className="text-xs font-mono text-royal font-bold uppercase tracking-wider">
                       STEP 07 — ACTIVATION &amp; ACCESS
@@ -1276,7 +1524,7 @@ export function CompanyOnboardingPage({ config, onEnterStudio }: CompanyOnboardi
                     <div className="flex justify-between pt-4 border-t border-line">
                       <button
                         type="button"
-                        onClick={() => setCurrentStep(6)}
+                        onClick={() => goToStep(6)}
                         className="px-4 py-2.5 rounded-xl bg-slate-100 text-stone hover:text-graphite text-xs font-semibold border border-line"
                       >
                         Back
@@ -1316,11 +1564,9 @@ export function CompanyOnboardingPage({ config, onEnterStudio }: CompanyOnboardi
         onIntentUpdated={(updated) => setSubscriptionIntent(updated)}
         onProceedToVerification={() => {
           setIsPaymentModalOpen(false);
-          setCurrentStep(6);
+          goToStep(6);
         }}
       />
-
-      <GlobalFooter config={config} tone="light" />
     </div>
   );
 }

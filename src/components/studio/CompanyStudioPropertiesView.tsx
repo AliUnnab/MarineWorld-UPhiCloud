@@ -49,11 +49,13 @@ import {
   Settings,
   ChevronRight,
   Receipt,
+  Radio,
 } from "lucide-react";
 import { CommercialPropertyDetailModal } from "./CommercialPropertyDetailModal";
 import { CommercialOfferModal } from "./CommercialOfferModal";
 import { CompanyStudioPropertyEditor } from "./CompanyStudioPropertyEditor";
 import { CompanyStudioBillingView } from "./CompanyStudioBillingView";
+import { AnchorRegistryVisibilityCard } from "./AnchorRegistryVisibilityCard";
 
 export function CompanyStudioPropertiesView({
   companyId,
@@ -65,7 +67,7 @@ export function CompanyStudioPropertiesView({
   userEmail?: string;
 }) {
   const [activeTab, setActiveTab] = useState<
-    "MY_PROPERTIES" | "INVENTORY" | "OFFERS" | "AGREEMENTS" | "RESERVATIONS" | "BILLING" | "RENEWALS"
+    "MY_PROPERTIES" | "VISIBILITY" | "INVENTORY" | "OFFERS" | "AGREEMENTS" | "RESERVATIONS" | "BILLING" | "RENEWALS"
   >("MY_PROPERTIES");
 
   const [selectedCityId, setSelectedCityId] = useState<string>("ALL");
@@ -200,10 +202,10 @@ export function CompanyStudioPropertiesView({
           <div className="flex items-center gap-2 text-[10px] font-bold tracking-widest text-slate-400 uppercase">
             <span>Corporate Asset Portfolio</span>
             <span>&bull;</span>
-            <span className="text-blue-600">Digital Real Estate Inventory</span>
+            <span className="text-royal">Digital Real Estate Inventory</span>
           </div>
           <h1 className="text-2xl font-bold text-slate-900 mt-1 flex items-center gap-2.5">
-            <Building2 className="w-7 h-7 text-blue-600" />
+            <Building2 className="w-7 h-7 text-royal" />
             Digital Properties & Commercial Deals
           </h1>
           <p className="text-xs text-slate-500 font-light mt-1 max-w-3xl">
@@ -218,7 +220,7 @@ export function CompanyStudioPropertiesView({
             <div className="font-bold text-white uppercase text-[10px] tracking-wider">Public Visibility Rule</div>
             <div className="text-slate-400 mt-0.5">
               <span className="text-emerald-400 font-semibold">Commercial ACTIVE</span> +{" "}
-              <span className="text-blue-400 font-semibold">Governance PUBLISHED</span> = <span className="text-white font-bold">Public Viewport</span>
+              <span className="text-slate-300 font-semibold">Governance PUBLISHED</span> = <span className="text-white font-bold">Public Viewport</span>
             </div>
           </div>
         </div>
@@ -230,7 +232,7 @@ export function CompanyStudioPropertiesView({
           onClick={() => setActiveTab("MY_PROPERTIES")}
           className={`py-3 px-4 text-xs font-bold uppercase tracking-wider border-b-2 transition-all flex items-center gap-2 shrink-0 ${
             activeTab === "MY_PROPERTIES"
-              ? "border-blue-600 text-blue-600"
+              ? "border-royal text-royal"
               : "border-transparent text-slate-500 hover:text-slate-900"
           }`}
         >
@@ -239,10 +241,23 @@ export function CompanyStudioPropertiesView({
         </button>
 
         <button
+          id="tab-btn-registry-visibility"
+          onClick={() => setActiveTab("VISIBILITY")}
+          className={`py-3 px-4 text-xs font-bold uppercase tracking-wider border-b-2 transition-all flex items-center gap-2 shrink-0 ${
+            activeTab === "VISIBILITY"
+              ? "border-royal text-royal"
+              : "border-transparent text-slate-500 hover:text-slate-900"
+          }`}
+        >
+          <Radio className="w-4 h-4 text-emerald-600" />
+          Registry Visibility
+        </button>
+
+        <button
           onClick={() => setActiveTab("INVENTORY")}
           className={`py-3 px-4 text-xs font-bold uppercase tracking-wider border-b-2 transition-all flex items-center gap-2 shrink-0 ${
             activeTab === "INVENTORY"
-              ? "border-blue-600 text-blue-600"
+              ? "border-royal text-royal"
               : "border-transparent text-slate-500 hover:text-slate-900"
           }`}
         >
@@ -254,14 +269,14 @@ export function CompanyStudioPropertiesView({
           onClick={() => setActiveTab("OFFERS")}
           className={`py-3 px-4 text-xs font-bold uppercase tracking-wider border-b-2 transition-all flex items-center gap-2 shrink-0 relative ${
             activeTab === "OFFERS"
-              ? "border-blue-600 text-blue-600"
+              ? "border-royal text-royal"
               : "border-transparent text-slate-500 hover:text-slate-900"
           }`}
         >
           <FileText className="w-4 h-4" />
           Commercial Offers ({companyOffers.length})
           {companyOffers.length > 0 && (
-            <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse" />
+            <span className="w-2 h-2 rounded-full bg-royal animate-pulse" />
           )}
         </button>
 
@@ -269,7 +284,7 @@ export function CompanyStudioPropertiesView({
           onClick={() => setActiveTab("AGREEMENTS")}
           className={`py-3 px-4 text-xs font-bold uppercase tracking-wider border-b-2 transition-all flex items-center gap-2 shrink-0 ${
             activeTab === "AGREEMENTS"
-              ? "border-blue-600 text-blue-600"
+              ? "border-royal text-royal"
               : "border-transparent text-slate-500 hover:text-slate-900"
           }`}
         >
@@ -281,7 +296,7 @@ export function CompanyStudioPropertiesView({
           onClick={() => setActiveTab("RESERVATIONS")}
           className={`py-3 px-4 text-xs font-bold uppercase tracking-wider border-b-2 transition-all flex items-center gap-2 shrink-0 ${
             activeTab === "RESERVATIONS"
-              ? "border-blue-600 text-blue-600"
+              ? "border-royal text-royal"
               : "border-transparent text-slate-500 hover:text-slate-900"
           }`}
         >
@@ -293,7 +308,7 @@ export function CompanyStudioPropertiesView({
           onClick={() => setActiveTab("BILLING")}
           className={`py-3 px-4 text-xs font-bold uppercase tracking-wider border-b-2 transition-all flex items-center gap-2 shrink-0 ${
             activeTab === "BILLING"
-              ? "border-blue-600 text-blue-600"
+              ? "border-royal text-royal"
               : "border-transparent text-slate-500 hover:text-slate-900"
           }`}
         >
@@ -305,7 +320,7 @@ export function CompanyStudioPropertiesView({
           onClick={() => setActiveTab("RENEWALS")}
           className={`py-3 px-4 text-xs font-bold uppercase tracking-wider border-b-2 transition-all flex items-center gap-2 shrink-0 ${
             activeTab === "RENEWALS"
-              ? "border-blue-600 text-blue-600"
+              ? "border-royal text-royal"
               : "border-transparent text-slate-500 hover:text-slate-900"
           }`}
         >
@@ -319,9 +334,12 @@ export function CompanyStudioPropertiesView({
       {/* ------------------------------------------------------------- */}
       {activeTab === "MY_PROPERTIES" && (
         <div className="space-y-6">
+          {/* Surface Live Registry Visibility Telemetry for Anchor / Property holders */}
+          <AnchorRegistryVisibilityCard companyId={companyId} config={marineSector} className="mb-6" />
+
           {companyHoldings.length === 0 ? (
             <div className="p-12 text-center bg-slate-50 border border-slate-200 rounded-3xl space-y-4 max-w-xl mx-auto">
-              <div className="w-12 h-12 rounded-2xl bg-blue-100 text-blue-600 flex items-center justify-center mx-auto">
+              <div className="w-12 h-12 rounded-2xl bg-royal/10 text-royal flex items-center justify-center mx-auto">
                 <Building2 className="w-6 h-6" />
               </div>
               <h3 className="text-base font-bold text-slate-900">No Active Property Holdings</h3>
@@ -330,7 +348,7 @@ export function CompanyStudioPropertiesView({
               </p>
               <button
                 onClick={() => setActiveTab("INVENTORY")}
-                className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-colors shadow-md inline-flex items-center gap-2"
+                className="px-5 py-2.5 bg-royal hover:bg-royal-dark text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-colors shadow-md inline-flex items-center gap-2"
               >
                 EXPLORE SECTOR CITY INVENTORY <ArrowRight className="w-4 h-4" />
               </button>
@@ -344,7 +362,7 @@ export function CompanyStudioPropertiesView({
                 >
                   <div className="p-6 space-y-4">
                     <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-mono font-bold tracking-widest text-blue-600 uppercase bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-200">
+                      <span className="text-[10px] font-mono font-bold tracking-widest text-royal uppercase bg-royal/5 px-2.5 py-1 rounded-lg border border-royal/20">
                         {prop.canonicalPropertyKey}
                       </span>
                       <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
@@ -381,7 +399,7 @@ export function CompanyStudioPropertiesView({
                         )}
                         <div className="flex items-center justify-between text-slate-500 text-[11px] pt-1 border-t border-slate-200/60">
                           <span>Auto-Renewal:</span>
-                          <span className="text-blue-600 font-semibold">
+                          <span className="text-royal font-semibold">
                             {prop.termDetails.autoRenew ? "Enabled" : "Disabled"}
                           </span>
                         </div>
@@ -408,7 +426,7 @@ export function CompanyStudioPropertiesView({
                         };
                         handleLaunchEditor(dummySlot, prop.cityId, prop.regionCode);
                       }}
-                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-colors shadow-sm flex items-center gap-1.5"
+                      className="px-4 py-2 bg-royal hover:bg-royal-dark text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-colors shadow-sm flex items-center gap-1.5"
                     >
                       STUDIO BUILDER &rarr;
                     </button>
@@ -417,6 +435,15 @@ export function CompanyStudioPropertiesView({
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {/* ------------------------------------------------------------- */}
+      {/* REGISTRY VISIBILITY TELEMETRY TAB */}
+      {/* ------------------------------------------------------------- */}
+      {activeTab === "VISIBILITY" && (
+        <div className="space-y-6">
+          <AnchorRegistryVisibilityCard companyId={companyId} config={marineSector} />
         </div>
       )}
 
@@ -498,7 +525,7 @@ export function CompanyStudioPropertiesView({
                 <div
                   key={`${prop.cityId}-${prop.regionCode}-${prop.slotId}`}
                   className={`bg-white rounded-3xl border transition-all flex flex-col justify-between overflow-hidden shadow-sm hover:shadow-md ${
-                    isHeldByMe ? "border-blue-300 ring-1 ring-blue-100" : "border-slate-200"
+                    isHeldByMe ? "border-royal/30 ring-1 ring-royal/15" : "border-slate-200"
                   }`}
                 >
                   <div className="p-6 space-y-4">
@@ -511,7 +538,7 @@ export function CompanyStudioPropertiesView({
                           prop.availabilityStatus === "AVAILABLE"
                             ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
                             : prop.availabilityStatus === "ACTIVE"
-                            ? "bg-blue-50 text-blue-700 border border-blue-200"
+                            ? "bg-royal/5 text-royal border border-royal/20"
                             : prop.availabilityStatus === "HELD"
                             ? "bg-amber-50 text-amber-700 border border-amber-200"
                             : "bg-slate-100 text-slate-600 border border-slate-200"
@@ -579,14 +606,14 @@ export function CompanyStudioPropertiesView({
               {companyOffers.map((offer) => (
                 <div
                   key={offer.offerId}
-                  className="p-6 rounded-3xl bg-white border border-blue-200 shadow-sm hover:shadow-md transition-all flex flex-col md:flex-row items-start md:items-center justify-between gap-6"
+                  className="p-6 rounded-3xl bg-white border border-royal/20 shadow-sm hover:shadow-md transition-all flex flex-col md:flex-row items-start md:items-center justify-between gap-6"
                 >
                   <div className="space-y-2 flex-1">
                     <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-mono font-bold tracking-widest text-blue-600 bg-blue-50 px-2.5 py-0.5 rounded border border-blue-200">
+                      <span className="text-[10px] font-mono font-bold tracking-widest text-royal bg-royal/5 px-2.5 py-0.5 rounded border border-royal/20">
                         {offer.canonicalPropertyKey}
                       </span>
-                      <span className="px-2.5 py-0.5 text-[10px] font-bold rounded-full bg-blue-600 text-white uppercase tracking-widest">
+                      <span className="px-2.5 py-0.5 text-[10px] font-bold rounded-full bg-royal text-white uppercase tracking-widest">
                         FORMAL OFFER ISSUED
                       </span>
                     </div>
@@ -618,7 +645,7 @@ export function CompanyStudioPropertiesView({
                   <div className="flex items-center gap-2 w-full md:w-auto shrink-0">
                     <button
                       onClick={() => setSelectedOffer(offer)}
-                      className="w-full md:w-auto px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl text-xs font-bold uppercase tracking-wider transition-colors shadow-md flex items-center justify-center gap-2"
+                      className="w-full md:w-auto px-6 py-3 bg-royal hover:bg-royal-dark text-white rounded-2xl text-xs font-bold uppercase tracking-wider transition-colors shadow-md flex items-center justify-center gap-2"
                     >
                       <FileText className="w-4 h-4" /> Review & Select Billing Rail &rarr;
                     </button>
@@ -656,7 +683,7 @@ export function CompanyStudioPropertiesView({
                           ag.contractStatus === "ACTIVE"
                             ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
                             : ag.contractStatus === "PAYMENT_CONFIRMED"
-                            ? "bg-blue-50 text-blue-700 border border-blue-200"
+                            ? "bg-royal/5 text-royal border border-royal/20"
                             : ag.contractStatus === "PAYMENT_PENDING"
                             ? "bg-amber-50 text-amber-700 border border-amber-200"
                             : ag.contractStatus === "EXPIRED"
@@ -669,12 +696,12 @@ export function CompanyStudioPropertiesView({
                       <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200 uppercase flex items-center gap-1">
                         {ag.billingMethod === "GOOGLE_CLOUD_MARKETPLACE" ? (
                           <>
-                            <Cloud className="w-3 h-3 text-blue-600" />
+                            <Cloud className="w-3 h-3 text-royal" />
                             GOOGLE CLOUD MARKETPLACE
                           </>
                         ) : (
                           <>
-                            <CreditCard className="w-3 h-3 text-indigo-600" />
+                            <CreditCard className="w-3 h-3 text-royal" />
                             STRIPE BILLING
                           </>
                         )}
@@ -740,7 +767,7 @@ export function CompanyStudioPropertiesView({
                       <span
                         className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase ${
                           intent.status === "OFFER_CREATED"
-                            ? "bg-blue-50 text-blue-700 border border-blue-200"
+                            ? "bg-royal/5 text-royal border border-royal/20"
                             : intent.status === "UNDER_COMMERCIAL_REVIEW"
                             ? "bg-purple-50 text-purple-700 border border-purple-200"
                             : intent.status === "PENDING_REVIEW"
@@ -767,7 +794,7 @@ export function CompanyStudioPropertiesView({
                     {intent.status === "OFFER_CREATED" && (
                       <button
                         onClick={() => setActiveTab("OFFERS")}
-                        className="px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold uppercase tracking-wider hover:bg-blue-700 shadow-sm flex items-center gap-1.5"
+                        className="px-4 py-2 bg-royal text-white rounded-xl text-xs font-bold uppercase tracking-wider hover:bg-royal-dark shadow-sm flex items-center gap-1.5"
                       >
                         View Issued Offer <ChevronRight className="w-3.5 h-3.5" />
                       </button>
@@ -788,7 +815,7 @@ export function CompanyStudioPropertiesView({
       {/* ------------------------------------------------------------- */}
       {activeTab === "RENEWALS" && (
         <div className="space-y-6">
-          <div className="p-5 bg-blue-50 border border-blue-200 rounded-3xl text-xs text-blue-900 space-y-1">
+          <div className="p-5 bg-royal/5 border border-royal/20 rounded-3xl text-xs text-royal-dark space-y-1">
             <h4 className="font-bold uppercase tracking-wider text-[10px]">Continuous Digital Real Estate Entitlement</h4>
             <p>
               Properties nearing term completion (within 180 days) enter the renewal window. Renewing guarantees uninterrupted anchor frontage and rolls forward verified creative governance assets.

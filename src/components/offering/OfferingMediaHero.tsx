@@ -126,7 +126,7 @@ export function OfferingMediaHero({ offering, onOpenLightbox }: OfferingMediaHer
           </>
         ) : (
           /* Blueprint Schematic Mode */
-          <div className="w-full h-full bg-slate-900 text-sky-400 font-mono p-6 relative overflow-hidden flex flex-col justify-between">
+          <div className="w-full h-full bg-slate-900 text-royal-light font-mono p-6 relative overflow-hidden flex flex-col justify-between">
             {/* Grid overlay */}
             <div
               className="absolute inset-0 opacity-20 pointer-events-none"
@@ -139,16 +139,16 @@ export function OfferingMediaHero({ offering, onOpenLightbox }: OfferingMediaHer
             />
 
             {/* Blueprint Header */}
-            <div className="relative z-10 flex justify-between items-start border-b border-sky-800/60 pb-3">
+            <div className="relative z-10 flex justify-between items-start border-b border-slate-700 pb-3">
               <div>
-                <span className="text-[10px] tracking-widest text-sky-300 font-bold uppercase block">
+                <span className="text-[10px] tracking-widest text-royal-light font-bold uppercase block">
                   TECHNICAL SCHEMATIC // REV-04
                 </span>
                 <span className="text-sm font-bold text-white tracking-wide">
                   {offering.name.toUpperCase()}
                 </span>
               </div>
-              <div className="text-right text-[10px] text-sky-300 space-y-0.5">
+              <div className="text-right text-[10px] text-royal-light space-y-0.5">
                 <div>CLASS: DNV-GL APPROVED</div>
                 <div>SCALE: 1:25 METRIC</div>
                 <div>DATUM: WGS-84 / SOLAS COMPLIANT</div>
@@ -157,21 +157,21 @@ export function OfferingMediaHero({ offering, onOpenLightbox }: OfferingMediaHer
 
             {/* Schematic Center Graphic */}
             <div className="relative z-10 my-auto text-center space-y-3 py-6">
-              <div className="w-16 h-16 rounded-full border border-sky-400/40 bg-sky-950/60 text-sky-300 flex items-center justify-center mx-auto shadow-inner">
-                <Compass className="w-8 h-8 animate-pulse text-sky-400" />
+              <div className="w-16 h-16 rounded-full border border-royal/30 bg-slate-900 text-royal-light flex items-center justify-center mx-auto shadow-inner">
+                <Compass className="w-8 h-8 animate-pulse text-royal-light" />
               </div>
               <div className="max-w-md mx-auto">
-                <p className="text-xs text-sky-200">
+                <p className="text-xs text-slate-200">
                   Calibrated CAD geometry and hydro-acoustic envelope model registered.
                 </p>
-                <p className="text-[11px] text-sky-400/80 mt-1">
+                <p className="text-[11px] text-royal-light mt-1">
                   Full DXF / STEP 3D CAD files available in verified technical documents below.
                 </p>
               </div>
             </div>
 
             {/* Blueprint Footer */}
-            <div className="relative z-10 flex flex-wrap justify-between items-center border-t border-sky-800/60 pt-3 text-[10px] text-sky-300">
+            <div className="relative z-10 flex flex-wrap justify-between items-center border-t border-slate-700 pt-3 text-[10px] text-royal-light">
               <span>AUTHORIZED RECORD OF MARINE ENGINEERING RECORD ARCHIVE</span>
               <span>CERTIFICATION CONFIDENCE: 99.4%</span>
             </div>

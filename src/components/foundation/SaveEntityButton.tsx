@@ -11,12 +11,15 @@ import {
   isServiceSaved,
   saveServiceReference,
   removeSavedServiceReference,
+  isCitySaved,
+  saveCityReference,
+  removeSavedCityReference,
   subscribeToPersonalWorkspace,
 } from "@/lib/services/personalWorkspaceService";
 import { GuestSavePromptModal } from "./GuestSavePromptModal";
 
 export interface SaveEntityButtonProps {
-  type: "company" | "product" | "service";
+  type: "company" | "product" | "service" | "city";
   id: string;
   companyId?: string;
   businessId?: string;
@@ -46,6 +49,7 @@ export function SaveEntityButton({
     if (type === "company") return isCompanySaved(uid, id);
     if (type === "product") return isProductSaved(uid, id);
     if (type === "service") return isServiceSaved(uid, id);
+    if (type === "city") return isCitySaved(uid, id);
     return false;
   };
 
@@ -71,7 +75,9 @@ export function SaveEntityButton({
       ? "SAVE COMPANY"
       : type === "product"
       ? "SAVE PRODUCT"
-      : "SAVE SERVICE");
+      : type === "service"
+      ? "SAVE SERVICE"
+      : "SAVE SECTOR CITY");
 
   const handleToggleSave = async (e: MouseEvent) => {
     e.preventDefault();
@@ -89,6 +95,8 @@ export function SaveEntityButton({
         await removeSavedProductReference(authSession.uid, id);
       } else if (type === "service") {
         await removeSavedServiceReference(authSession.uid, id);
+      } else if (type === "city") {
+        await removeSavedCityReference(authSession.uid, id);
       }
       setSaved(false);
     } else {
@@ -100,6 +108,8 @@ export function SaveEntityButton({
       } else if (type === "service") {
         const cId = companyId || id;
         await saveServiceReference(authSession.uid, id, cId, businessId);
+      } else if (type === "city") {
+        await saveCityReference(authSession.uid, id);
       }
       setSaved(true);
     }
@@ -126,7 +136,7 @@ export function SaveEntityButton({
         <GuestSavePromptModal
           isOpen={showGuestModal}
           onClose={() => setShowGuestModal(false)}
-          entityType={type}
+          entityType={type === "city" ? "company" : type}
         />
       </>
     );
@@ -157,7 +167,7 @@ export function SaveEntityButton({
       <GuestSavePromptModal
         isOpen={showGuestModal}
         onClose={() => setShowGuestModal(false)}
-        entityType={type}
+        entityType={type === "city" ? "company" : type}
       />
     </>
   );

@@ -3,122 +3,128 @@ import type { IndustryDomainEntity } from "@/lib/types";
 /**
  * MarineWorld Industry Domains — the authoritative domain taxonomy.
  *
- * Hierarchy:
- *   MARINEWORLD.CITY → INDUSTRY DOMAIN → SECTOR CITY → COMPANY
- *
- * Each domain groups related Sector Cities. One city belongs to one domain.
- * Adding a domain = one registry entry; the city already references it
- * via its `industryDomainId`.
+ * Master Industry Domain Structure (8 Approved Conceptual Domains):
+ * 01 - Industrial Products, Equipment & Manufacturing
+ * 02 - Maritime Services, Ports, Marinas & Operations
+ * 03 - Yachting, Charter & Maritime Lifestyle
+ * 04 - Offshore, Energy & Subsea
+ * 05 - Real Estate & Hospitality
+ * 06 - Maritime Technology & AI Systems
+ * 07 - Legal, Finance & Compliance
+ * 08 - Industry Governance, Associations & Clusters
  */
 export const marineDomains: IndustryDomainEntity[] = [
   {
-    id: "maritime-services",
-    slug: "maritime-services",
-    name: "Maritime Services",
+    id: "industrial-manufacturing",
+    slug: "industrial-manufacturing",
+    name: "Industrial Products, Equipment & Manufacturing",
     description:
-      "Commercial maritime services — trade, sourcing, supply chain and procurement across the global marine ecosystem.",
-    icon: "exchange",
+      "Shipbuilding, boatbuilding, marine equipment, propulsion, fabrication, materials and industrial marine production.",
+    icon: "crane",
     status: "LIVE",
     featured: true,
     sortOrder: 1,
   },
   {
-    id: "vessel-sales",
-    slug: "vessel-sales",
-    name: "Vessel Sales",
+    id: "maritime-services",
+    slug: "maritime-services",
+    name: "Maritime Services, Ports, Marinas & Operations",
     description:
-      "Brokerage, sales networks and listing intelligence for yachts, commercial vessels and marine assets.",
-    icon: "sail",
+      "Ports, marinas, maritime logistics, procurement, fleet and vessel operations, brokerage and marine commercial services.",
+    icon: "exchange",
     status: "LIVE",
     featured: true,
     sortOrder: 2,
   },
   {
-    id: "shipbuilding-production",
-    slug: "shipbuilding-production",
-    name: "Shipbuilding & Production",
+    id: "yachting-lifestyle",
+    slug: "yachting-lifestyle",
+    name: "Yachting, Charter & Maritime Lifestyle",
     description:
-      "Shipbuilding, repair and industrial marine production — from custom builds to full refit programmes.",
-    icon: "crane",
+      "Yacht sales, charter, yacht management, marine experiences, watercraft, coastal lifestyle and marine-connected commerce.",
+    icon: "sail",
     status: "LIVE",
     featured: true,
     sortOrder: 3,
   },
   {
-    id: "engineering-design",
-    slug: "engineering-design",
-    name: "Engineering & Design",
+    id: "offshore-subsea",
+    slug: "offshore-subsea",
+    name: "Offshore, Energy & Subsea",
     description:
-      "Naval architecture, marine engineering, systems design and classification liaison services.",
-    icon: "drafting",
+      "Offshore energy, offshore wind, ocean energy, subsea services, underwater technology and marine infrastructure.",
+    icon: "rig",
     status: "LIVE",
     featured: true,
     sortOrder: 4,
   },
   {
-    id: "vessel-operations",
-    slug: "vessel-operations",
-    name: "Vessel Operations",
+    id: "real-estate-hospitality",
+    slug: "real-estate-hospitality",
+    name: "Real Estate & Hospitality",
     description:
-      "Charter operations, fleet management, crewing and day-to-day vessel operations.",
-    icon: "helm",
+      "Waterfront real estate, marina developments, residences, hotels, resorts and marine-connected hospitality.",
+    icon: "building",
     status: "LIVE",
     featured: true,
     sortOrder: 5,
   },
   {
-    id: "infrastructure",
-    slug: "infrastructure",
-    name: "Maritime Infrastructure",
+    id: "marine-technology",
+    slug: "marine-technology",
+    name: "Maritime Technology & AI Systems",
     description:
-      "Ports, terminals, marinas, waterfront development and maritime infrastructure operations.",
-    icon: "gantry",
+      "Maritime AI, digital twins, maritime data, autonomous vessels and maritime cybersecurity.",
+    icon: "chip",
     status: "LIVE",
     featured: true,
     sortOrder: 6,
   },
   {
-    id: "marine-technology",
-    slug: "marine-technology",
-    name: "Marine Technology",
+    id: "finance-legal",
+    slug: "finance-legal",
+    name: "Legal, Finance & Compliance",
     description:
-      "AI systems, digital twins, data services, autonomous vessels and cybersecurity for the maritime industry.",
-    icon: "chip",
+      "Marine finance, insurance, maritime law, classification and regulatory compliance.",
+    icon: "chart",
     status: "LIVE",
     featured: true,
     sortOrder: 7,
   },
   {
-    id: "finance-legal",
-    slug: "finance-legal",
-    name: "Finance & Legal",
+    id: "governance",
+    slug: "governance",
+    name: "Industry Governance, Associations & Clusters",
     description:
-      "Marine finance, insurance, P&I, admiralty law, contracts and regulatory compliance.",
-    icon: "chart",
+      "Maritime institutions, registries, associations, chambers, industry governance and regional marine clusters.",
+    icon: "shield",
     status: "LIVE",
     featured: true,
     sortOrder: 8,
   },
-  {
-    id: "offshore-subsea",
-    slug: "offshore-subsea",
-    name: "Offshore & Subsea",
-    description:
-      "Offshore energy, platforms, subsea engineering, ROV operations and subsea construction.",
-    icon: "rig",
-    status: "LIVE",
-    featured: true,
-    sortOrder: 9,
-  },
-  {
-    id: "lifestyle-hospitality",
-    slug: "lifestyle-hospitality",
-    name: "Lifestyle & Hospitality",
-    description:
-      "Marine lifestyle brands, superyacht services, provisioning, waterfront culture and events.",
-    icon: "sunrise",
-    status: "LIVE",
-    featured: true,
-    sortOrder: 10,
-  },
 ];
+
+/**
+ * Legacy Domain Route & ID Aliases mapping to maintain 100% backward
+ * compatibility for legacy presentation routes and city relationships.
+ */
+export const LEGACY_DOMAIN_MAP: Record<string, string> = {
+  // Legacy Domain slugs
+  "shipbuilding-production": "industrial-manufacturing",
+  "engineering-design": "industrial-manufacturing",
+  "industrial-products-equipment-manufacturing": "industrial-manufacturing",
+  "vessel-operations": "maritime-services",
+  "infrastructure": "maritime-services",
+  "maritime-services-ports-marinas-operations": "maritime-services",
+  "vessel-sales": "yachting-lifestyle",
+  "lifestyle-hospitality": "real-estate-hospitality",
+  "real-estate-hospitality": "real-estate-hospitality",
+  "yachting-charter-maritime-lifestyle": "yachting-lifestyle",
+  "offshore-energy-subsea": "offshore-subsea",
+  "maritime-technology-ai-systems": "marine-technology",
+  "maritime-technology": "marine-technology",
+  "legal-finance-compliance": "finance-legal",
+  "industry-governance-associations-clusters": "governance",
+  "ecosystem-governance": "governance",
+};
+

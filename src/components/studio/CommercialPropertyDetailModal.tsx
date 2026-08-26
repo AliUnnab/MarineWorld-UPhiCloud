@@ -118,12 +118,12 @@ export function CommercialPropertyDetailModal({
         {/* MODAL HEADER */}
         <div className="p-6 border-b border-slate-100 bg-slate-50 flex items-center justify-between sticky top-0 z-10">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center text-white font-bold shadow-md">
+            <div className="w-10 h-10 rounded-xl bg-royal flex items-center justify-center text-white font-bold shadow-md">
               <Building2 className="w-5 h-5" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="text-[10px] font-mono font-bold tracking-widest text-blue-600 uppercase bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                <span className="text-[10px] font-mono font-bold tracking-widest text-royal uppercase bg-royal/5 px-2 py-0.5 rounded border border-royal/20">
                   {property.canonicalPropertyKey}
                 </span>
                 <span
@@ -131,11 +131,11 @@ export function CommercialPropertyDetailModal({
                     property.availabilityStatus === "AVAILABLE"
                       ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
                       : property.availabilityStatus === "ACTIVE"
-                      ? "bg-blue-50 text-blue-700 border border-blue-200"
+                      ? "bg-royal/5 text-royal border border-royal/20"
                       : property.availabilityStatus === "HELD"
                       ? "bg-amber-50 text-amber-700 border border-amber-200"
                       : property.availabilityStatus === "RESERVED"
-                      ? "bg-indigo-50 text-indigo-700 border border-indigo-200"
+                      ? "bg-royal/5 text-royal border border-royal/20"
                       : "bg-slate-100 text-slate-600 border border-slate-200"
                   }`}
                 >
@@ -161,7 +161,7 @@ export function CommercialPropertyDetailModal({
             onClick={() => setActiveTab("SPECIFICATIONS")}
             className={`py-3 px-4 text-xs font-bold uppercase tracking-wider border-b-2 transition-colors ${
               activeTab === "SPECIFICATIONS"
-                ? "border-blue-600 text-blue-600"
+                ? "border-royal text-royal"
                 : "border-transparent text-slate-500 hover:text-slate-800"
             }`}
           >
@@ -171,7 +171,7 @@ export function CommercialPropertyDetailModal({
             onClick={() => setActiveTab("HISTORY")}
             className={`py-3 px-4 text-xs font-bold uppercase tracking-wider border-b-2 transition-colors flex items-center gap-1.5 ${
               activeTab === "HISTORY"
-                ? "border-blue-600 text-blue-600"
+                ? "border-royal text-royal"
                 : "border-transparent text-slate-500 hover:text-slate-800"
             }`}
           >
@@ -182,7 +182,7 @@ export function CommercialPropertyDetailModal({
             onClick={() => setActiveTab("LIVE_CONTEXT")}
             className={`py-3 px-4 text-xs font-bold uppercase tracking-wider border-b-2 transition-colors ${
               activeTab === "LIVE_CONTEXT"
-                ? "border-blue-600 text-blue-600"
+                ? "border-royal text-royal"
                 : "border-transparent text-slate-500 hover:text-slate-800"
             }`}
           >
@@ -224,7 +224,7 @@ export function CommercialPropertyDetailModal({
                   </div>
                   <div>
                     <span className="text-slate-400 uppercase text-[10px] block font-semibold">Tier Classification</span>
-                    <span className="font-bold text-blue-700">{property.tier}</span>
+                    <span className="font-bold text-royal">{property.tier}</span>
                   </div>
                   <div>
                     <span className="text-slate-400 uppercase text-[10px] block font-semibold">Current Tenant</span>
@@ -235,8 +235,8 @@ export function CommercialPropertyDetailModal({
                 </div>
 
                 {/* LOCATION SPECIFICATION */}
-                <div className="flex items-center gap-2 text-xs text-slate-600 bg-blue-50/50 p-3 rounded-lg border border-blue-100">
-                  <MapPin className="w-4 h-4 text-blue-600 shrink-0" />
+                <div className="flex items-center gap-2 text-xs text-slate-600 bg-royal/5 p-3 rounded-lg border border-royal/10">
+                  <MapPin className="w-4 h-4 text-royal shrink-0" />
                   <span>{property.locationSpecification}</span>
                 </div>
 
@@ -263,7 +263,7 @@ export function CommercialPropertyDetailModal({
                     <span className="text-xs font-bold tracking-widest text-slate-400 uppercase">
                       Commercial Terms
                     </span>
-                    <span className="text-[10px] px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 font-mono">
+                    <span className="text-[10px] px-2 py-0.5 rounded bg-royal/15 text-slate-300 font-mono">
                       ANNUAL COMMITMENT
                     </span>
                   </div>
@@ -295,7 +295,7 @@ export function CommercialPropertyDetailModal({
                           onClick={() => setSelectedTermMonths(opt.termMonths)}
                           className={`w-full p-2.5 rounded-xl border text-left text-xs font-medium transition-all flex items-center justify-between ${
                             selectedTermMonths === opt.termMonths
-                              ? "bg-blue-600 border-blue-500 text-white shadow-md"
+                              ? "bg-royal border-royal text-white shadow-md"
                               : "bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700"
                           }`}
                         >
@@ -320,7 +320,7 @@ export function CommercialPropertyDetailModal({
                       type="button"
                       onClick={() => setAutoRenew(!autoRenew)}
                       className={`w-10 h-5 rounded-full transition-colors relative ${
-                        autoRenew ? "bg-blue-600" : "bg-slate-700"
+                        autoRenew ? "bg-royal" : "bg-slate-700"
                       }`}
                     >
                       <div
@@ -341,7 +341,7 @@ export function CommercialPropertyDetailModal({
                         value={reservationNotes}
                         onChange={(e) => setReservationNotes(e.target.value)}
                         placeholder="e.g. Specific launch target date, showcase focus..."
-                        className="w-full p-2.5 text-xs rounded-xl bg-slate-800 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        className="w-full p-2.5 text-xs rounded-xl bg-slate-800 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-royal/40"
                         rows={2}
                       />
                     </div>
@@ -378,8 +378,8 @@ export function CommercialPropertyDetailModal({
                     </div>
                   ) : isCurrentTenant ? (
                     <div className="space-y-3">
-                      <div className="p-3 bg-blue-950/80 border border-blue-500/40 rounded-xl text-blue-200 text-xs flex items-start gap-2">
-                        <ShieldCheck className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
+                      <div className="p-3 bg-slate-900 border border-royal/30 rounded-xl text-slate-200 text-xs flex items-start gap-2">
+                        <ShieldCheck className="w-4 h-4 text-slate-300 shrink-0 mt-0.5" />
                         <span>Your company is the active commercial tenant for this property.</span>
                       </div>
                       {onLaunchEditor && (
@@ -395,7 +395,7 @@ export function CommercialPropertyDetailModal({
                             };
                             onLaunchEditor(dummySlot, property.cityId, property.regionCode);
                           }}
-                          className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-colors shadow-lg"
+                          className="w-full py-3 bg-royal hover:bg-royal-light text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-colors shadow-lg"
                         >
                           EDIT PROPERTY CREATIVE &rarr;
                         </button>
@@ -410,7 +410,7 @@ export function CommercialPropertyDetailModal({
                     <button
                       disabled={isSubmitting || !canModify}
                       onClick={handleReserve}
-                      className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-lg hover:shadow-blue-500/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                      className="w-full py-3.5 bg-royal hover:bg-royal-light text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-lg hover:shadow-royal/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                     >
                       {isSubmitting ? (
                         "RECORDING INTENT..."
@@ -462,7 +462,7 @@ export function CommercialPropertyDetailModal({
                               : ag.contractStatus === "EXPIRED"
                               ? "bg-slate-100 text-slate-600 border border-slate-200"
                               : ag.contractStatus === "PAYMENT_CONFIRMED"
-                              ? "bg-blue-50 text-blue-700 border border-blue-200"
+                              ? "bg-royal/5 text-royal border border-royal/20"
                               : "bg-amber-50 text-amber-700 border border-amber-200"
                           }`}
                         >
@@ -511,7 +511,7 @@ export function CommercialPropertyDetailModal({
                   href={`/cities/${city.slug}/${region.slug}`}
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-600 hover:underline uppercase"
+                  className="inline-flex items-center gap-1.5 text-xs font-bold text-royal hover:underline uppercase"
                 >
                   OPEN PUBLIC CITY <ExternalLink className="w-3.5 h-3.5" />
                 </a>

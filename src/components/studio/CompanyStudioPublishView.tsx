@@ -4,7 +4,6 @@ import {
   CheckCircle2,
   AlertCircle,
   Clock,
-  Sparkles,
   ExternalLink,
   ChevronRight,
   ShieldCheck,
@@ -172,7 +171,7 @@ export const CompanyStudioPublishView: React.FC<CompanyStudioPublishViewProps> =
                 </>
               ) : readiness.isPublishReady ? (
                 <>
-                  <Sparkles className="w-4 h-4 text-royal shrink-0" />
+                  <CheckCircle2 className="w-4 h-4 text-royal shrink-0" />
                   <span className="text-royal">Ready to Go Live</span>
                 </>
               ) : (

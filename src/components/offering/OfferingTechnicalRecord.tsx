@@ -7,7 +7,6 @@ import {
   BadgeCheck,
   Award,
   Layers,
-  Sparkles,
 } from "lucide-react";
 import type { CompanyOffering } from "@/lib/types";
 

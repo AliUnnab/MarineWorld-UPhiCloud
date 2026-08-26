@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   X,
   FileText,
   Upload,
   Handshake,
-  Sparkles,
+  Cpu,
   CheckCircle2,
   AlertCircle,
   AlertTriangle,
@@ -29,6 +29,14 @@ import {
   Clock,
   BookOpen,
   FolderOpen,
+  UploadCloud,
+  HardDrive,
+  FolderUp,
+  FileImage,
+  ArrowUp,
+  ArrowDown,
+  Maximize2,
+  RefreshCw,
 } from "lucide-react";
 import type {
   CompanyOffering,
@@ -217,7 +225,7 @@ export const OfferingCreationWizardModal: React.FC<OfferingCreationWizardModalPr
   const [coverage, setCoverage] = useState(initialOffering?.coverage || "");
   const [deliveryModel, setDeliveryModel] = useState(initialOffering?.deliveryModel || "");
 
-  // Media
+  // Media State & Desktop Upload
   const [mediaList, setMediaList] = useState<OfferingMediaItem[]>(
     initialOffering?.mediaReferences || initialOffering?.media || [
       {
@@ -232,9 +240,14 @@ export const OfferingCreationWizardModal: React.FC<OfferingCreationWizardModalPr
       },
     ]
   );
+  const [mediaUploadTab, setMediaUploadTab] = useState<"DESKTOP" | "URL">("DESKTOP");
+  const [isMediaDragActive, setIsMediaDragActive] = useState(false);
   const [newMediaUrl, setNewMediaUrl] = useState("");
   const [newMediaTitle, setNewMediaTitle] = useState("");
   const [newMediaType, setNewMediaType] = useState<"cover" | "photo" | "video" | "drawing">("photo");
+  const [selectedPreviewMedia, setSelectedPreviewMedia] = useState<OfferingMediaItem | null>(null);
+  const mediaFileInputRef = useRef<HTMLInputElement>(null);
+  const quickCoverInputRef = useRef<HTMLInputElement>(null);
 
   // Grounding Sources & Attributions
   const [groundingSources, setGroundingSources] = useState<OfferingGroundingSource[]>(
@@ -481,18 +494,127 @@ export const OfferingCreationWizardModal: React.FC<OfferingCreationWizardModalPr
     setNewStandardInput("");
   };
 
-  // Add Media Item
+  // Format file size
+  const formatFileSize = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  // Add Desktop Media Files
+  const handleProcessDesktopFiles = (files: FileList | File[], makeCoverFirst: boolean = false) => {
+    const fileArray = Array.from(files);
+    if (fileArray.length === 0) return;
+
+    fileArray.forEach((file, index) => {
+      const isImgOrDoc =
+        file.type.startsWith("image/") ||
+        file.name.match(/\.(png|jpe?g|webp|svg|gif|avif|bmp|tiff|pdf|dwg)$/i);
+      if (!isImgOrDoc) return;
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const dataUrl = e.target?.result as string;
+        if (!dataUrl) return;
+
+        const lower = file.name.toLowerCase();
+        let detectedType: "cover" | "photo" | "drawing" | "video" = "photo";
+        if (
+          lower.includes("drawing") ||
+          lower.includes("dwg") ||
+          lower.includes("cad") ||
+          lower.includes("schematic") ||
+          lower.includes("blueprint") ||
+          lower.includes("spec") ||
+          lower.endsWith(".svg")
+        ) {
+          detectedType = "drawing";
+        } else if (
+          makeCoverFirst ||
+          (index === 0 && (mediaList.length === 0 || lower.includes("cover") || lower.includes("main") || lower.includes("hero")))
+        ) {
+          detectedType = "cover";
+        }
+
+        const cleanTitle = file.name
+          .replace(/\.[^/.]+$/, "")
+          .replace(/[-_]/g, " ")
+          .replace(/\b\w/g, (c) => c.toUpperCase());
+
+        const newMediaItem: OfferingMediaItem = {
+          id: `med-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          url: dataUrl,
+          title: cleanTitle || `${name || "Offering"} Asset`,
+          type: detectedType,
+          isCover: makeCoverFirst || (index === 0 && (mediaList.length === 0 || detectedType === "cover")),
+          order: mediaList.length + index + 1,
+        };
+
+        setMediaList((prev) => {
+          if (newMediaItem.isCover) {
+            return [
+              newMediaItem,
+              ...prev.map((m) => ({
+                ...m,
+                isCover: false,
+                type: m.type === "cover" ? "photo" : m.type,
+              })),
+            ];
+          }
+          return [...prev, newMediaItem];
+        });
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleMediaDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsMediaDragActive(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      handleProcessDesktopFiles(e.dataTransfer.files);
+    }
+  };
+
+  const handleMediaFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      handleProcessDesktopFiles(e.target.files);
+      e.target.value = "";
+    }
+  };
+
+  const handleQuickCoverUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      handleProcessDesktopFiles(e.target.files, true);
+      e.target.value = "";
+    }
+  };
+
+  // Add Media Item via URL
   const handleAddMedia = () => {
     if (!newMediaUrl.trim()) return;
+    const isCover = mediaList.length === 0 || newMediaType === "cover";
     const newItem: OfferingMediaItem = {
       id: `med-${Date.now()}`,
       url: newMediaUrl.trim(),
       title: newMediaTitle.trim() || `${name || "Offering"} Asset`,
       type: newMediaType,
-      isCover: mediaList.length === 0 || newMediaType === "cover",
+      isCover,
       order: mediaList.length + 1,
     };
-    setMediaList([...mediaList, newItem]);
+    if (isCover) {
+      setMediaList([
+        newItem,
+        ...mediaList.map((m) => ({
+          ...m,
+          isCover: false,
+          type: m.type === "cover" ? "photo" : m.type,
+        })),
+      ]);
+    } else {
+      setMediaList([...mediaList, newItem]);
+    }
     setNewMediaUrl("");
     setNewMediaTitle("");
   };
@@ -509,6 +631,40 @@ export const OfferingCreationWizardModal: React.FC<OfferingCreationWizardModalPr
 
   const handleRemoveMedia = (id: string) => {
     setMediaList(mediaList.filter((m) => m.id !== id));
+  };
+
+  const handleMoveMedia = (id: string, direction: "up" | "down") => {
+    const idx = mediaList.findIndex((m) => m.id === id);
+    if (idx < 0) return;
+    const targetIdx = direction === "up" ? idx - 1 : idx + 1;
+    if (targetIdx < 0 || targetIdx >= mediaList.length) return;
+    const updated = [...mediaList];
+    const temp = updated[idx];
+    updated[idx] = updated[targetIdx];
+    updated[targetIdx] = temp;
+    setMediaList(updated.map((m, i) => ({ ...m, order: i + 1 })));
+  };
+
+  const handleUpdateMediaTitle = (id: string, newTitle: string) => {
+    setMediaList((prev) => prev.map((m) => (m.id === id ? { ...m, title: newTitle } : m)));
+  };
+
+  const handleUpdateMediaType = (id: string, newType: "cover" | "photo" | "drawing" | "video") => {
+    setMediaList((prev) =>
+      prev.map((m) => {
+        if (m.id === id) {
+          return {
+            ...m,
+            type: newType,
+            isCover: newType === "cover" ? true : m.isCover,
+          };
+        }
+        if (newType === "cover") {
+          return { ...m, isCover: false, type: m.type === "cover" ? "photo" : m.type };
+        }
+        return m;
+      })
+    );
   };
 
   // Toggle Advisor Role
@@ -653,7 +809,7 @@ export const OfferingCreationWizardModal: React.FC<OfferingCreationWizardModalPr
         <div className="px-6 py-4 border-b border-line flex items-center justify-between gap-4 bg-white shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-royal/10 border border-royal/20 flex items-center justify-center text-royal shrink-0 shadow-2xs">
-              <Sparkles className="w-5 h-5" />
+              <Cpu className="w-5 h-5" />
             </div>
             <div>
               <div className="flex items-center gap-2">
@@ -768,7 +924,7 @@ export const OfferingCreationWizardModal: React.FC<OfferingCreationWizardModalPr
                   <div className="space-y-4">
                     <div className="flex items-center justify-between">
                       <div className="w-12 h-12 rounded-xl bg-royal text-white flex items-center justify-center shadow-xs">
-                        <Sparkles className="w-6 h-6" />
+                        <Cpu className="w-6 h-6" />
                       </div>
                       <span className="inline-flex items-center gap-1 rounded-full bg-royal/10 text-royal px-2.5 py-1 text-[10px] font-mono font-bold uppercase tracking-wider">
                         RECOMMENDED • AI-NATIVE
@@ -1224,7 +1380,7 @@ export const OfferingCreationWizardModal: React.FC<OfferingCreationWizardModalPr
                   onClick={handleRunExtraction}
                   className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-royal hover:bg-royal/90 disabled:opacity-50 text-white text-xs font-bold shadow-md cursor-pointer transition uppercase tracking-wider"
                 >
-                  <Sparkles className="w-4 h-4" />
+                  <Cpu className="w-4 h-4" />
                   <span>Extract Structured Data with AI</span>
                 </button>
               </div>
@@ -1237,7 +1393,7 @@ export const OfferingCreationWizardModal: React.FC<OfferingCreationWizardModalPr
           {currentStep === "PARSING" && (
             <div className="max-w-md mx-auto py-16 text-center space-y-6 animate-in fade-in duration-200">
               <div className="relative w-20 h-20 mx-auto rounded-3xl bg-royal/10 border-2 border-royal flex items-center justify-center text-royal shadow-lg animate-pulse">
-                <Sparkles className="w-10 h-10" />
+                <Cpu className="w-10 h-10" />
               </div>
 
               <div className="space-y-2">
@@ -1270,7 +1426,7 @@ export const OfferingCreationWizardModal: React.FC<OfferingCreationWizardModalPr
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-2xl bg-royal/10 border border-royal/30">
                 <div className="flex items-center gap-3">
                   <div className="w-9 h-9 rounded-xl bg-royal text-white flex items-center justify-center shrink-0 shadow-2xs">
-                    <Sparkles className="w-4 h-4" />
+                    <Cpu className="w-4 h-4" />
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
@@ -1437,6 +1593,72 @@ export const OfferingCreationWizardModal: React.FC<OfferingCreationWizardModalPr
                     placeholder="Comprehensive operational description, hull integration guidelines, sensor configurations..."
                     className="w-full px-3.5 py-2 rounded-xl border border-line bg-canvas text-xs text-graphite focus:outline-hidden focus:border-royal"
                   />
+                </div>
+
+                {/* Primary Visual Asset & Quick Desktop Upload */}
+                <div className="pt-2 border-t border-line">
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-xs font-bold text-graphite uppercase tracking-wider flex items-center gap-1.5">
+                      <ImageIcon className="w-3.5 h-3.5 text-royal" />
+                      <span>Primary Cover Visual</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setCurrentStep("MEDIA")}
+                      className="text-[11px] font-mono font-bold text-royal hover:underline flex items-center gap-1 cursor-pointer"
+                    >
+                      <span>Media Repository ({mediaList.length})</span>
+                      <ArrowRight className="w-3 h-3" />
+                    </button>
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 p-3 rounded-xl bg-slate-50 border border-line">
+                    <div className="w-20 h-14 rounded-lg bg-slate-900 overflow-hidden shrink-0 relative border border-slate-200">
+                      {mediaList.find((m) => m.isCover)?.url || mediaList[0]?.url ? (
+                        <img
+                          src={mediaList.find((m) => m.isCover)?.url || mediaList[0]?.url}
+                          alt="Cover preview"
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-slate-500 text-[10px]">
+                          No visual
+                        </div>
+                      )}
+                      <span className="absolute bottom-0 inset-x-0 bg-black/60 text-white text-[8px] font-mono text-center py-0.5 uppercase">
+                        Cover
+                      </span>
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-bold text-graphite truncate">
+                        {mediaList.find((m) => m.isCover)?.title || mediaList[0]?.title || "Primary Offering Asset"}
+                      </p>
+                      <p className="text-[11px] font-mono text-stone truncate mt-0.5">
+                        {mediaList.find((m) => m.isCover)?.url.startsWith("data:")
+                          ? "Loaded from Local Desktop"
+                          : mediaList.find((m) => m.isCover)?.url || "No image configured"}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      <input
+                        ref={quickCoverInputRef}
+                        type="file"
+                        accept="image/*,.pdf,.svg,.dwg,.webp,.jpg,.jpeg,.png,.gif"
+                        onChange={handleQuickCoverUpload}
+                        className="hidden"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => quickCoverInputRef.current?.click()}
+                        className="px-3 py-1.5 rounded-lg bg-white border border-line hover:border-royal text-graphite text-xs font-bold shadow-2xs flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <HardDrive className="w-3.5 h-3.5 text-royal" />
+                        <span>Upload from Desktop</span>
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -1716,122 +1938,372 @@ export const OfferingCreationWizardModal: React.FC<OfferingCreationWizardModalPr
           {currentStep === "MEDIA" && (
             <div className="max-w-4xl mx-auto space-y-6 py-2 animate-in fade-in duration-200">
               <div className="space-y-1">
-                <div className="flex items-center gap-2 font-mono text-[10px] font-bold text-royal uppercase">
-                  <span>MEDIA ASSET REPOSITORY</span>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 font-mono text-[10px] font-bold text-royal uppercase">
+                    <ImageIcon className="w-3.5 h-3.5" />
+                    <span>MEDIA ASSET REPOSITORY</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-[10px] font-mono font-bold text-slate-700">
+                      {mediaList.length} {mediaList.length === 1 ? "Asset" : "Assets"} Attached
+                    </span>
+                    {mediaList.some((m) => m.isCover) && (
+                      <span className="px-2 py-0.5 rounded bg-emerald-100 border border-emerald-200 text-[10px] font-mono font-bold text-emerald-800">
+                        Cover Assigned
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <h3 className="text-lg font-extrabold text-graphite tracking-tight uppercase">
                   Manage Photos, Blueprints & Technical Drawings
                 </h3>
                 <p className="text-xs text-stone">
-                  Set the primary cover visual and upload additional technical assets for the public offering gallery.
+                  Upload high-resolution equipment renders, technical drawings, CAD schematics, and certificates directly from your computer or import via URL.
                 </p>
               </div>
 
-              {/* Add Media Bar */}
-              <div className="p-4 rounded-2xl border border-line bg-white space-y-3 shadow-xs">
-                <div className="font-mono text-xs font-bold text-graphite uppercase">
-                  Add New Visual Asset
+              {/* Hidden Desktop File Picker */}
+              <input
+                ref={mediaFileInputRef}
+                type="file"
+                multiple
+                accept="image/*,.pdf,.svg,.dwg,.webp,.jpg,.jpeg,.png,.gif"
+                onChange={handleMediaFileInputChange}
+                className="hidden"
+              />
+
+              {/* Upload Method Switcher */}
+              <div className="p-4 rounded-2xl border border-line bg-white space-y-4 shadow-xs">
+                <div className="flex items-center justify-between border-b border-line pb-3">
+                  <div className="font-mono text-xs font-bold text-graphite uppercase flex items-center gap-2">
+                    <UploadCloud className="w-4 h-4 text-royal" />
+                    <span>Add Visual & Technical Assets</span>
+                  </div>
+
+                  <div className="flex items-center bg-slate-100 p-0.5 rounded-xl text-xs font-mono font-bold">
+                    <button
+                      type="button"
+                      onClick={() => setMediaUploadTab("DESKTOP")}
+                      className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 cursor-pointer ${
+                        mediaUploadTab === "DESKTOP"
+                          ? "bg-white text-royal shadow-2xs"
+                          : "text-stone hover:text-graphite"
+                      }`}
+                    >
+                      <HardDrive className="w-3.5 h-3.5" />
+                      <span>Upload from Desktop</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setMediaUploadTab("URL")}
+                      className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 cursor-pointer ${
+                        mediaUploadTab === "URL"
+                          ? "bg-white text-royal shadow-2xs"
+                          : "text-stone hover:text-graphite"
+                      }`}
+                    >
+                      <Globe className="w-3.5 h-3.5" />
+                      <span>Paste Web URL</span>
+                    </button>
+                  </div>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <input
-                    type="url"
-                    value={newMediaUrl}
-                    onChange={(e) => setNewMediaUrl(e.target.value)}
-                    placeholder="https://... image or drawing URL"
-                    className="sm:col-span-2 px-3.5 py-2 rounded-xl border border-line bg-canvas text-xs text-graphite"
-                  />
-                  <select
-                    value={newMediaType}
-                    onChange={(e) => setNewMediaType(e.target.value as any)}
-                    className="px-3.5 py-2 rounded-xl border border-line bg-canvas text-xs font-bold text-graphite"
+
+                {/* DESKTOP DRAG & DROP ZONE */}
+                {mediaUploadTab === "DESKTOP" && (
+                  <div
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      setIsMediaDragActive(true);
+                    }}
+                    onDragLeave={() => setIsMediaDragActive(false)}
+                    onDrop={handleMediaDrop}
+                    onClick={() => mediaFileInputRef.current?.click()}
+                    className={`relative p-8 rounded-2xl border-2 border-dashed transition-all cursor-pointer text-center group ${
+                      isMediaDragActive
+                        ? "border-royal bg-royal/10 ring-4 ring-royal/20"
+                        : "border-slate-300 hover:border-royal bg-slate-50/70 hover:bg-slate-50"
+                    }`}
                   >
-                    <option value="photo">PHOTO / RENDER</option>
-                    <option value="drawing">TECHNICAL DRAWING</option>
-                    <option value="video">VIDEO FOOTAGE</option>
-                    <option value="cover">PRIMARY COVER</option>
-                  </select>
-                </div>
-                <div className="flex items-center justify-between gap-3">
-                  <input
-                    type="text"
-                    value={newMediaTitle}
-                    onChange={(e) => setNewMediaTitle(e.target.value)}
-                    placeholder="Asset caption (e.g. Subsea ROV Thruster Array)"
-                    className="flex-1 px-3.5 py-1.5 rounded-xl border border-line bg-canvas text-xs text-graphite"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleAddMedia}
-                    disabled={!newMediaUrl.trim()}
-                    className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white text-xs font-bold shadow-2xs"
-                  >
-                    Add Asset
-                  </button>
-                </div>
+                    <div className="max-w-md mx-auto space-y-3">
+                      <div className="w-14 h-14 mx-auto rounded-2xl bg-white shadow-2xs border border-line flex items-center justify-center text-royal group-hover:scale-105 transition-transform">
+                        <FolderUp className="w-7 h-7" />
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-sm font-bold text-graphite">
+                          Drag & drop photos, blueprints, or CAD drawings here
+                        </p>
+                        <p className="text-xs text-stone">
+                          or <span className="text-royal font-bold underline">browse files on your computer</span>
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap items-center justify-center gap-1.5 pt-1">
+                        <span className="px-2 py-0.5 rounded-md bg-white border border-slate-200 text-[10px] font-mono text-slate-600">
+                          PNG / JPG / WEBP
+                        </span>
+                        <span className="px-2 py-0.5 rounded-md bg-white border border-slate-200 text-[10px] font-mono text-slate-600">
+                          SVG Vectors
+                        </span>
+                        <span className="px-2 py-0.5 rounded-md bg-white border border-slate-200 text-[10px] font-mono text-slate-600">
+                          CAD / DWG / PDF Drawings
+                        </span>
+                        <span className="px-2 py-0.5 rounded-md bg-royal/10 text-royal text-[10px] font-mono font-bold">
+                          Multi-file upload supported
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* URL INPUT FORM */}
+                {mediaUploadTab === "URL" && (
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <input
+                        type="url"
+                        value={newMediaUrl}
+                        onChange={(e) => setNewMediaUrl(e.target.value)}
+                        placeholder="https://... image, render, or drawing URL"
+                        className="sm:col-span-2 px-3.5 py-2 rounded-xl border border-line bg-canvas text-xs text-graphite focus:outline-hidden focus:border-royal"
+                      />
+                      <select
+                        value={newMediaType}
+                        onChange={(e) => setNewMediaType(e.target.value as any)}
+                        className="px-3.5 py-2 rounded-xl border border-line bg-canvas text-xs font-bold text-graphite focus:outline-hidden focus:border-royal"
+                      >
+                        <option value="photo">PHOTO / RENDER</option>
+                        <option value="drawing">TECHNICAL DRAWING / SCHEMATIC</option>
+                        <option value="video">VIDEO FOOTAGE</option>
+                        <option value="cover">PRIMARY COVER IMAGE</option>
+                      </select>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <input
+                        type="text"
+                        value={newMediaTitle}
+                        onChange={(e) => setNewMediaTitle(e.target.value)}
+                        placeholder="Asset caption (e.g. Subsea ROV Thruster Array Schematic)"
+                        className="flex-1 px-3.5 py-2 rounded-xl border border-line bg-canvas text-xs text-graphite focus:outline-hidden focus:border-royal"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleAddMedia}
+                        disabled={!newMediaUrl.trim()}
+                        className="px-5 py-2 rounded-xl bg-royal hover:bg-royal/90 disabled:opacity-50 text-white text-xs font-bold shadow-2xs cursor-pointer transition uppercase"
+                      >
+                        Add Asset
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Media Gallery Grid */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                {mediaList.map((item) => (
-                  <div
-                    key={item.id}
-                    className={`group relative rounded-2xl border overflow-hidden bg-white shadow-xs transition-all ${
-                      item.isCover ? "border-royal ring-2 ring-royal/20" : "border-line"
-                    }`}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between font-mono text-xs font-bold text-graphite uppercase">
+                  <span>Offering Visual Gallery ({mediaList.length})</span>
+                  <button
+                    type="button"
+                    onClick={() => mediaFileInputRef.current?.click()}
+                    className="text-[11px] font-mono text-royal hover:underline flex items-center gap-1 cursor-pointer"
                   >
-                    <div className="aspect-video relative bg-slate-950">
-                      <img src={item.url} alt={item.title} className="w-full h-full object-cover" />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
-                      
-                      {item.isCover ? (
-                        <span className="absolute top-2 left-2 px-2 py-0.5 rounded-md text-[9px] font-mono font-bold bg-royal text-white uppercase tracking-wider">
-                          COVER IMAGE
-                        </span>
-                      ) : (
-                        <span className="absolute top-2 left-2 px-2 py-0.5 rounded-md text-[9px] font-mono font-bold bg-black/60 text-white uppercase tracking-wider">
-                          {item.type.toUpperCase()}
-                        </span>
-                      )}
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Upload More from Desktop</span>
+                  </button>
+                </div>
 
-                      <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveMedia(item.id)}
-                          className="p-1 rounded-md bg-black/70 text-rose-400 hover:text-rose-200"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-
-                      <div className="absolute bottom-2 left-2 right-2">
-                        <p className="text-xs font-bold text-white truncate">{item.title || "Asset"}</p>
-                      </div>
+                {mediaList.length === 0 ? (
+                  <div className="p-8 rounded-2xl border border-line bg-slate-50 text-center space-y-3">
+                    <FileImage className="w-10 h-10 mx-auto text-slate-400" />
+                    <div className="space-y-1">
+                      <p className="text-xs font-bold text-graphite uppercase">No Media Assets Added Yet</p>
+                      <p className="text-xs text-stone">
+                        Upload equipment photos, CAD schematics, or datasheets from your desktop.
+                      </p>
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => mediaFileInputRef.current?.click()}
+                      className="px-4 py-2 rounded-xl bg-royal text-white text-xs font-bold shadow-2xs hover:bg-royal/90 cursor-pointer"
+                    >
+                      Browse Desktop Files
+                    </button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                    {mediaList.map((item, idx) => (
+                      <div
+                        key={item.id}
+                        className={`group relative rounded-2xl border overflow-hidden bg-white shadow-xs transition-all flex flex-col justify-between ${
+                          item.isCover
+                            ? "border-royal ring-2 ring-royal/20"
+                            : "border-line hover:border-slate-400"
+                        }`}
+                      >
+                        {/* Image Canvas */}
+                        <div className="aspect-video relative bg-slate-950 overflow-hidden">
+                          <img
+                            src={item.url}
+                            alt={item.title}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                          />
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent pointer-events-none" />
 
-                    <div className="p-2.5 bg-slate-50 flex items-center justify-between border-t border-line text-[11px] font-mono">
-                      {!item.isCover ? (
-                        <button
-                          type="button"
-                          onClick={() => handleSetCover(item.id)}
-                          className="font-bold text-royal hover:underline"
-                        >
-                          Set as Cover
-                        </button>
-                      ) : (
-                        <span className="font-bold text-emerald-700">Active Cover</span>
-                      )}
-                      <span className="text-stone">Order: {item.order || 1}</span>
+                          {/* Top Left Badge */}
+                          <div className="absolute top-2 left-2 flex flex-col gap-1 pointer-events-none">
+                            {item.isCover ? (
+                              <span className="px-2 py-0.5 rounded-md text-[9px] font-mono font-bold bg-royal text-white uppercase tracking-wider shadow-sm">
+                                COVER IMAGE
+                              </span>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded-md text-[9px] font-mono font-bold bg-black/70 text-white uppercase tracking-wider">
+                                {item.type.toUpperCase()}
+                              </span>
+                            )}
+                            <span className="px-1.5 py-0.5 rounded text-[8px] font-mono bg-black/60 text-slate-300 uppercase">
+                              {item.url.startsWith("data:") ? "DESKTOP" : "WEB URL"}
+                            </span>
+                          </div>
+
+                          {/* Top Right Action Icons */}
+                          <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button
+                              type="button"
+                              onClick={() => setSelectedPreviewMedia(item)}
+                              title="Full Screen Preview"
+                              className="p-1.5 rounded-md bg-black/70 text-white hover:bg-black/90 cursor-pointer transition"
+                            >
+                              <Maximize2 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveMedia(item.id)}
+                              title="Remove Asset"
+                              className="p-1.5 rounded-md bg-black/70 text-rose-400 hover:text-rose-200 hover:bg-rose-950/80 cursor-pointer transition"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+
+                          {/* Bottom Caption Overlay */}
+                          <div className="absolute bottom-2 left-2 right-2 pointer-events-none">
+                            <p className="text-xs font-bold text-white truncate">{item.title || "Asset"}</p>
+                          </div>
+                        </div>
+
+                        {/* Card Controls & Details */}
+                        <div className="p-3 bg-slate-50 space-y-2.5 border-t border-line text-xs">
+                          {/* Caption Input */}
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-mono text-stone uppercase block">
+                              Caption / Title
+                            </label>
+                            <input
+                              type="text"
+                              value={item.title}
+                              onChange={(e) => handleUpdateMediaTitle(item.id, e.target.value)}
+                              className="w-full px-2.5 py-1 text-xs rounded-lg border border-line bg-white text-graphite focus:outline-hidden focus:border-royal"
+                            />
+                          </div>
+
+                          {/* Type & Order controls */}
+                          <div className="flex items-center justify-between gap-2 pt-1 border-t border-line/60">
+                            <select
+                              value={item.isCover ? "cover" : item.type}
+                              onChange={(e) => handleUpdateMediaType(item.id, e.target.value as any)}
+                              className="px-2 py-1 rounded-md border border-line bg-white text-[11px] font-mono font-bold text-graphite"
+                            >
+                              <option value="cover">COVER</option>
+                              <option value="photo">PHOTO</option>
+                              <option value="drawing">DRAWING</option>
+                              <option value="video">VIDEO</option>
+                            </select>
+
+                            <div className="flex items-center gap-1 font-mono text-[11px]">
+                              {!item.isCover ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleSetCover(item.id)}
+                                  className="px-2 py-0.5 rounded bg-white border border-line text-royal font-bold hover:bg-royal hover:text-white transition cursor-pointer"
+                                >
+                                  Make Cover
+                                </button>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold text-[10px]">
+                                  Active Cover
+                                </span>
+                              )}
+
+                              <div className="flex items-center">
+                                <button
+                                  type="button"
+                                  disabled={idx === 0}
+                                  onClick={() => handleMoveMedia(item.id, "up")}
+                                  className="p-1 text-stone hover:text-graphite disabled:opacity-30 cursor-pointer"
+                                  title="Move Earlier"
+                                >
+                                  <ArrowUp className="w-3 h-3" />
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={idx === mediaList.length - 1}
+                                  onClick={() => handleMoveMedia(item.id, "down")}
+                                  className="p-1 text-stone hover:text-graphite disabled:opacity-30 cursor-pointer"
+                                  title="Move Later"
+                                >
+                                  <ArrowDown className="w-3 h-3" />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Fullscreen Preview Lightbox Modal */}
+              {selectedPreviewMedia && (
+                <div
+                  onClick={() => setSelectedPreviewMedia(null)}
+                  className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4"
+                >
+                  <div
+                    onClick={(e) => e.stopPropagation()}
+                    className="relative max-w-4xl max-h-[85vh] bg-slate-950 rounded-2xl overflow-hidden border border-slate-800 shadow-2xl flex flex-col"
+                  >
+                    <div className="p-3 bg-slate-900 flex items-center justify-between text-white border-b border-slate-800">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-xs font-bold text-royal uppercase">
+                          {selectedPreviewMedia.type}
+                        </span>
+                        <span className="text-xs font-bold truncate">{selectedPreviewMedia.title}</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedPreviewMedia(null)}
+                        className="p-1 rounded-lg text-slate-400 hover:text-white"
+                      >
+                        <X className="w-5 h-5" />
+                      </button>
+                    </div>
+                    <div className="flex-1 overflow-auto flex items-center justify-center p-4 bg-black/40">
+                      <img
+                        src={selectedPreviewMedia.url}
+                        alt={selectedPreviewMedia.title}
+                        className="max-w-full max-h-[70vh] object-contain rounded-lg"
+                      />
                     </div>
                   </div>
-                ))}
-              </div>
+                </div>
+              )}
 
               {/* Navigation Footer */}
               <div className="flex items-center justify-between pt-4 border-t border-line">
                 <button
                   type="button"
                   onClick={() => setCurrentStep("REVIEW_DRAFT")}
-                  className="flex items-center gap-2 px-4 py-2 rounded-xl border border-line bg-white text-xs font-bold text-stone hover:text-graphite shadow-2xs"
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl border border-line bg-white text-xs font-bold text-stone hover:text-graphite shadow-2xs cursor-pointer"
                 >
                   <ArrowLeft className="w-3.5 h-3.5" />
                   <span>Back to Draft</span>
@@ -1840,7 +2312,7 @@ export const OfferingCreationWizardModal: React.FC<OfferingCreationWizardModalPr
                 <button
                   type="button"
                   onClick={() => setCurrentStep("ADVISOR_CONFIG")}
-                  className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-royal text-white text-xs font-bold shadow-md hover:bg-royal/90 transition uppercase tracking-wider"
+                  className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-royal text-white text-xs font-bold shadow-md hover:bg-royal/90 transition uppercase tracking-wider cursor-pointer"
                 >
                   <span>Configure Offering AI Advisor</span>
                   <ArrowRight className="w-4 h-4" />

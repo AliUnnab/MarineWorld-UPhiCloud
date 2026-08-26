@@ -305,11 +305,19 @@ export function getStudioNavigation(
     },
     {
       id: "CONNECTIONS",
-      label: "Connect / RFQs",
-      description: "Commercial inbox, RFQs & product inquiries",
+      label: "Connect / RFQ Inbox",
+      description: "Commercial inbox, RFQs & customer inquiries",
       iconName: "MessageSquare",
       requiredCapability: "CONNECT",
       requiredRoles: ["OWNER", "ADMIN", "COMMERCIAL", "TECHNICAL", "MANAGER", "OPERATIONS", "SALES", "MEMBER", "VIEWER"],
+    },
+    {
+      id: "CONTACTS",
+      label: "Connect / Direct Reach",
+      description: "Direct reach representatives, channels & e-trade portals",
+      iconName: "PhoneCall",
+      requiredCapability: "COMPANY_STUDIO",
+      requiredRoles: allRoles,
     },
     {
       id: "TEAM",
