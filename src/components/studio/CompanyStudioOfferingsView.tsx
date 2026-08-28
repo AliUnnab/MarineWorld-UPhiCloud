@@ -27,10 +27,10 @@ import type {
 } from "@/lib/types";
 import { getCompanyById, saveCompany } from "@/lib/services/companyService";
 import { CANONICAL_CAPABILITIES_TAXONOMY, updateCompanyCapabilities } from "@/lib/businessTwinStore";
-import { marineSector } from "@/lib/sectors/marine";
-import { getCompanyBySlug } from "@/lib/registry";
+import { getCompanyRecordSync, getCompanyRecord } from "@/lib/repositories/companyRepository";
 import {
   getCompanyOfferings,
+  fetchCompanyOfferingsAsync,
   saveCanonicalOffering,
   publishOffering,
   archiveOffering,
@@ -56,7 +56,7 @@ export const CompanyStudioOfferingsView: React.FC<CompanyStudioOfferingsViewProp
   onSaved,
   onNavigateToAI,
 }) => {
-  const canonicalCompany = getCompanyById(companyId) || (getCompanyBySlug(marineSector, companyId) as unknown as CompanyEntity);
+  const canonicalCompany = getCompanyById(companyId) || (getCompanyRecordSync(companyId) as unknown as CompanyEntity);
   const [activeTab, setActiveTab] = useState<OfferingTab>("PRODUCTS");
 
   // Canonical offerings state
@@ -74,17 +74,25 @@ export const CompanyStudioOfferingsView: React.FC<CompanyStudioOfferingsViewProp
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  const reloadOfferings = () => {
+  const reloadOfferings = async () => {
     const list = getCompanyOfferings(companyId);
     setOfferings(list);
 
-    const comp = getCompanyById(companyId) || (getCompanyBySlug(marineSector, companyId) as unknown as CompanyEntity);
-    if (comp) {
-      setCapabilities(
-        (comp as any)?.capabilities?.length > 0
-          ? (comp as any).capabilities
-          : ["MANUFACTURING", "ENGINEERING & DESIGN", "MAINTENANCE", "SYSTEM INTEGRATION"]
-      );
+    try {
+      const asyncList = await fetchCompanyOfferingsAsync(companyId);
+      if (asyncList && asyncList.length > 0) {
+        setOfferings(asyncList);
+      }
+      const comp = (await getCompanyRecord(companyId)) || getCompanyById(companyId) || (getCompanyRecordSync(companyId) as unknown as CompanyEntity);
+      if (comp) {
+        setCapabilities(
+          (comp as any)?.capabilities?.length > 0
+            ? (comp as any).capabilities
+            : ["MANUFACTURING", "ENGINEERING & DESIGN", "MAINTENANCE", "SYSTEM INTEGRATION"]
+        );
+      }
+    } catch {
+      // Fallback already populated
     }
   };
 

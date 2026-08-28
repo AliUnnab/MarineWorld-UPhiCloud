@@ -81,7 +81,8 @@ export function CommercialReceiptModal({
           {/* PAID AMOUNT HERO CARD */}
           <div className="p-5 rounded-2xl bg-emerald-50/60 border border-emerald-200 text-center space-y-1">
             <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold text-emerald-800 bg-emerald-100 mb-1">
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Payment Settled Successfully
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+              <span>Payment Settled Successfully</span>
             </div>
             <div className="text-3xl font-extrabold font-mono text-slate-900 tracking-tight">
               ${(payment.amount ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{" "}

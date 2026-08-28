@@ -27,11 +27,10 @@ import {
 } from "lucide-react";
 import type { InquiryEntity, InquiryStatus, InquiryPriority } from "@/lib/types";
 import {
-  getCompanyInquiries,
-  addInquiryMessage,
-  updateInquiryStatus,
-  subscribeInquiries,
-} from "@/lib/connectStore";
+  subscribeToCompanyInquiries,
+  addInquiryMessage as addFirestoreInquiryMessage,
+  updateInquiryStatus as updateFirestoreInquiryStatus,
+} from "@/services/inquiryService";
 import {
   resolveCompanyContactRouting,
   getNotificationLogs,
@@ -152,24 +151,26 @@ export function CompanyStudioConnectView({
   const company = useMemo(() => getCompanyById(companyId), [companyId]);
   const contactRouting = useMemo(() => resolveCompanyContactRouting(companyId), [companyId]);
 
-  const loadData = () => {
-    const companyInqs = getCompanyInquiries(companyId);
-    setInquiries(companyInqs);
-    setNotificationLogs(getNotificationLogs());
-  };
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    loadData();
-    const unsubInquiries = subscribeInquiries(loadData);
-    const unsubLogs = subscribeNotificationLogs(() => setNotificationLogs(getNotificationLogs()));
+    if (!companyId) {
+      setIsLoading(false);
+      return;
+    }
 
-    const handleCustomUpdate = () => loadData();
-    window.addEventListener("marineworld_inquiry_updated", handleCustomUpdate);
+    setIsLoading(true);
+    // Realtime Firestore subscription
+    const unsubInquiries = subscribeToCompanyInquiries(companyId, (fetched) => {
+      setInquiries(fetched);
+      setIsLoading(false);
+    });
+
+    const unsubLogs = subscribeNotificationLogs(() => setNotificationLogs(getNotificationLogs()));
 
     return () => {
       unsubInquiries();
       unsubLogs();
-      window.removeEventListener("marineworld_inquiry_updated", handleCustomUpdate);
     };
   }, [companyId]);
 
@@ -180,10 +181,10 @@ export function CompanyStudioConnectView({
   }, [inquiries, selectedInquiryId]);
 
   // Open detail handler & status transition rule (NEW -> OPEN)
-  const handleSelectInquiry = (inquiry: InquiryEntity) => {
+  const handleSelectInquiry = async (inquiry: InquiryEntity) => {
     setSelectedInquiryId(inquiry.id);
     if (inquiry.status === "NEW") {
-      updateInquiryStatus(inquiry.id, "OPEN");
+      await updateFirestoreInquiryStatus(inquiry.id, "OPEN").catch(console.error);
     }
   };
 
@@ -244,7 +245,7 @@ export function CompanyStudioConnectView({
   }, [inquiries]);
 
   // Reply submission
-  const handleSendReply = (e: React.FormEvent) => {
+  const handleSendReply = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeInquiry || !replyText.trim() || isSending) return;
 
@@ -252,13 +253,12 @@ export function CompanyStudioConnectView({
     try {
       const compName = (company as any)?.displayName || (company as any)?.legalName || (company as any)?.name || "Company";
       const repName = `${compName} Commercial Team`;
-      addInquiryMessage(
-        activeInquiry.id,
-        "emp-cg-01",
-        repName,
-        "COMPANY_MEMBER",
-        replyText.trim()
-      );
+      await addFirestoreInquiryMessage(activeInquiry.id, {
+        senderId: "emp-cg-01",
+        senderName: repName,
+        senderRole: "COMPANY_MEMBER",
+        body: replyText.trim(),
+      });
       setReplyText("");
     } catch (err) {
       console.error("Failed to post company reply:", err);
@@ -268,10 +268,10 @@ export function CompanyStudioConnectView({
   };
 
   // Close or reopen inquiry
-  const handleToggleClose = () => {
+  const handleToggleClose = async () => {
     if (!activeInquiry) return;
     const newStatus: InquiryStatus = activeInquiry.status === "CLOSED" ? "OPEN" : "CLOSED";
-    updateInquiryStatus(activeInquiry.id, newStatus);
+    await updateFirestoreInquiryStatus(activeInquiry.id, newStatus).catch(console.error);
   };
 
   // Canonical Offering URL helper

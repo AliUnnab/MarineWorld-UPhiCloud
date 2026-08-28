@@ -1,8 +1,8 @@
-import type { SectorConfig } from "@/lib/types";
+import { useState, useEffect } from "react";
+import type { SectorConfig, CompanyEntity, SectorCity } from "@/lib/types";
 import { PageShell } from "@/components/foundation/PageShell";
 import { CompanyCard } from "@/components/foundation/CompanyCard";
 import { CanonicalSectorCityCard } from "@/components/foundation/CanonicalCityCard";
-import { Icon } from "@/components/digione/icons";
 import {
   DigiBadge,
   DigiButton,
@@ -10,11 +10,10 @@ import {
   DigiIconContainer,
   Reveal,
 } from "@/components/digione/primitives";
-import {
-  getCitiesByDomain,
-  getCompanies,
-  getIndustryDomainBySlug,
-} from "@/lib/registry";
+import { getIndustryDomainBySlug } from "@/lib/registry";
+import { listCompanies } from "@/services/companyService";
+import { listSectorCities } from "@/services/sectorService";
+import { Globe2, Building2 } from "lucide-react";
 
 export function IndustryDomainPage({
   config,
@@ -32,14 +31,46 @@ export function IndustryDomainPage({
     status: "LIVE",
   };
 
-  const citiesInDomain = getCitiesByDomain(config, domain.slug);
+  const [liveCities, setLiveCities] = useState<SectorCity[]>([]);
+  const [liveCompanies, setLiveCompanies] = useState<CompanyEntity[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Get companies that belong to cities in this domain
+  useEffect(() => {
+    setIsLoading(true);
+    Promise.all([
+      listSectorCities(),
+      listCompanies(),
+    ])
+      .then(([cities, companies]) => {
+        if (cities && cities.length > 0) {
+          const matching = cities.filter(
+            (c) =>
+              (c.category && c.category.toLowerCase() === domain.name.toLowerCase()) ||
+              c.industryDomainId === domain.id ||
+              c.industryDomainId === domain.slug
+          );
+          setLiveCities(matching);
+        }
+        if (companies && companies.length > 0) {
+          setLiveCompanies(companies);
+        }
+      })
+      .catch((err) => {
+        console.warn("[IndustryDomainPage] Firestore load error:", err);
+      })
+      .finally(() => {
+        setIsLoading(false);
+      });
+  }, [domain.id, domain.slug, domain.name]);
+
+  const citiesInDomain = liveCities;
   const domainCityIds = citiesInDomain.map((c) => c.id);
-  const companiesInDomain = getCompanies(config).filter(
+  const allComps: any[] = liveCompanies;
+  const companiesInDomain = allComps.filter(
     (comp) =>
-      comp.cityIds.some((cId) => domainCityIds.includes(cId)) ||
-      comp.industry.toLowerCase().includes(domain.name.toLowerCase().split(" ")[0])
+      ((comp.cityIds && comp.cityIds.some((cId: string) => domainCityIds.includes(cId))) ||
+        (comp.sectorCityIds && comp.sectorCityIds.some((cId: string) => domainCityIds.includes(cId)))) ||
+      (comp.industry && comp.industry.toLowerCase().includes(domain.name.toLowerCase().split(" ")[0]))
   );
 
   const breadcrumbs = [
@@ -116,49 +147,80 @@ export function IndustryDomainPage({
           </DigiContainer>
         </section>
 
-        {/* SECTOR CITIES IN THIS DOMAIN */}
-        <section id="cities" className="py-16 bg-white border-b border-line">
+        {/* CITIES IN THIS DOMAIN */}
+        <section id="cities" className="py-12 md:py-16 border-b border-line">
           <DigiContainer>
             <Reveal>
-              <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-royal">
-                SECTOR CITY NETWORK
-              </p>
-              <h2 className="text-h2 mt-1 text-graphite">
-                Sector Cities Under {domain.name}
-              </h2>
-              <p className="mt-2 text-[14px] text-stone max-w-2xl">
-                Specialized digital environments governing commercial operations within {domain.name}.
-              </p>
+              <div className="flex items-center justify-between border-b border-line pb-4">
+                <div>
+                  <h2 className="text-h2 text-graphite">Associated Sector Cities</h2>
+                  <p className="mt-1 text-[13.5px] text-stone">
+                    Sovereign digital hubs mapped under the {domain.name} category.
+                  </p>
+                </div>
+                <span className="font-mono text-[11px] font-bold uppercase tracking-[0.14em] text-royal hidden sm:inline-block">
+                  {citiesInDomain.length} SECTOR CITIES
+                </span>
+              </div>
 
-              <div className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-                {citiesInDomain.map((city) => (
-                  <CanonicalSectorCityCard key={city.id} city={city} />
-                ))}
+              <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+                {isLoading ? (
+                  <div className="col-span-full py-12 px-6 rounded-card-md border border-line bg-canvas text-center">
+                    <Globe2 className="w-8 h-8 text-royal animate-pulse mx-auto mb-2" />
+                    <p className="text-sm font-bold text-graphite">Sektör Şehirleri Yükleniyor...</p>
+                  </div>
+                ) : citiesInDomain.length === 0 ? (
+                  <div className="col-span-full py-12 px-6 rounded-card-md border border-line bg-canvas text-center">
+                    <Globe2 className="w-8 h-8 text-mute mx-auto mb-2" />
+                    <p className="text-sm font-bold text-graphite">Bu Alanda Şehir Bulunamadı</p>
+                    <p className="text-xs text-stone mt-1">Bu alt sektör kategorisine henüz bir sektör şehri bağlanmamıştır.</p>
+                  </div>
+                ) : (
+                  citiesInDomain.map((city) => (
+                    <CanonicalSectorCityCard
+                      key={city.id}
+                      city={city}
+                    />
+                  ))
+                )}
               </div>
             </Reveal>
           </DigiContainer>
         </section>
 
         {/* COMPANIES IN THIS DOMAIN */}
-        {companiesInDomain.length > 0 ? (
-          <section className="py-16 bg-canvas border-b border-line">
-            <DigiContainer>
-              <Reveal>
-                <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-royal">
-                  COMPANY NETWORK
-                </p>
-                <h2 className="text-h2 mt-1 text-graphite">
-                  Companies in {domain.name}
-                </h2>
-                <p className="mt-2 text-[14px] text-stone">
-                  Verified enterprises operating across {domain.name} sector cities.
-                </p>
+        <section className="py-12 md:py-16">
+          <DigiContainer>
+            <Reveal>
+              <div className="flex items-center justify-between border-b border-line pb-4">
+                <div>
+                  <h2 className="text-h2 text-graphite">Sector Enterprises</h2>
+                  <p className="mt-1 text-[13.5px] text-stone">
+                    Verified enterprises operating across {domain.name} sector cities.
+                  </p>
+                </div>
+                <span className="font-mono text-[11px] font-bold uppercase tracking-[0.14em] text-royal hidden sm:inline-block">
+                  {companiesInDomain.length} VERIFIED
+                </span>
+              </div>
 
-                <div className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-                  {companiesInDomain.map((company) => (
+              <div className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                {isLoading ? (
+                  <div className="col-span-full py-12 px-6 rounded-card-md border border-line bg-canvas text-center">
+                    <Building2 className="w-8 h-8 text-royal animate-pulse mx-auto mb-2" />
+                    <p className="text-sm font-bold text-graphite">İşletmeler Yükleniyor...</p>
+                  </div>
+                ) : companiesInDomain.length === 0 ? (
+                  <div className="col-span-full py-12 px-6 rounded-card-md border border-line bg-canvas text-center">
+                    <Building2 className="w-8 h-8 text-mute mx-auto mb-2" />
+                    <p className="text-sm font-bold text-graphite">Kayıtlı İşletme Bulunamadı</p>
+                    <p className="text-xs text-stone mt-1">Bu domain altında kayıtlı işletme bulunmamaktadır.</p>
+                  </div>
+                ) : (
+                  companiesInDomain.map((company) => (
                     <div key={company.id}>
                       <CompanyCard
-                        company={company}
+                        company={company as any}
                         context={{
                           city: company.city,
                           domain: domain.name,
@@ -167,12 +229,12 @@ export function IndustryDomainPage({
                         showEntryPoint={true}
                       />
                     </div>
-                  ))}
-                </div>
-              </Reveal>
-            </DigiContainer>
-          </section>
-        ) : null}
+                  ))
+                )}
+              </div>
+            </Reveal>
+          </DigiContainer>
+        </section>
       </div>
     </PageShell>
   );

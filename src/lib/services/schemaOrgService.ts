@@ -12,7 +12,6 @@ import type {
 import { getSectorCityById } from "./sectorService";
 import { getCompanyById, getCompanyBySlug, getCompanyNodes } from "./companyService";
 import { getCityBySlug } from "@/lib/registry";
-import { marineSector } from "@/lib/sectors/marine";
 import { buildCanonicalOfferingUrl } from "./offeringEntityService";
 import { buildCanonicalCompanyUrl } from "./companyIdentityService";
 export { buildCanonicalOfferingUrl, buildCanonicalCompanyUrl };
@@ -233,7 +232,7 @@ export function buildSchemaForIdentity(
   if (identity.identityType === "SECTOR_CITY" && identity.sectorCityId) {
     const sectorCity =
       getSectorCityById(identity.sectorCityId) ||
-      (getCityBySlug(marineSector, identity.sectorCityId) as unknown as SectorCityEntity);
+      (getCityBySlug(undefined, identity.sectorCityId) as unknown as SectorCityEntity);
 
     if (sectorCity) {
       return buildSectorCitySchema(sectorCity);

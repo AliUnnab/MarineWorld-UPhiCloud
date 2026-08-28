@@ -1,9 +1,8 @@
 import type { CompanyMemberEntity, CompanyMemberRole, CompanyMemberStatus } from "@/lib/types";
-import {
-  developmentAuthProvider,
-  type AuthContext,
-  type AuthProviderInterface,
-} from "@/lib/auth/developmentAuthProvider";
+import type {
+  AuthContext,
+  AuthProviderInterface,
+} from "@/lib/auth/authTypes";
 import { firebaseAuthProvider, isFirebaseConfigured } from "@/lib/auth/firebaseAuthProvider";
 import {
   saveMember,
@@ -12,19 +11,23 @@ import {
   findMembersByUserId,
 } from "@/lib/repositories/membershipRepository";
 import { resetAllTrustStates } from "@/lib/services/personalTrustService";
+import { hashPassword } from "@/lib/crypto";
+import { findAllCompaniesSync } from "@/lib/repositories/companyRepository";
+import { collection, getDocs, query, where } from "firebase/firestore";
+import { db } from "@/lib/firebase";
+import { registerOrganizationalMembership, setActiveOrganizationContext } from "@/lib/services/accessContextService";
+import type { CompanyEntity } from "@/lib/types";
 
 export type { AuthContext, AuthProviderInterface };
 
 /**
  * Production Firebase Authentication Provider & Multi-Tenant Authorization Service
- * Delegates authentication directly to canonical AuthProviderInterface (FirebaseAuthProvider when configured)
+ * Delegates authentication directly to canonical FirebaseAuthProvider
  * and membership queries to canonical membershipRepository.
  */
 
-// Active auth provider: defaults to firebaseAuthProvider if configured, otherwise developmentAuthProvider.
-let activeAuthProvider: AuthProviderInterface = isFirebaseConfigured()
-  ? firebaseAuthProvider
-  : developmentAuthProvider;
+// Active auth provider: Pure FirebaseAuthProvider
+let activeAuthProvider: AuthProviderInterface = firebaseAuthProvider;
 
 export function getActiveAuthProvider(): AuthProviderInterface {
   return activeAuthProvider;
@@ -34,12 +37,8 @@ export function setAuthProvider(provider: AuthProviderInterface): void {
   activeAuthProvider = provider;
 }
 
-export function setAuthProviderType(type: "FIREBASE" | "DEVELOPMENT"): void {
-  if (type === "FIREBASE") {
-    activeAuthProvider = firebaseAuthProvider;
-  } else {
-    activeAuthProvider = developmentAuthProvider;
-  }
+export function setAuthProviderType(type: "FIREBASE"): void {
+  activeAuthProvider = firebaseAuthProvider;
 }
 
 /**
@@ -139,11 +138,116 @@ export function clearCurrentAuthSession(): void {
   resetAllTrustStates();
 }
 
+export async function verifyCompanyCredentials(
+  email: string,
+  password: string
+): Promise<CompanyEntity | null> {
+  const normEmail = email.trim().toLowerCase();
+  const hash = await hashPassword(password);
+
+  // 1. Check in-memory sync cache
+  const cachedCompanies = findAllCompaniesSync();
+  for (const comp of cachedCompanies) {
+    const compEmail = (comp.email || comp.officialEmail || "").trim().toLowerCase();
+    if (compEmail === normEmail) {
+      if (comp.passwordHash && comp.passwordHash === hash) {
+        return comp;
+      }
+      if (comp.passwordHash && comp.passwordHash !== hash) {
+        throw new Error("Invalid password for company account.");
+      }
+    }
+  }
+
+  // 2. Check Firestore
+  try {
+    if (typeof window !== "undefined") {
+      const q = query(collection(db, "companies"), where("email", "==", normEmail));
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        const comp = snap.docs[0].data() as CompanyEntity;
+        if (comp.passwordHash && comp.passwordHash === hash) {
+          return comp;
+        }
+        if (comp.passwordHash && comp.passwordHash !== hash) {
+          throw new Error("Invalid password for company account.");
+        }
+      }
+
+      const qOfficial = query(collection(db, "companies"), where("officialEmail", "==", normEmail));
+      const snapOfficial = await getDocs(qOfficial);
+      if (!snapOfficial.empty) {
+        const comp = snapOfficial.docs[0].data() as CompanyEntity;
+        if (comp.passwordHash && comp.passwordHash === hash) {
+          return comp;
+        }
+        if (comp.passwordHash && comp.passwordHash !== hash) {
+          throw new Error("Invalid password for company account.");
+        }
+      }
+    }
+  } catch (err: any) {
+    if (err?.message === "Invalid password for company account.") {
+      throw err;
+    }
+    console.warn("[verifyCompanyCredentials] Firestore lookup error:", err);
+  }
+
+  return null;
+}
+
 export async function signInWithEmail(email: string, password: string): Promise<AuthContext> {
+  const normEmail = email.trim().toLowerCase();
+
   if (activeAuthProvider.signInWithEmailAndPassword) {
-    const auth = await activeAuthProvider.signInWithEmailAndPassword(email, password);
-    resolveAndLinkSeedMemberships(auth);
-    return auth;
+    try {
+      const auth = await activeAuthProvider.signInWithEmailAndPassword(normEmail, password);
+      resolveAndLinkSeedMemberships(auth);
+      return auth;
+    } catch (fbErr: any) {
+      // Check database credentials fallback (e.g. registered company with passwordHash)
+      try {
+        const comp = await verifyCompanyCredentials(normEmail, password);
+        if (comp) {
+          const companyAuth: AuthContext = {
+            uid: comp.ownerId || `usr-${comp.id}`,
+            email: comp.email || comp.officialEmail || normEmail,
+            displayName: comp.displayName || comp.legalName,
+            emailVerified: true,
+            providerId: "password",
+          };
+          setCurrentAuthSession(companyAuth);
+          
+          registerCompanyMember({
+            userId: companyAuth.uid!,
+            companyId: comp.id,
+            role: "OWNER",
+            status: "ACTIVE",
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          });
+
+          registerOrganizationalMembership(companyAuth.uid!, {
+            organizationId: comp.id,
+            companyId: comp.id,
+            businessId: comp.businessId || `MW-BUS-${(comp.slug || comp.id).toUpperCase()}`,
+            organizationName: comp.displayName,
+            organizationType: "COMPANY",
+            role: "OWNER",
+            memberStatus: "ACTIVE",
+            verificationStatus: comp.verificationStatus === "VERIFIED" ? "VERIFIED" : "PENDING",
+            authorityState: "ACTIVE",
+          });
+
+          setActiveOrganizationContext(companyAuth.uid!, comp.id);
+          return companyAuth;
+        }
+      } catch (credErr) {
+        throw credErr;
+      }
+
+      throw fbErr;
+    }
   }
   throw new Error("Email/Password sign-in is not supported by the active authentication provider.");
 }
@@ -157,7 +261,29 @@ export async function createUserWithEmail(email: string, password: string, displ
   throw new Error("Account creation is not supported by the active authentication provider.");
 }
 
+export function isAuthInitialized(): boolean {
+  if ("isAuthReady" in activeAuthProvider && typeof (activeAuthProvider as any).isAuthReady === "function") {
+    return (activeAuthProvider as any).isAuthReady();
+  }
+  return true;
+}
+
+export async function waitForAuthReady(): Promise<AuthContext> {
+  if ("waitForAuthReady" in activeAuthProvider && typeof (activeAuthProvider as any).waitForAuthReady === "function") {
+    return (activeAuthProvider as any).waitForAuthReady();
+  }
+  return getCurrentAuthSession();
+}
+
 export async function signOutCurrentUser(): Promise<void> {
+  const uid = getCurrentAuthSession().uid;
+  if (uid) {
+    try {
+      setActiveOrganizationContext(uid, null);
+    } catch {
+      // ignore
+    }
+  }
   if (activeAuthProvider.signOut) {
     await activeAuthProvider.signOut();
   } else if (activeAuthProvider.clearCurrentUser) {

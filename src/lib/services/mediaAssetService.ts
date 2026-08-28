@@ -90,14 +90,14 @@ export function validateMediaUrl(url: string): MediaValidationResult {
   }
 }
 
-/**
- * In-memory / Blob media cache to ensure persistent preview during session without storing raw base64 in Firestore.
- */
-const mediaBlobCache = new Map<string, string>();
+import {
+  uploadFileToStorage,
+  deleteFileFromStorage,
+} from "@/lib/services/storageService";
 
 /**
  * Upload a media file with progress feedback.
- * Generates a canonical storage reference and local preview URL.
+ * Generates a canonical Firebase Storage reference and download URL.
  */
 export async function uploadMediaAsset(
   file: File,
@@ -111,32 +111,25 @@ export async function uploadMediaAsset(
     throw new Error(validation.error || "File validation failed.");
   }
 
-  // Simulated chunked upload progress for responsive UI feedback
-  if (onProgress) {
-    onProgress(15);
-    await new Promise((r) => setTimeout(r, 120));
-    onProgress(45);
-    await new Promise((r) => setTimeout(r, 150));
-    onProgress(85);
-    await new Promise((r) => setTimeout(r, 100));
-    onProgress(100);
-  }
-
-  const assetId = `asset-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-  const cleanFileName = file.name.replace(/[^a-zA-Z0-9.-]/g, "_");
-  const storagePath = `companies/${companyId}/properties/${slotId}/${mediaRole}_${assetId}_${cleanFileName}`;
-  
-  // Create object URL for client preview
-  const objectUrl = URL.createObjectURL(file);
-  mediaBlobCache.set(storagePath, objectUrl);
+  const res = await uploadFileToStorage(file, {
+    companyId,
+    categoryFolder: "properties",
+    subFolder: slotId,
+    fileRole: mediaRole,
+    onProgress,
+  });
 
   return {
-    id: assetId,
-    url: objectUrl,
-    storagePath,
-    fileName: file.name,
-    fileSize: file.size,
-    mimeType: file.type,
-    uploadedAt: new Date().toISOString(),
+    id: `asset-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+    url: res.url,
+    storagePath: res.storagePath,
+    fileName: res.fileName,
+    fileSize: res.sizeBytes,
+    mimeType: res.contentType,
+    uploadedAt: res.uploadedAt,
   };
+}
+
+export async function deleteMediaAsset(storagePathOrUrl: string): Promise<boolean> {
+  return deleteFileFromStorage(storagePathOrUrl);
 }

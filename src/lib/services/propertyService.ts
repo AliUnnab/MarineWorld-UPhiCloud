@@ -437,6 +437,13 @@ export interface CityAnchorCredential {
  * Reads directly from the real property & commercial inventory single source of truth.
  * Returns null if the Landmark position is unsold/available.
  */
+const cityAnchorCache = new Map<string, { result: CityAnchorCredential | null; timestamp: number }>();
+const ANCHOR_CACHE_TTL = 30_000; // 30 seconds
+
+export function invalidateCityAnchorCache(): void {
+  cityAnchorCache.clear();
+}
+
 export function getCityAnchor(
   config: SectorConfig,
   cityIdOrSlug?: string | null
@@ -444,13 +451,22 @@ export function getCityAnchor(
   if (!cityIdOrSlug || cityIdOrSlug.toLowerCase() === "all") return null;
 
   const cleanCityId = cityIdOrSlug.toLowerCase().replace(/\.city$/i, "");
+  const cacheKey = `${config.id || "default"}::${cleanCityId}`;
+  const cached = cityAnchorCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < ANCHOR_CACHE_TTL) {
+    return cached.result;
+  }
+
   const city = config.explorer.cities.find(
     (c) =>
       c.slug.toLowerCase() === cleanCityId ||
       c.id.toLowerCase() === cleanCityId ||
       c.domain.toLowerCase() === cleanCityId
   );
-  if (!city) return null;
+  if (!city) {
+    cityAnchorCache.set(cacheKey, { result: null, timestamp: Date.now() });
+    return null;
+  }
 
   const formattedCityDomain = city.domain.toUpperCase().endsWith(".CITY")
     ? city.domain.toUpperCase()
@@ -468,7 +484,7 @@ export function getCityAnchor(
     if (activeHolding && activeHolding.tenantCompanyId) {
       const comp = getCompanyBySlug(config, activeHolding.tenantCompanyId);
       if (comp) {
-        return {
+        const res = {
           company: comp,
           city,
           formattedCityDomain,
@@ -476,6 +492,8 @@ export function getCityAnchor(
           propertyName: activeHolding.propertyName,
           slotCode: activeHolding.slotId,
         };
+        cityAnchorCache.set(cacheKey, { result: res, timestamp: Date.now() });
+        return res;
       }
     }
   } catch (e) {
@@ -496,7 +514,7 @@ export function getCityAnchor(
       const firstPub = activePubs[0];
       const comp = getCompanyBySlug(config, firstPub.companyId);
       if (comp) {
-        return {
+        const res = {
           company: comp,
           city,
           formattedCityDomain,
@@ -504,6 +522,8 @@ export function getCityAnchor(
           propertyName: firstPub.creative?.headline,
           slotCode: firstPub.slotId,
         };
+        cityAnchorCache.set(cacheKey, { result: res, timestamp: Date.now() });
+        return res;
       }
     }
   } catch (e) {
@@ -518,7 +538,7 @@ export function getCityAnchor(
       if (proj.landmark && proj.landmark.companyId) {
         const comp = getCompanyBySlug(config, proj.landmark.companyId);
         if (comp) {
-          return {
+          const res = {
             company: comp,
             city,
             formattedCityDomain,
@@ -527,6 +547,8 @@ export function getCityAnchor(
             propertyName: proj.landmark.creative?.headline,
             slotCode: proj.landmark.slotCode,
           };
+          cityAnchorCache.set(cacheKey, { result: res, timestamp: Date.now() });
+          return res;
         }
       }
     }
@@ -534,6 +556,7 @@ export function getCityAnchor(
     // safe fallback
   }
 
+  cityAnchorCache.set(cacheKey, { result: null, timestamp: Date.now() });
   return null;
 }
 

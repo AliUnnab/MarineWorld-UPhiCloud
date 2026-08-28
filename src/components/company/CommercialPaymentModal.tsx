@@ -18,12 +18,12 @@ import {
 } from "lucide-react";
 import {
   updateSubscriptionIntentCommercialRoute,
-  isCommercialDemoMode,
   processPayment,
   createSubscriptionIntent,
 } from "@/lib/services/companyOnboardingService";
 import {
   isStripeConfigured,
+  createStripeCheckoutSession,
 } from "@/lib/services/stripeService";
 
 export interface CommercialPaymentModalProps {
@@ -81,22 +81,35 @@ export function CommercialPaymentModal({
   const [feedbackNotice, setFeedbackNotice] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [submittedMessage, setSubmittedMessage] = useState<string | null>(null);
+  const [stripeCheckoutUrl, setStripeCheckoutUrl] = useState<string | null>(null);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
 
-  // Canonical context resolution — ensure UNNAM or MW-BUS-UNNAB never leak
-  const effectiveCompanyId = (companyId && companyId !== "UNNAM") ? companyId : "argento-marine";
-  const effectiveBusinessId = (businessId && businessId !== "MW-BUS-UNNAB") ? businessId : "MW-BUS-ARGENTO-MARITIME";
+  // Canonical context resolution — prioritize authoritative intent data
+  const effectiveCompanyId = subscriptionIntent?.companyId || (companyId && companyId !== "UNNAM" ? companyId : "argento-marine");
+  const effectiveBusinessId = subscriptionIntent?.businessId || (businessId && businessId !== "MW-BUS-UNNAB" ? businessId : `MW-BUS-${effectiveCompanyId.toUpperCase()}`);
   const effectiveCompanyTitle = (displayName && displayName !== "UNNAM") ? displayName : (legalName || "Argento Marine");
 
-  const isDemoMode = isCommercialDemoMode();
-
-  // Sync with intent when modal opens or intent updates
-  useEffect(() => {
-    if (subscriptionIntent) {
-      if (subscriptionIntent.paymentMethod) {
-        setSelectedMethod(subscriptionIntent.paymentMethod);
-      }
+  // Helper to ensure an intent exists
+  const ensureTargetIntent = (): SubscriptionIntent => {
+    if (subscriptionIntent && (subscriptionIntent.planCode === selectedPlan.code || subscriptionIntent.planId === selectedPlan.id)) {
+      return subscriptionIntent;
     }
-  }, [subscriptionIntent, isOpen]);
+    return createSubscriptionIntent(effectiveCompanyId, selectedPlan.code);
+  };
+
+  // Sync with intent when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setActiveCheckoutStep("STRIPE");
+      setSubmittedMessage(null);
+      setFeedbackNotice(null);
+      setIsProcessing(false);
+    } else {
+      setStripeCheckoutUrl(null);
+      setActiveSessionId(null);
+      setIsProcessing(false);
+    }
+  }, [isOpen, selectedPlan.code]);
 
   // Keyboard accessibility
   useEffect(() => {
@@ -108,14 +121,6 @@ export function CommercialPaymentModal({
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, onClose]);
-
-  if (!isOpen) return null;
-
-  // Helper to ensure an intent exists
-  const ensureTargetIntent = (): SubscriptionIntent => {
-    if (subscriptionIntent) return subscriptionIntent;
-    return createSubscriptionIntent(effectiveCompanyId, selectedPlan.code);
-  };
 
   // Selection handler
   const handleSelectRoute = (method: CommercialPaymentMethod) => {
@@ -134,9 +139,11 @@ export function CommercialPaymentModal({
     handleSelectRoute(methodToOpen);
     setActiveCheckoutStep(methodToOpen);
     setSubmittedMessage(null);
+    setStripeCheckoutUrl(null);
+    setActiveSessionId(null);
   };
 
-  // Submit Stripe Payment
+  // Submit Stripe Payment & Top-level Redirect (PCI-DSS compliant)
   const handleStripePay = async () => {
     setIsProcessing(true);
     setFeedbackNotice(null);
@@ -144,26 +151,6 @@ export function CommercialPaymentModal({
     const targetIntent = ensureTargetIntent();
     updateSubscriptionIntentCommercialRoute(targetIntent.id, "STRIPE");
 
-    if (isDemoMode) {
-      setTimeout(() => {
-        const result = processPayment(targetIntent.id, true, `ref-stripe-demo-${Date.now()}`);
-        setIsProcessing(false);
-        if (result.success) {
-          if (onIntentUpdated) onIntentUpdated(result.intent);
-          if (onProceedToVerification) {
-            onProceedToVerification();
-          } else {
-            setSubmittedMessage("Payment authorized successfully. Your subscription is now active.");
-            setActiveCheckoutStep("CONFIRMATION");
-          }
-        } else {
-          setFeedbackNotice(result.reason || "Payment processing failed. Please try again.");
-        }
-      }, 600);
-      return;
-    }
-
-    // Production flow
     if (!isStripeConfigured()) {
       setIsProcessing(false);
       setFeedbackNotice("Stripe is not configured in this environment.");
@@ -171,27 +158,85 @@ export function CommercialPaymentModal({
     }
 
     try {
-      const res = await fetch("/api/stripe/create-checkout-session", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      let checkoutSessionUrl: string | null = null;
+
+      try {
+        const res = await fetch("/api/stripe/create-checkout-session", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            subscriptionIntentId: targetIntent.id,
+            companyId: targetIntent.companyId,
+            businessId: targetIntent.businessId,
+          }),
+        });
+        const data = await res.json();
+        if (data.success && data.url) {
+          checkoutSessionUrl = data.url;
+        } else if (data.error) {
+          setFeedbackNotice(data.error);
+        }
+      } catch {
+        // Fallback to direct client-side Stripe session creation
+      }
+
+      if (!checkoutSessionUrl) {
+        const directRes = await createStripeCheckoutSession({
           subscriptionIntentId: targetIntent.id,
-          companyId: effectiveCompanyId,
-          businessId: effectiveBusinessId,
-        }),
-      });
-      const data = await res.json();
-      if (data.success && data.url) {
-        window.location.href = data.url;
-      } else {
-        setIsProcessing(false);
-        setFeedbackNotice(data.error || "Unable to initiate checkout session.");
+          companyId: targetIntent.companyId,
+          businessId: targetIntent.businessId,
+        });
+
+        if (directRes.success && directRes.url) {
+          checkoutSessionUrl = directRes.url;
+        } else {
+          setIsProcessing(false);
+          setFeedbackNotice(directRes.error || "Unable to initiate Stripe checkout session.");
+          return;
+        }
+      }
+
+      if (checkoutSessionUrl) {
+        // Top-level navigation to official Stripe Checkout page
+        window.location.href = checkoutSessionUrl;
       }
     } catch (err: any) {
       setIsProcessing(false);
-      setFeedbackNotice("Network error initiating checkout session.");
+      setFeedbackNotice(err.message || "Network error initiating checkout session.");
     }
   };
+
+  // Background polling for embedded Stripe Checkout completion
+  useEffect(() => {
+    if (!activeSessionId || !isOpen) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const targetIntent = subscriptionIntent || ensureTargetIntent();
+        const res = await fetch(`/api/stripe/session-status?session_id=${encodeURIComponent(activeSessionId)}&intent_id=${encodeURIComponent(targetIntent.id)}`);
+        const data = await res.json();
+
+        if (data.success && data.status === "PAID") {
+          clearInterval(interval);
+          setSubmittedMessage("Stripe payment confirmed successfully!");
+          const processed = processPayment(targetIntent.id, true, activeSessionId);
+          if (onIntentUpdated && processed.intent) {
+            onIntentUpdated(processed.intent);
+          }
+          if (onProceedToVerification) {
+            onProceedToVerification();
+          }
+          setTimeout(() => {
+            onClose();
+          }, 1500);
+        }
+      } catch (err) {
+        console.debug("[Stripe Poller] Session check error:", err);
+      }
+    }, 2500);
+
+    return () => clearInterval(interval);
+  }, [activeSessionId, isOpen, subscriptionIntent]);
 
   // Submit GCP Billing Authorization
   const handleGcpSubmit = () => {
@@ -236,12 +281,19 @@ export function CommercialPaymentModal({
     }, 600);
   };
 
+  if (!isOpen) return null;
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-slate-950/60 backdrop-blur-xs transition-opacity overflow-y-auto font-sans"
       role="dialog"
       aria-modal="true"
       aria-labelledby="enterprise-checkout-title"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }}
     >
       <div className="relative w-full max-w-2xl bg-white rounded-card-lg border border-line shadow-2xl overflow-hidden my-auto animate-in fade-in zoom-in-95 duration-200">
         
@@ -384,17 +436,10 @@ export function CommercialPaymentModal({
 
             {/* Footer */}
             <div className="px-6 sm:px-8 py-4 bg-canvas border-t border-line flex items-center justify-between">
-              {isDemoMode ? (
-                <span className="text-xs text-stone flex items-center gap-1.5 font-medium">
-                  <ShieldCheck className="w-3.5 h-3.5 text-royal" />
-                  <span>Demo sandbox · Simulated settlement</span>
-                </span>
-              ) : (
-                <span className="text-xs text-stone flex items-center gap-1.5 font-medium">
-                  <Lock className="w-3.5 h-3.5 text-stone" />
-                  <span>Encrypted 256-bit institutional checkout</span>
-                </span>
-              )}
+              <span className="text-xs text-stone flex items-center gap-1.5 font-medium">
+                <Lock className="w-3.5 h-3.5 text-stone" />
+                <span>Encrypted 256-bit institutional checkout</span>
+              </span>
 
               <button
                 type="button"
@@ -415,7 +460,12 @@ export function CommercialPaymentModal({
               <div className="flex items-center gap-3">
                 <button
                   type="button"
-                  onClick={() => setActiveCheckoutStep(null)}
+                  onClick={() => {
+                    setActiveCheckoutStep(null);
+                    setStripeCheckoutUrl(null);
+                    setActiveSessionId(null);
+                    setIsProcessing(false);
+                  }}
                   className="w-9 h-9 rounded-card-xs border border-line bg-canvas p-2 text-stone hover:text-graphite hover:bg-soft transition flex items-center justify-center cursor-pointer"
                   aria-label="Back to payment methods"
                 >
@@ -423,20 +473,15 @@ export function CommercialPaymentModal({
                 </button>
                 <div>
                   <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-royal font-sans">
-                    DIRECT STRIPE CHANNEL
+                    STRIPE OFFICIAL PAYMENT GATEWAY
                   </div>
                   <h2 className="text-xl font-extrabold text-graphite tracking-tight uppercase font-sans">
-                    Card Checkout
+                    Stripe Secure Card Checkout
                   </h2>
                 </div>
               </div>
 
               <div className="flex items-center gap-3">
-                {isDemoMode && (
-                  <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-card-xs bg-canvas text-stone text-xs font-bold border border-line">
-                    Demo Mode · Sandbox
-                  </span>
-                )}
                 <button
                   type="button"
                   onClick={onClose}
@@ -448,157 +493,95 @@ export function CommercialPaymentModal({
               </div>
             </div>
 
-            <div className="p-6 sm:px-8 space-y-5 max-h-[70vh] overflow-y-auto">
-              {/* Order Summary Grid */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3.5 rounded-card-md bg-canvas border border-line text-xs font-sans">
-                <div>
-                  <span className="text-mute font-bold uppercase text-[9.5px] block">Company</span>
-                  <span className="font-bold text-graphite truncate block mt-0.5">{effectiveCompanyTitle}</span>
-                  <code className="text-[10px] text-mute font-mono block mt-0.5">{effectiveBusinessId}</code>
-                </div>
-                <div>
-                  <span className="text-mute font-bold uppercase text-[9.5px] block">Plan Tier</span>
-                  <span className="font-bold text-graphite block mt-0.5 uppercase">{selectedPlan.name}</span>
-                </div>
-                <div>
-                  <span className="text-mute font-bold uppercase text-[9.5px] block">Billing Cycle</span>
-                  <span className="font-bold text-graphite block mt-0.5 uppercase">{selectedPlan.billingInterval}</span>
-                </div>
-                <div>
-                  <span className="text-mute font-bold uppercase text-[9.5px] block">Settlement Price</span>
-                  <span className="font-bold text-graphite block mt-0.5">${selectedPlan.price} / mo</span>
-                </div>
-              </div>
-
-              {/* Editable Card Information Form */}
-              <div className="space-y-3.5">
-                <h3 className="text-xs font-bold text-royal tracking-[0.14em] uppercase font-sans">
-                  Cardholder Credentials
-                </h3>
-
-                <div className="space-y-3">
+              <div className="p-6 sm:px-8 space-y-5 max-h-[70vh] overflow-y-auto">
+                {/* Order Summary Grid */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3.5 rounded-card-md bg-canvas border border-line text-xs font-sans">
                   <div>
-                    <label className="block text-xs font-bold text-graphite mb-1 uppercase font-sans">
-                      Cardholder Name
-                    </label>
-                    <input
-                      type="text"
-                      value={cardholderName}
-                      onChange={(e) => setCardholderName(e.target.value)}
-                      className="w-full px-3.5 py-2.5 rounded-card-sm border border-line bg-canvas text-sm font-medium text-graphite focus:outline-none focus:ring-1 focus:ring-slate-900 focus:bg-white"
-                      placeholder="Name on card"
-                    />
+                    <span className="text-mute font-bold uppercase text-[9.5px] block">Company</span>
+                    <span className="font-bold text-graphite truncate block mt-0.5">{effectiveCompanyTitle}</span>
+                    <code className="text-[10px] text-mute font-mono block mt-0.5">{effectiveBusinessId}</code>
+                  </div>
+                  <div>
+                    <span className="text-mute font-bold uppercase text-[9.5px] block">Plan Tier</span>
+                    <span className="font-bold text-graphite block mt-0.5 uppercase">{selectedPlan.name}</span>
+                  </div>
+                  <div>
+                    <span className="text-mute font-bold uppercase text-[9.5px] block">Billing Cycle</span>
+                    <span className="font-bold text-graphite block mt-0.5 uppercase">{selectedPlan.billingInterval}</span>
+                  </div>
+                  <div>
+                    <span className="text-mute font-bold uppercase text-[9.5px] block">Settlement Price</span>
+                    <span className="font-bold text-graphite block mt-0.5">${selectedPlan.price} / mo</span>
+                  </div>
+                </div>
+
+                {/* Stripe Payment Checkout Card */}
+                <div className="p-6 rounded-2xl bg-gradient-to-br from-royal/5 via-slate-50 to-indigo-50/40 border border-royal/20 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-10 h-10 rounded-xl bg-royal text-white flex items-center justify-center shadow-xs">
+                        <CreditCard className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-bold text-graphite">Stripe Online Payment</h3>
+                        <p className="text-xs text-stone">PCI-DSS Level 1 Encrypted Payment Flow</p>
+                      </div>
+                    </div>
+                    <span className="px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-mono font-bold flex items-center gap-1">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                      <span>READY</span>
+                    </span>
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-bold text-graphite mb-1 uppercase font-sans">
-                      Card Number
-                    </label>
-                    <div className="relative">
-                      <input
-                        type="text"
-                        value={cardNumber}
-                        onChange={(e) => setCardNumber(e.target.value)}
-                        className="w-full px-3.5 py-2.5 pr-10 rounded-card-sm border border-line bg-canvas text-sm font-mono text-graphite focus:outline-none focus:ring-1 focus:ring-slate-900 focus:bg-white"
-                        placeholder="4242 4242 4242 4242"
-                      />
-                      <CreditCard className="w-4 h-4 text-stone absolute right-3.5 top-3.5 pointer-events-none" />
+                  <div className="p-4 bg-white rounded-xl border border-line text-xs space-y-2">
+                    <div className="flex justify-between items-center border-b border-line pb-2 font-mono">
+                      <span className="text-stone">Plan Tier:</span>
+                      <span className="font-bold text-graphite">{selectedPlan.name} ({selectedPlan.code})</span>
+                    </div>
+                    <div className="flex justify-between items-center border-b border-line pb-2 font-mono">
+                      <span className="text-stone">Monthly Subscription Fee:</span>
+                      <span className="font-bold text-royal text-sm">${selectedPlan.price} USD</span>
+                    </div>
+                    <div className="flex justify-between items-center font-mono">
+                      <span className="text-stone">Transaction Protocol:</span>
+                      <span className="font-bold text-emerald-700">Stripe Official Checkout</span>
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs font-bold text-graphite mb-1 uppercase font-sans">
-                        Expiry Date
-                      </label>
-                      <input
-                        type="text"
-                        value={expiryDate}
-                        onChange={(e) => setExpiryDate(e.target.value)}
-                        className="w-full px-3.5 py-2.5 rounded-card-sm border border-line bg-canvas text-sm font-mono text-graphite focus:outline-none focus:ring-1 focus:ring-slate-900 focus:bg-white"
-                        placeholder="MM/YY"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-graphite mb-1 uppercase font-sans">
-                        CVC / CVV
-                      </label>
-                      <input
-                        type="text"
-                        value={cvc}
-                        onChange={(e) => setCvc(e.target.value)}
-                        className="w-full px-3.5 py-2.5 rounded-card-sm border border-line bg-canvas text-sm font-mono text-graphite focus:outline-none focus:ring-1 focus:ring-slate-900 focus:bg-white"
-                        placeholder="123"
-                      />
-                    </div>
+                  <p className="text-xs text-stone leading-relaxed">
+                    Click the button below to initiate secure Stripe checkout. Complete the test card payment to instantly activate your subscription and unlock enterprise capabilities.
+                  </p>
+
+                  <div className="pt-2">
+                    <button
+                      type="button"
+                      onClick={handleStripePay}
+                      disabled={isProcessing}
+                      className="w-full py-3.5 rounded-xl bg-royal text-white font-bold text-xs hover:bg-blue-600 transition-all flex items-center justify-center gap-2 shadow-md cursor-pointer disabled:opacity-60"
+                    >
+                      {isProcessing ? (
+                        <>
+                          <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          <span>Redirecting to Stripe Checkout...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Lock className="w-4 h-4" />
+                          <span>Pay Now (${selectedPlan.price} USD)</span>
+                        </>
+                      )}
+                    </button>
                   </div>
                 </div>
-              </div>
 
-              {/* Corporate Billing Address */}
-              <div className="space-y-3 pt-2 border-t border-line">
-                <h3 className="text-xs font-bold text-royal tracking-[0.14em] uppercase font-sans">
-                  Corporate Invoicing
-                </h3>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-bold text-graphite mb-1 uppercase font-sans">
-                      Billing Email
-                    </label>
-                    <input
-                      type="email"
-                      value={billingEmail}
-                      onChange={(e) => setBillingEmail(e.target.value)}
-                      className="w-full px-3.5 py-2.5 rounded-card-sm border border-line bg-canvas text-sm font-medium text-graphite focus:outline-none focus:ring-1 focus:ring-slate-900 focus:bg-white"
-                    />
+                {/* Feedback Alert */}
+                {feedbackNotice && (
+                  <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-xs font-bold text-rose-800 flex items-start gap-2">
+                    <X className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                    <span>{feedbackNotice}</span>
                   </div>
-                  <div>
-                    <label className="block text-xs font-bold text-graphite mb-1 uppercase font-sans">
-                      Tax ID / VAT Number
-                    </label>
-                    <input
-                      type="text"
-                      value={taxId}
-                      onChange={(e) => setTaxId(e.target.value)}
-                      className="w-full px-3.5 py-2.5 rounded-card-sm border border-line bg-canvas text-sm font-medium text-graphite focus:outline-none focus:ring-1 focus:ring-slate-900 focus:bg-white"
-                    />
-                  </div>
-                </div>
+                )}
               </div>
-
-              {/* Total & Checkout CTA */}
-              {feedbackNotice && (
-                <div className="p-3 rounded-card-sm bg-rose-50 border border-rose-200 text-xs font-bold text-rose-800">
-                  {feedbackNotice}
-                </div>
-              )}
-
-              <div className="p-4 rounded-card-md bg-slate-950 text-white flex items-center justify-between font-sans">
-                <div>
-                  <span className="text-[10px] text-slate-400 block font-bold uppercase tracking-wider">Total Due Today</span>
-                  <span className="text-lg font-extrabold text-white">${selectedPlan.price} USD</span>
-                </div>
-
-                <div className="flex items-center gap-2.5">
-                  <button
-                    type="button"
-                    onClick={() => setActiveCheckoutStep(null)}
-                    className="px-4 py-2.5 rounded-card-xs border border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer"
-                  >
-                    Back
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleStripePay}
-                    disabled={isProcessing}
-                    className="px-5 py-2.5 rounded-card-xs bg-white hover:bg-slate-100 text-slate-950 text-xs font-bold uppercase tracking-wider transition-colors shadow-2xs flex items-center gap-2 cursor-pointer"
-                  >
-                    {isProcessing ? "Processing..." : `Authorize $${selectedPlan.price}`}
-                  </button>
-                </div>
-              </div>
-            </div>
           </div>
         )}
 

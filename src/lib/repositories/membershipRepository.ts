@@ -151,6 +151,7 @@ initialMemberships.forEach((mem) => {
 export function saveMember(member: CompanyMemberEntity): CompanyMemberEntity {
   const key = buildMemberKey(member.companyId, member.userId);
   membershipStore.set(key, { ...member });
+  saveMemberAsync(member).catch(() => {});
   return member;
 }
 
@@ -183,6 +184,7 @@ export function findMembersByUserId(userId: string): CompanyMemberEntity[] {
 }
 
 export function deleteMember(companyId: string, userId: string): boolean {
+  deleteMemberAsync(companyId, userId).catch(() => {});
   return membershipStore.delete(buildMemberKey(companyId, userId));
 }
 
@@ -196,3 +198,75 @@ export function resetDefaultMemberships(): void {
     membershipStore.set(buildMemberKey(mem.companyId, mem.userId), mem);
   });
 }
+
+// Async Firestore Implementations
+import { db } from "@/lib/firebase";
+import { isFirestoreMode } from "./persistenceMode";
+import { collection, doc, getDoc, getDocs, setDoc, deleteDoc } from "firebase/firestore";
+
+export async function findMemberAsync(companyId: string, userId: string): Promise<CompanyMemberEntity | null> {
+  if (isFirestoreMode() && companyId && userId) {
+    try {
+      const docRef = doc(db, "companies", companyId, "members", userId);
+      const snap = await getDoc(docRef);
+      if (snap.exists()) {
+        const item = snap.data() as CompanyMemberEntity;
+        membershipStore.set(buildMemberKey(companyId, userId), item);
+        return item;
+      }
+    } catch (err) {
+      console.warn(`[MembershipRepository] Firestore findMember fallback for ${companyId}/${userId}:`, err);
+    }
+  }
+  return findMember(companyId, userId) || null;
+}
+
+export async function findMembersByCompanyIdAsync(companyId: string): Promise<CompanyMemberEntity[]> {
+  if (isFirestoreMode() && companyId) {
+    try {
+      const colRef = collection(db, "companies", companyId, "members");
+      const snap = await getDocs(colRef);
+      if (!snap.empty) {
+        const items = snap.docs.map((d) => d.data() as CompanyMemberEntity);
+        items.forEach((m) => membershipStore.set(buildMemberKey(m.companyId, m.userId), m));
+        return items;
+      }
+    } catch (err) {
+      console.warn(`[MembershipRepository] Firestore findMembersByCompanyId fallback for ${companyId}:`, err);
+    }
+  }
+  return findMembersByCompanyId(companyId);
+}
+
+export async function saveMemberAsync(member: CompanyMemberEntity): Promise<CompanyMemberEntity> {
+  const key = buildMemberKey(member.companyId, member.userId);
+  membershipStore.set(key, { ...member });
+
+  if (isFirestoreMode() && member.companyId && member.userId) {
+    try {
+      const docRef = doc(db, "companies", member.companyId, "members", member.userId);
+      await setDoc(docRef, { ...member }, { merge: true });
+
+      // Also mirror to user memberships
+      const userMemRef = doc(db, "users", member.userId, "memberships", `${member.companyId}_${member.role}`);
+      await setDoc(userMemRef, { ...member }, { merge: true });
+    } catch (err) {
+      console.warn(`[MembershipRepository] Firestore saveMember error for ${member.userId}:`, err);
+    }
+  }
+  return member;
+}
+
+export async function deleteMemberAsync(companyId: string, userId: string): Promise<boolean> {
+  membershipStore.delete(buildMemberKey(companyId, userId));
+  if (isFirestoreMode() && companyId && userId) {
+    try {
+      const docRef = doc(db, "companies", companyId, "members", userId);
+      await deleteDoc(docRef);
+    } catch (err) {
+      console.warn(`[MembershipRepository] Firestore deleteMember error for ${companyId}/${userId}:`, err);
+    }
+  }
+  return true;
+}
+

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import type { CompanyOffering, CompanyProfile, CompanyEntity, SectorCity, IndustryDomainEntity } from "@/lib/types";
-import { submitCommercialInquiry, submitOfficialOfferRequest } from "@/lib/connectStore";
+import { createInquiry } from "@/services/inquiryService";
 import { getCurrentAuthSession } from "@/lib/services/securityService";
 import { checkFormAbuse, sanitizeInputString, isValidEmailAddress } from "@/lib/security/abuseProtection";
 import {
@@ -184,7 +184,7 @@ export function CommercialInquiryModal({
   const canonicalUrl = `${origin}/offerings/${offering.slug || canonicalSlug}`;
 
   // Submit Initial Commercial Inquiry
-  const handleSubmitInquiry = (e: React.FormEvent) => {
+  const handleSubmitInquiry = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
 
@@ -220,34 +220,40 @@ export function CommercialInquiryModal({
     try {
       const session = getCurrentAuthSession();
       const currentUid = session.uid || "usr-owner-001";
+      const refId = `inq-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
 
-      const createdInquiry = submitCommercialInquiry({
+      const createdInquiry = await createInquiry({
+        id: refId,
         companyId: parentCompany.id,
         companySlug,
         companyName: companyDisplayName,
         requesterId: currentUid,
-        offeringId: offering.id,
-        offeringType: offering.type || "product",
-        offeringName: offering.name,
-        offeringCode,
-        canonicalUrl,
-        sectorCity: primaryCity?.slug || "general",
-        industryDomain: parentDomain?.slug || "marine",
         requesterName: cleanName,
-        businessEmail: cleanEmail,
-        organization: cleanOrg,
+        requesterEmail: cleanEmail,
+        requesterCompany: cleanOrg || "Independent Maritime Buyer",
+        productId: offering.type === "product" ? offering.id : undefined,
+        productSlug: offering.type === "product" ? canonicalSlug : undefined,
+        productName: offering.name,
+        serviceId: offering.type === "service" ? offering.id : undefined,
+        serviceSlug: offering.type === "service" ? canonicalSlug : undefined,
+        serviceName: offering.type === "service" ? offering.name : undefined,
+        sectorId: "marine",
+        sectorCityId: primaryCity?.slug || (parentCompany as any).sectorCityIds?.[0] || "southampton",
+        subject: `Inquiry for ${offering.name}`,
+        message: cleanMsg,
+        source: offering.type === "product" ? "PRODUCT" : offering.type === "service" ? "SERVICE" : "COMPANY",
+        priority: "HIGH",
+        inquiryKind: "INQUIRY",
+        offeringReference: offering.id,
         quantityOrScope: cleanQty || undefined,
         deliveryLocation: cleanLocation || undefined,
-        message: cleanMsg,
       });
 
-      setTimeout(() => {
-        setIsSubmitting(false);
-        setSubmittedData({
-          referenceId: createdInquiry.inquiryId,
-          stage: "INQUIRY",
-        });
-      }, 500);
+      setIsSubmitting(false);
+      setSubmittedData({
+        referenceId: createdInquiry.id,
+        stage: "INQUIRY",
+      });
     } catch (err: any) {
       setIsSubmitting(false);
       setFormError(err?.message || "Failed to submit inquiry. Please try again.");
@@ -255,7 +261,7 @@ export function CommercialInquiryModal({
   };
 
   // Submit Official Offer Request
-  const handleSubmitOfficialOffer = (e: React.FormEvent) => {
+  const handleSubmitOfficialOffer = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
 
@@ -291,39 +297,40 @@ export function CommercialInquiryModal({
     try {
       const session = getCurrentAuthSession();
       const currentUid = session.uid || "usr-owner-001";
+      const refId = `inq-offer-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
 
-      const createdOffer = submitOfficialOfferRequest({
+      const createdOffer = await createInquiry({
+        id: refId,
         companyId: parentCompany.id,
         companySlug,
         companyName: companyDisplayName,
         requesterId: currentUid,
-        offeringId: offering.id,
-        offeringType: offering.type || "product",
-        offeringName: offering.name,
-        offeringCode,
-        canonicalUrl,
-        sectorCity: primaryCity?.slug || "general",
-        industryDomain: parentDomain?.slug || "marine",
         requesterName: cleanName,
-        businessEmail: cleanEmail,
-        organization: cleanOrg,
-        incoterms,
-        deliveryPort: cleanPort || undefined,
+        requesterEmail: cleanEmail,
+        requesterCompany: cleanOrg,
+        productId: offering.type === "product" ? offering.id : undefined,
+        productSlug: offering.type === "product" ? canonicalSlug : undefined,
+        productName: offering.name,
+        serviceId: offering.type === "service" ? offering.id : undefined,
+        serviceSlug: offering.type === "service" ? canonicalSlug : undefined,
+        serviceName: offering.type === "service" ? offering.name : undefined,
+        sectorId: "marine",
+        sectorCityId: primaryCity?.slug || (parentCompany as any).sectorCityIds?.[0] || "southampton",
+        subject: `Official Commercial Offer Request: ${offering.name}`,
+        message: cleanMsg,
+        source: offering.type === "product" ? "PRODUCT" : "SERVICE",
+        priority: "HIGH",
+        inquiryKind: "OFFICIAL_OFFER",
+        offeringReference: offering.id,
         quantityOrScope: cleanQty || undefined,
-        engineeringRequirements: sanitizeInputString(customEngineeringReq) || undefined,
-        commercialRequirements: sanitizeInputString(commercialRequirements) || undefined,
-        deliveryTimeline: sanitizeInputString(deliveryTimeline) || undefined,
-        warrantyRequirements: sanitizeInputString(warrantyRequirements) || undefined,
-        message: cleanMsg || undefined,
+        deliveryLocation: cleanPort || undefined,
       });
 
-      setTimeout(() => {
-        setIsSubmitting(false);
-        setSubmittedData({
-          referenceId: createdOffer.offerRequestId,
-          stage: "OFFICIAL_OFFER",
-        });
-      }, 600);
+      setIsSubmitting(false);
+      setSubmittedData({
+        referenceId: createdOffer.id,
+        stage: "OFFICIAL_OFFER",
+      });
     } catch (err: any) {
       setIsSubmitting(false);
       setFormError(err?.message || "Failed to submit request. Please try again.");

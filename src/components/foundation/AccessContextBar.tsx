@@ -70,16 +70,6 @@ export function AccessContextBar({ onNavigate }: AccessContextBarProps) {
     }
   };
 
-  const handleSwitchUser = (uid: string, email: string) => {
-    if (!uid) {
-      signOutCurrentUser();
-    } else {
-      setCurrentAuthSession({ uid, email, emailVerified: true, isDevelopmentSession: true });
-    }
-    refreshContext();
-    setMenuOpen(false);
-  };
-
   const handleSignOut = () => {
     signOutCurrentUser();
     refreshContext();
@@ -478,41 +468,15 @@ export function AccessContextBar({ onNavigate }: AccessContextBarProps) {
                     </div>
                   )}
 
-                  {/* Demo Auth Persona Switcher */}
-                  <div className="border-t border-line mt-2 pt-2">
-                    <div className="text-[10px] font-mono font-bold uppercase tracking-wider text-mute mb-1">
-                      Development Auth Personas
-                    </div>
-                    <div className="grid grid-cols-2 gap-1 text-[10.5px]">
-                      <button
-                        type="button"
-                        onClick={() => handleSwitchUser("usr-owner-001", "owner@argento-marine.com")}
-                        className="p-1.5 rounded bg-mist hover:bg-linesoft text-left font-medium"
-                      >
-                        Owner (Argento)
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleSwitchUser("usr-admin-002", "admin@argento-marine.com")}
-                        className="p-1.5 rounded bg-mist hover:bg-linesoft text-left"
-                      >
-                        Admin (Argento)
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleSwitchUser("usr-multi-owner-003", "multi@maritime-group.com")}
-                        className="p-1.5 rounded bg-mist hover:bg-linesoft text-left"
-                      >
-                        Multi-Org Exec
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleSignOut}
-                        className="p-1.5 rounded bg-rose-50 hover:bg-rose-100 text-left text-rose-600 font-bold"
-                      >
-                        Sign Out (Visitor)
-                      </button>
-                    </div>
+                  {/* User Account Controls */}
+                  <div className="border-t border-line mt-2 pt-2 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={handleSignOut}
+                      className="px-3 py-1.5 rounded bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-bold transition-colors"
+                    >
+                      Sign Out
+                    </button>
                   </div>
                 </div>
               )}

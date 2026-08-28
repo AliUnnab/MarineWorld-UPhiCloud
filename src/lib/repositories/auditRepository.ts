@@ -1,6 +1,7 @@
 import type { AuditEvent, AuditQueryOptions, AuditModuleType } from "@/lib/types";
 import { getPersistenceMode } from "./persistenceMode";
 import { getFirebaseApp } from "@/lib/auth/firebaseAuth";
+import { sanitizeUndefined } from "./firestoreSanitize";
 import {
   getFirestore,
   doc,
@@ -53,15 +54,7 @@ export async function saveAuditEvent(event: AuditEvent): Promise<AuditEvent> {
       if (app) {
         const db = getFirestore(app);
         const docRef = doc(db, "companies", companyId, "auditEvents", event.eventId);
-
-        // Clean undefined values for Firestore serialization safety
-        const cleanEvent: Record<string, any> = {};
-        for (const [k, v] of Object.entries(event)) {
-          if (v !== undefined) {
-            cleanEvent[k] = v;
-          }
-        }
-
+        const cleanEvent = sanitizeUndefined(event);
         await setDoc(docRef, cleanEvent, { merge: false });
       }
     } catch (err) {

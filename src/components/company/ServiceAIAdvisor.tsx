@@ -47,6 +47,23 @@ export function ServiceAIAdvisor({ service, company, onInquire }: ServiceAIAdvis
         sources: res.sourcesUsed,
         queryAsked: questionText,
       });
+
+      // Log AI interaction to Firestore
+      try {
+        import("@/services/aiService").then(({ logAIInteraction }) => {
+          logAIInteraction({
+            id: `ai-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            userId: authUid,
+            companyId: company.id,
+            entityType: "SERVICE",
+            entityId: service.id,
+            queryText: questionText,
+            responseText: res.response,
+            confidence: res.confidence,
+            timestamp: new Date().toISOString(),
+          });
+        });
+      } catch {}
     } catch (err: any) {
       setActiveAnswer({
         text: "I don't have verified information about that in this service's published data.",

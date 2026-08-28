@@ -1,14 +1,19 @@
 import { useState, useEffect } from "react";
-import type { SectorConfig, CompanyEntity } from "@/lib/types";
+import type { SectorConfig, CompanyEntity, CompanyProfile } from "@/lib/types";
 import { PageMetadata } from "@/components/foundation/PageMetadata";
 import { CompanyOperatingShell } from "@/components/company/CompanyOperatingShell";
 import { EmptyState } from "@/components/foundation/EmptyState";
+import { Icon } from "@/components/digione/icons";
 import {
   getCompanyBySlug,
   getCompanyParentContext,
   getCompanyProductBySlug,
   getCompanyServiceBySlug,
 } from "@/lib/registry";
+import {
+  getCompanyBySlug as getFirestoreCompanyBySlug,
+  getCompanyById as getFirestoreCompanyById,
+} from "@/services/companyService";
 import { getCurrentAuthSession } from "@/lib/services/securityService";
 import {
   recordCompanyView,
@@ -62,6 +67,45 @@ export function CompanyPage({
     }
   }
 
+  const [liveCompany, setLiveCompany] = useState<CompanyEntity | null>(null);
+  const [isLoadingCompany, setIsLoadingCompany] = useState(Boolean(resolvedSlug));
+  const [companyFetchError, setCompanyFetchError] = useState<string | null>(null);
+
+  // Asynchronously resolve company from Firestore with fallback to registry
+  useEffect(() => {
+    let isMounted = true;
+    if (!resolvedSlug) {
+      setIsLoadingCompany(false);
+      return;
+    }
+
+    async function loadCompany() {
+      setIsLoadingCompany(true);
+      setCompanyFetchError(null);
+      try {
+        const found =
+          (await getFirestoreCompanyBySlug(resolvedSlug!)) ||
+          (await getFirestoreCompanyById(resolvedSlug!));
+        if (isMounted && found) {
+          setLiveCompany(found);
+        }
+      } catch (err: any) {
+        if (isMounted) {
+          console.warn("[CompanyPage] Firestore company fetch fallback:", err);
+          setCompanyFetchError(err?.message || "Failed to load live company data.");
+        }
+      } finally {
+        if (isMounted) setIsLoadingCompany(false);
+      }
+    }
+
+    loadCompany();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [resolvedSlug]);
+
   // Check if target entity is an institutional organization
   const institutionalOrg = getEcosystemOrganizationById(resolvedSlug || companySlug || "");
   const isInstitutional =
@@ -69,8 +113,10 @@ export function CompanyPage({
     isInstitutionalOrganization(resolvedSlug) ||
     isInstitutionalOrganization(companySlug);
 
-  // Resolve company dynamically from registry if not strictly an institutional org
-  const company = getCompanyBySlug(config, resolvedSlug) || config?.network?.companies?.[0];
+  // Resolve company dynamically from live Firestore state
+  const company =
+    (liveCompany as unknown as CompanyProfile) ||
+    (resolvedSlug ? getCompanyBySlug(config, resolvedSlug) : undefined);
 
   const effectiveIsInstitutional =
     isInstitutional ||
@@ -156,6 +202,18 @@ export function CompanyPage({
   }, [company, selectedProduct, selectedService, canonicalSectorCity, effectiveIsInstitutional]);
 
   // ALL HOOKS HAVE BEEN EXECUTED UNCONDITIONALLY. NOW WE CAN SAFELY BRANCH RENDER OUTPUT.
+
+  if (isLoadingCompany) {
+    return (
+      <div className="min-h-screen bg-canvas font-sans flex flex-col items-center justify-center p-6 text-center">
+        <div className="w-12 h-12 rounded-full bg-soft flex items-center justify-center text-royal mb-3 animate-pulse">
+          <Icon name="building" className="w-6 h-6" />
+        </div>
+        <h2 className="text-lg font-bold text-graphite">İşletme Profili Yükleniyor...</h2>
+        <p className="text-xs text-stone mt-1">Sovereign Business Twin verileri Firestore üzerinden doğrulanıyor.</p>
+      </div>
+    );
+  }
 
   if (effectiveIsInstitutional && orgData) {
     return (

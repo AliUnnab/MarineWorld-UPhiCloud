@@ -40,6 +40,12 @@ import {
 } from "@/lib/services/teamService";
 import { getCurrentAuthSession } from "@/lib/services/securityService";
 
+import {
+  getCompanyMembers,
+  subscribeToCompanyMembers,
+} from "@/services/membershipService";
+import { saveMember } from "@/lib/repositories/membershipRepository";
+
 interface CompanyStudioTeamViewProps {
   companyId: string;
   memberRole?: string;
@@ -117,6 +123,46 @@ export const CompanyStudioTeamView: React.FC<CompanyStudioTeamViewProps> = ({
   // General Notification / Error
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+
+  // Real-time Firestore synchronization for Team Members
+  useEffect(() => {
+    if (!companyId) return;
+
+    // 1. Initial Firestore fetch
+    getCompanyMembers(companyId)
+      .then((liveMembers) => {
+        if (liveMembers && liveMembers.length > 0) {
+          liveMembers.forEach((m) => {
+            saveMember(m);
+          });
+          setTeamMembers(getCompanyTeam(companyId));
+        }
+      })
+      .catch((err) => {
+        console.warn("[CompanyStudioTeamView] Initial members fetch warning:", err);
+      });
+
+    // 2. Real-time Firestore subscription
+    const unsub = subscribeToCompanyMembers(companyId, (liveMembers) => {
+      if (liveMembers && liveMembers.length > 0) {
+        liveMembers.forEach((m) => {
+          saveMember(m);
+        });
+        setTeamMembers(getCompanyTeam(companyId));
+      }
+    });
+
+    const handleCustomUpdate = () => {
+      setTeamMembers(getCompanyTeam(companyId));
+    };
+
+    window.addEventListener("marineworld_members_updated", handleCustomUpdate);
+
+    return () => {
+      unsub();
+      window.removeEventListener("marineworld_members_updated", handleCustomUpdate);
+    };
+  }, [companyId]);
 
   // Close open action menu on outside click
   useEffect(() => {

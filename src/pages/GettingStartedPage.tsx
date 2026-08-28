@@ -26,6 +26,11 @@ import {
   type GettingStartedTenantState,
 } from "@/lib/services/gettingStartedService";
 import { getCurrentAuthSession } from "@/lib/services/securityService";
+import { getCompanyDocuments } from "@/services/knowledgeService";
+import { getProductsByCompany } from "@/services/productService";
+import { getServicesByCompany } from "@/services/serviceService";
+import { getCompanyById } from "@/services/companyService";
+import type { DocumentEntity, ProductEntity, ServiceEntity, CompanyEntity } from "@/lib/types";
 
 interface GettingStartedPageProps {
   config: SectorConfig;
@@ -36,8 +41,12 @@ export function GettingStartedPage({ config }: GettingStartedPageProps) {
     getGettingStartedTenantState()
   );
   const [activePhaseIndex, setActivePhaseIndex] = useState<number>(0);
+  const [liveCompany, setLiveCompany] = useState<CompanyEntity | null>(null);
+  const [liveDocs, setLiveDocs] = useState<DocumentEntity[]>([]);
+  const [liveProducts, setLiveProducts] = useState<ProductEntity[]>([]);
+  const [liveServices, setLiveServices] = useState<ServiceEntity[]>([]);
 
-  // Re-calculate tenant state on mount to ensure 100% Tenant Isolation
+  // Re-calculate tenant state on mount and fetch real Firestore entities
   useEffect(() => {
     const freshAuth = getCurrentAuthSession();
     const freshState = getGettingStartedTenantState(freshAuth);
@@ -46,7 +55,25 @@ export function GettingStartedPage({ config }: GettingStartedPageProps) {
       setActivePhaseIndex(freshState.nextRecommendedPhase - 1);
     }
     window.scrollTo({ top: 0, behavior: "smooth" });
+
+    const targetCompanyId = freshState.companyId || "argento-marine";
+    Promise.all([
+      getCompanyById(targetCompanyId),
+      getCompanyDocuments(targetCompanyId),
+      getProductsByCompany(targetCompanyId),
+      getServicesByCompany(targetCompanyId),
+    ])
+      .then(([company, docs, products, services]) => {
+        if (company) setLiveCompany(company);
+        if (docs) setLiveDocs(docs);
+        if (products) setLiveProducts(products);
+        if (services) setLiveServices(services);
+      })
+      .catch((err) => {
+        console.warn("[GettingStartedPage] Firestore sync error:", err);
+      });
   }, []);
+
 
   const currentPhase = tenantState.phases[activePhaseIndex] || tenantState.phases[0];
 
@@ -182,12 +209,19 @@ export function GettingStartedPage({ config }: GettingStartedPageProps) {
           </div>
 
           <div className="flex items-center gap-3 shrink-0 self-start md:self-center">
+            <a
+              href="/company/onboarding"
+              className="px-5 py-3 rounded-xl bg-royal text-white font-bold text-xs hover:bg-royal/90 transition shadow-2xs cursor-pointer flex items-center gap-2"
+            >
+              <Building className="w-4 h-4" />
+              <span>Start / Resume Company Onboarding →</span>
+            </a>
             <button
               type="button"
               onClick={() => handleActionClick("IDENTITY")}
-              className="px-5 py-3 rounded-xl bg-royal text-white font-bold text-xs hover:bg-royal/90 transition shadow-2xs cursor-pointer flex items-center gap-2"
+              className="px-4 py-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition border border-line cursor-pointer flex items-center gap-2"
             >
-              <span>Enter Company Studio →</span>
+              <span>Enter Company Studio</span>
             </button>
           </div>
         </div>
@@ -533,124 +567,135 @@ export function GettingStartedPage({ config }: GettingStartedPageProps) {
               <div className="space-y-3 pt-2 border-t border-line">
                 <div className="flex items-center justify-between pb-1">
                   <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500">
-                    PRODUCT PREVIEW (EXAMPLE STATE)
+                    LIVE COMPANY PREVIEW (FIRESTORE)
                   </span>
-                  <span className="text-xs text-slate-500 font-semibold">
-                    Example Company Studio View
+                  <span className="text-xs text-royal font-semibold">
+                    {tenantState.companyName}
                   </span>
                 </div>
 
-                {/* Interactive/realistic Preview Mockup */}
+                {/* Real Firestore State Preview */}
                 <div className="border border-line rounded-xl bg-slate-50 p-4 space-y-3 shadow-2xs">
                   {currentPhase.phaseNumber === 3 ? (
                     // Knowledge & Google Drive Preview
                     <div className="space-y-3 bg-white p-4 rounded-lg border border-line">
                       <div className="flex items-center justify-between border-b border-line/70 pb-3">
                         <div>
-                          <span className="font-bold text-xs text-graphite">Example Knowledge Sources</span>
-                          <p className="text-[11px] text-slate-500">Connect authorized sources for your Company AI.</p>
+                          <span className="font-bold text-xs text-graphite">Active Company Knowledge Sources</span>
+                          <p className="text-[11px] text-slate-500">
+                            {liveDocs.length > 0
+                              ? `${liveDocs.length} authorized knowledge documents grounded in Firestore`
+                              : "Connect authorized sources and PDFs for your Company AI."}
+                          </p>
                         </div>
-                        <span className="px-2.5 py-1 bg-royal text-white rounded-md text-[10.5px] font-bold">+ Connect Source</span>
+                        <button
+                          type="button"
+                          onClick={() => handleActionClick("KNOWLEDGE")}
+                          className="px-2.5 py-1 bg-royal hover:bg-royal/90 text-white rounded-md text-[10.5px] font-bold"
+                        >
+                          + Connect Source
+                        </button>
                       </div>
 
-                      <div className="flex items-center justify-between p-3 bg-slate-50 border border-line rounded-lg text-xs">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded bg-amber-500/10 border border-amber-200 flex items-center justify-center text-amber-600 font-bold text-xs">
-                            GD
-                          </div>
-                          <div>
-                            <span className="font-bold text-graphite">Google Drive Connection</span>
-                            <p className="text-[11px] text-slate-500">Authorized source • 4 folders selected</p>
-                          </div>
-                        </div>
-
-                        <div className="text-right space-y-0.5">
-                          <span className="inline-flex items-center gap-1 text-[10.5px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-600"></span>
-                            Connected (Example)
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="space-y-1.5 pt-1">
-                        <span className="text-[11px] uppercase text-slate-500 font-bold">Selected Knowledge Areas</span>
-                        <div className="flex flex-wrap gap-1.5">
-                          {["Technical Manuals", "Project Documentation", "Certificates", "Policies & Procedures"].map((tag) => (
-                            <span key={tag} className="px-2.5 py-1 bg-slate-100 border border-slate-200 text-slate-700 rounded text-[11px] font-semibold">
-                              {tag}
-                            </span>
+                      {liveDocs.length > 0 ? (
+                        <div className="space-y-1.5">
+                          {liveDocs.slice(0, 3).map((d) => (
+                            <div key={d.id} className="flex items-center justify-between p-2.5 bg-slate-50 border border-line rounded-lg text-xs">
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <BookOpen className="w-4 h-4 text-royal shrink-0" />
+                                <span className="font-bold text-graphite truncate text-[11.5px]">{d.title}</span>
+                              </div>
+                              <span className="text-[10px] font-mono font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 shrink-0">
+                                {d.groundingStatus || "GROUNDED"}
+                              </span>
+                            </div>
                           ))}
                         </div>
-                      </div>
+                      ) : (
+                        <div className="p-3 bg-slate-50 border border-line rounded-lg text-xs flex items-center justify-between">
+                          <span className="text-stone">No documents connected yet</span>
+                          <span className="text-royal font-bold text-[10.5px]">Ready to Ground</span>
+                        </div>
+                      )}
                     </div>
                   ) : currentPhase.phaseNumber === 1 ? (
                     // Identity Preview
                     <div className="space-y-2 bg-white p-4 rounded-lg border border-line text-xs">
                       <div className="flex items-center justify-between border-b pb-2 border-line">
                         <div>
-                          <span className="font-bold text-graphite block">Example / Verified Company</span>
-                          <span className="text-[11px] text-slate-500">Company Identity Preview</span>
+                          <span className="font-bold text-graphite block">{liveCompany?.displayName || liveCompany?.legalName || tenantState.companyName}</span>
+                          <span className="text-[11px] text-slate-500">Verified Corporate Entity</span>
                         </div>
-                        <span className="text-[10.5px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded border border-emerald-200">EXAMPLE / VERIFIED REGISTRY ID</span>
+                        <span className="text-[10.5px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded border border-emerald-200">
+                          {tenantState.businessId}
+                        </span>
                       </div>
                       <div className="grid grid-cols-2 gap-2 text-[11px] pt-1">
-                        <div><span className="text-slate-500">Registry ID:</span> <span className="font-bold text-graphite">REG-8820-EXMP</span></div>
-                        <div><span className="text-slate-500">Status:</span> <span className="font-bold text-emerald-700">EXAMPLE / VERIFIED COMPANY</span></div>
+                        <div><span className="text-slate-500">Registry ID:</span> <span className="font-bold text-graphite font-mono">{tenantState.businessId}</span></div>
+                        <div><span className="text-slate-500">Status:</span> <span className="font-bold text-emerald-700">{tenantState.verificationStatus}</span></div>
                       </div>
                     </div>
                   ) : currentPhase.phaseNumber === 2 ? (
                     // Profile Preview
                     <div className="space-y-2 bg-white p-4 rounded-lg border border-line text-xs">
-                      <span className="font-bold text-graphite block">Sector City Positioning (Example)</span>
+                      <span className="font-bold text-graphite block">Sector City Positioning</span>
                       <div className="p-3 bg-slate-50 border border-line rounded flex items-center justify-between">
                         <div>
-                          <span className="font-bold text-royal">Shipyard & Repair City</span>
-                          <p className="text-[11px] text-slate-500">Primary Business Area: Marine Engineering</p>
+                          <span className="font-bold text-royal">{liveCompany?.industry || "Marine & Maritime Industry"}</span>
+                          <p className="text-[11px] text-slate-500">{liveCompany?.city ? `${liveCompany.city}, ${liveCompany.country}` : "Global Maritime Base"}</p>
                         </div>
-                        <span className="text-[10.5px] font-bold bg-royal/10 text-royal px-2.5 py-0.5 rounded">POSITIONED</span>
+                        <span className="text-[10.5px] font-bold bg-royal/10 text-royal px-2.5 py-0.5 rounded">
+                          {liveCompany?.presenceTier || "ENTERPRISE"}
+                        </span>
                       </div>
                     </div>
                   ) : currentPhase.phaseNumber === 4 ? (
                     // Offerings Preview
                     <div className="space-y-2 bg-white p-4 rounded-lg border border-line text-xs">
                       <div className="flex items-center justify-between border-b pb-2 border-line">
-                        <span className="font-bold text-graphite">Published Offerings Catalog (Example)</span>
-                        <span className="text-[11px] text-royal font-bold">4 PUBLISHED ITEMS</span>
+                        <span className="font-bold text-graphite">Offerings Catalog</span>
+                        <span className="text-[11px] text-royal font-bold">
+                          {liveProducts.length + liveServices.length} ITEMS REGISTERED
+                        </span>
                       </div>
-                      <div className="p-2.5 bg-slate-50 rounded border border-line flex items-center justify-between text-[11px]">
-                        <div>
-                          <span className="font-bold text-graphite block">Marine Propulsion System</span>
-                          <span className="text-[10.5px] text-slate-500">AI Advisor Enabled • Verified Specifications</span>
+                      {liveProducts.length > 0 || liveServices.length > 0 ? (
+                        <div className="space-y-1.5">
+                          {[...liveProducts, ...liveServices].slice(0, 2).map((item) => (
+                            <div key={item.id} className="p-2.5 bg-slate-50 rounded border border-line flex items-center justify-between text-[11px]">
+                              <div>
+                                <span className="font-bold text-graphite block">{item.name}</span>
+                                <span className="text-[10.5px] text-slate-500">{item.category || "Marine Equipment"}</span>
+                              </div>
+                              <span className="text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded text-[10.5px]">AI-READY</span>
+                            </div>
+                          ))}
                         </div>
-                        <span className="text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded text-[10.5px]">AI-READY</span>
-                      </div>
+                      ) : (
+                        <div className="p-2.5 bg-slate-50 rounded border border-line flex items-center justify-between text-[11px]">
+                          <span className="text-stone">Catalog ready for product & service registration</span>
+                          <span className="text-royal font-bold text-[10.5px]">+ Add Offering</span>
+                        </div>
+                      )}
                     </div>
                   ) : (
                     // Connect & Trade Preview
                     <div className="space-y-2.5 bg-white p-4 rounded-lg border border-line text-xs">
                       <div className="flex items-center justify-between border-b pb-2 border-line">
-                        <span className="font-bold text-graphite">Ecosystem Connect & Trade (Example)</span>
-                        <span className="text-[11px] text-emerald-700 font-bold">ACTIVE INBOX</span>
+                        <span className="font-bold text-graphite">Ecosystem Connect & Trade</span>
+                        <span className="text-[11px] text-emerald-700 font-bold">ACTIVE ROUTER</span>
                       </div>
                       <div className="p-2.5 bg-slate-50 rounded border border-line text-[11px] flex justify-between items-center">
                         <div>
-                          <span className="font-bold text-graphite">Commercial Inquiry / RFQ</span>
-                          <p className="text-[10.5px] text-slate-500">Direct B2B inquiry from customer AI Advisor interaction</p>
+                          <span className="font-bold text-graphite">Direct B2B Inquiries & RFQs</span>
+                          <p className="text-[10.5px] text-slate-500">Autonomous inquiry qualification and routing enabled</p>
                         </div>
-                        <span className="text-sky-800 bg-sky-50 px-2 py-0.5 rounded text-[10.5px] font-bold">CONNECTED</span>
-                      </div>
-
-                      {/* OPTIONAL DIGITAL PROPERTY EXPLANATION CARD */}
-                      <div className="p-2.5 bg-amber-50/70 border border-amber-200/80 rounded-lg text-[11px] space-y-1">
-                        <span className="font-bold text-amber-900 block">Optional Digital Property</span>
-                        <p className="text-[11px] text-amber-800 leading-snug font-normal">
-                          Reserve a visible digital location within a relevant Sector City if greater ecosystem visibility is desired.
-                        </p>
+                        <span className="text-sky-800 bg-sky-50 px-2 py-0.5 rounded text-[10.5px] font-bold">LIVE</span>
                       </div>
                     </div>
                   )}
                 </div>
               </div>
+
 
               {/* OUTCOME BOX */}
               <div className="p-4 rounded-xl bg-emerald-50/80 border border-emerald-200/90 space-y-1">

@@ -465,10 +465,20 @@ export function CompanySovereignHeader({
                         )}
                         <a
                           href="/studio"
-                          onClick={() => setDropdownOpen(false)}
-                          className="w-full text-left px-2.5 py-2 rounded-lg text-xs font-semibold text-royal hover:bg-royal/5 flex items-center justify-between transition"
+                          id="btn-open-studio-workspace"
+                          onClick={() => {
+                            setDropdownOpen(false);
+                            const targetCompanyId = company.slug || company.id;
+                            if (targetCompanyId) {
+                              setActiveOrganizationContext(targetCompanyId);
+                            }
+                          }}
+                          className="w-full text-left px-2.5 py-2 rounded-lg text-xs font-semibold text-royal hover:bg-royal/5 flex items-center justify-between transition cursor-pointer"
                         >
-                          <span>Open Studio Workspace</span>
+                          <div className="flex items-center gap-2">
+                            <LayoutDashboard className="w-3.5 h-3.5 text-royal" />
+                            <span>Open Studio Workspace</span>
+                          </div>
                           <ArrowRight className="w-3.5 h-3.5" />
                         </a>
                       </div>

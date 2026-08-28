@@ -16,7 +16,6 @@ import type {
 import { getCompanyById as getCompanyByIdFromService, generateBusinessId } from "@/lib/services/companyService";
 import { getProduct, listProducts } from "@/lib/services/productService";
 import { getService, listServices } from "@/lib/services/serviceService";
-import { marineSector } from "@/lib/sectors/marine";
 import {
   getCompanyProducts,
   getCompanyServices,
@@ -26,6 +25,17 @@ import {
   getCities,
 } from "@/lib/registry";
 import { checkActionEligibility, recordRiskSignal } from "@/lib/services/personalTrustService";
+import {
+  saveUserReference,
+  removeUserReference,
+  saveUserCollection as saveFirestoreUserCollection,
+  deleteUserCollection as deleteFirestoreUserCollection,
+  recordUserActivity as recordFirestoreUserActivity,
+  clearUserActivities as clearFirestoreUserActivities,
+  getUserSavedItems as getFirestoreSavedItems,
+  getUserCollections as getFirestoreCollections,
+  getUserActivities as getFirestoreActivities,
+} from "@/services/workspaceService";
 
 /**
  * Stage 3.5.3 — Personal Workspace Reference Service
@@ -35,22 +45,14 @@ import { checkActionEligibility, recordRiskSignal } from "@/lib/services/persona
  * Does NOT store private company documents, subscriptions, or governance.
  */
 
-function loadUserStore<T>(keyPrefix: string, userId: string): T[] {
-  if (typeof window === "undefined" || !window.localStorage || !userId) return [];
-  try {
-    const raw = localStorage.getItem(`mw_ws_${keyPrefix}_${userId}`);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
+function loadUserStore<T>(_keyPrefix: string, _userId: string): T[] {
+  return [];
 }
 
-function saveUserStore<T>(keyPrefix: string, userId: string, data: T[]): void {
-  if (typeof window === "undefined" || !window.localStorage || !userId) return;
-  try {
-    localStorage.setItem(`mw_ws_${keyPrefix}_${userId}`, JSON.stringify(data));
-  } catch {}
+function saveUserStore<T>(_keyPrefix: string, _userId: string, _data: T[]): void {
+  // Pure Firestore mode
 }
+
 
 const savedCompaniesStore = new Map<string, SavedCompanyReference[]>();
 const savedProductsStore = new Map<string, SavedProductReference[]>();
@@ -105,6 +107,91 @@ function getOrHydrateActivity(userId: string): PersonalActivityRecord[] {
     activityStore.set(userId, loaded);
   }
   return activityStore.get(userId) || [];
+}
+
+/**
+ * Hydrates and syncs user workspace state directly from Firestore
+ */
+export async function syncWorkspaceFromFirestore(userId: string): Promise<void> {
+  if (!userId) return;
+  try {
+    const [savedItems, collections, activities] = await Promise.all([
+      getFirestoreSavedItems(userId),
+      getFirestoreCollections(userId),
+      getFirestoreActivities(userId),
+    ]);
+
+    if (savedItems && savedItems.length > 0) {
+      const companies: SavedCompanyReference[] = [];
+      const products: SavedProductReference[] = [];
+      const services: SavedServiceReference[] = [];
+      const cities: SavedCityReference[] = [];
+
+      for (const item of savedItems) {
+        if (item.type === "company") {
+          companies.push({
+            userId,
+            companyId: item.targetId,
+            businessId: item.businessId,
+            savedAt: item.savedAt || new Date().toISOString(),
+          });
+        } else if (item.type === "product") {
+          products.push({
+            userId,
+            productId: item.targetId,
+            companyId: item.companyId || item.targetId,
+            businessId: item.businessId,
+            savedAt: item.savedAt || new Date().toISOString(),
+          });
+        } else if (item.type === "service") {
+          services.push({
+            userId,
+            serviceId: item.targetId,
+            companyId: item.companyId || item.targetId,
+            businessId: item.businessId,
+            savedAt: item.savedAt || new Date().toISOString(),
+          });
+        } else if (item.type === "city") {
+          cities.push({
+            userId,
+            cityId: item.targetId,
+            savedAt: item.savedAt || new Date().toISOString(),
+          });
+        }
+      }
+
+      if (companies.length > 0) {
+        savedCompaniesStore.set(userId, companies);
+        saveUserStore("companies", userId, companies);
+      }
+      if (products.length > 0) {
+        savedProductsStore.set(userId, products);
+        saveUserStore("products", userId, products);
+      }
+      if (services.length > 0) {
+        savedServicesStore.set(userId, services);
+        saveUserStore("services", userId, services);
+      }
+      if (cities.length > 0) {
+        savedCitiesStore.set(userId, cities);
+        saveUserStore("cities", userId, cities);
+      }
+    }
+
+    if (collections && collections.length > 0) {
+      collectionsStore.set(userId, collections);
+      saveUserStore("collections", userId, collections);
+    }
+
+    if (activities && activities.length > 0) {
+      activityStore.set(userId, activities);
+      saveUserStore("activity", userId, activities);
+    }
+
+    notifyWorkspaceChange();
+  } catch (err) {
+    console.warn("[PersonalWorkspace] Firestore sync fallback:", err);
+  }
 }
 
 // Listeners for reactive UI updates
@@ -170,6 +257,15 @@ export async function saveCompanyReference(
   savedCompaniesStore.set(userId, userSaves);
   saveUserStore("companies", userId, userSaves);
 
+  // Authoritative Firestore persistence
+  try {
+    saveUserReference(userId, "company", companyId, {
+      businessId: resolvedBusinessId,
+    });
+  } catch (err) {
+    console.warn("[PersonalWorkspace] Firestore saveCompanyReference fallback:", err);
+  }
+
   // Resolve target name for activity
   const comp = resolveCanonicalCompanySync(companyId);
   const targetName = comp?.displayName || comp?.name || companyId;
@@ -198,6 +294,13 @@ export async function removeSavedCompanyReference(
   savedCompaniesStore.set(userId, filtered);
   saveUserStore("companies", userId, filtered);
 
+  // Authoritative Firestore removal
+  try {
+    removeUserReference(userId, "company", companyId);
+  } catch (err) {
+    console.warn("[PersonalWorkspace] Firestore removeSavedCompanyReference fallback:", err);
+  }
+
   if (existing) {
     const comp = resolveCanonicalCompanySync(companyId);
     const targetName = comp?.displayName || comp?.name || companyId;
@@ -218,16 +321,11 @@ export function resolveCanonicalCompanySync(
   companyId: string
 ): (CompanyProfile & { displayName?: string }) | null {
   const fromRegistry =
-    getCompanyByIdFromRegistry(marineSector, companyId) ||
-    getCompanyBySlug(marineSector, companyId);
+    getCompanyByIdFromRegistry(undefined, companyId) ||
+    getCompanyBySlug(undefined, companyId);
   if (fromRegistry) return fromRegistry;
 
-  const fromSector = marineSector.network?.companies?.find(
-    (c) => c.id === companyId || c.slug === companyId
-  );
-  if (fromSector) return fromSector;
-
-  const allComps = getCompanies(marineSector);
+  const allComps = getCompanies();
   const fromAll = allComps.find(
     (c) => c.id === companyId || c.slug === companyId || (c as any).companyId6Digit === companyId
   );
@@ -302,6 +400,13 @@ export async function saveCityReference(
   savedCitiesStore.set(userId, userSaves);
   saveUserStore("cities", userId, userSaves);
 
+  // Authoritative Firestore persistence
+  try {
+    saveUserReference(userId, "city", cityId);
+  } catch (err) {
+    console.warn("[PersonalWorkspace] Firestore saveCityReference fallback:", err);
+  }
+
   const city = resolveCanonicalCitySync(cityId);
   const targetName = city?.domain || cityId;
 
@@ -326,6 +431,13 @@ export async function removeSavedCityReference(
   savedCitiesStore.set(userId, filtered);
   saveUserStore("cities", userId, filtered);
 
+  // Authoritative Firestore removal
+  try {
+    removeUserReference(userId, "city", cityId);
+  } catch (err) {
+    console.warn("[PersonalWorkspace] Firestore removeSavedCityReference fallback:", err);
+  }
+
   if (existing) {
     const city = resolveCanonicalCitySync(cityId);
     const targetName = city?.domain || cityId;
@@ -341,7 +453,7 @@ export async function removeSavedCityReference(
 }
 
 export function resolveCanonicalCitySync(cityId: string): SectorCity | null {
-  const allCities = getCities(marineSector);
+  const allCities = getCities();
   const found = allCities.find(
     (c) =>
       c.id === cityId ||
@@ -441,6 +553,16 @@ export async function saveProductReference(
   savedProductsStore.set(userId, userSaves);
   saveUserStore("products", userId, userSaves);
 
+  // Authoritative Firestore persistence
+  try {
+    saveUserReference(userId, "product", productId, {
+      companyId,
+      businessId: resolvedBusinessId,
+    });
+  } catch (err) {
+    console.warn("[PersonalWorkspace] Firestore saveProductReference fallback:", err);
+  }
+
   // Resolve product name
   const prod =
     resolveCanonicalProductSync(companyId, productId) ||
@@ -478,6 +600,13 @@ export async function removeSavedProductReference(
   savedProductsStore.set(userId, filtered);
   saveUserStore("products", userId, filtered);
 
+  // Authoritative Firestore removal
+  try {
+    removeUserReference(userId, "product", targetId);
+  } catch (err) {
+    console.warn("[PersonalWorkspace] Firestore removeSavedProductReference fallback:", err);
+  }
+
   if (existing) {
     const prod = resolveCanonicalProductSync(existing.companyId, existing.productId);
     const targetName = prod?.name || existing.productId;
@@ -499,16 +628,15 @@ export function resolveCanonicalProductSync(
   productId: string
 ): ProductEntity | null {
   const company =
-    getCompanyByIdFromRegistry(marineSector, companyId) ||
-    getCompanyBySlug(marineSector, companyId) ||
-    marineSector.network?.companies?.find((c) => c.id === companyId || c.slug === companyId);
+    getCompanyByIdFromRegistry(undefined, companyId) ||
+    getCompanyBySlug(undefined, companyId);
   if (company) {
     const prods = getCompanyProducts(company);
     const found = prods.find((p) => p.id === productId || p.slug === productId);
     if (found) return found;
   }
 
-  const allComps = getCompanies(marineSector);
+  const allComps = getCompanies();
   for (const comp of allComps) {
     const prods = getCompanyProducts(comp);
     const found = prods.find((p) => p.id === productId || p.slug === productId);
@@ -629,6 +757,16 @@ export async function saveServiceReference(
   savedServicesStore.set(userId, userSaves);
   saveUserStore("services", userId, userSaves);
 
+  // Authoritative Firestore persistence
+  try {
+    saveUserReference(userId, "service", serviceId, {
+      companyId,
+      businessId: resolvedBusinessId,
+    });
+  } catch (err) {
+    console.warn("[PersonalWorkspace] Firestore saveServiceReference fallback:", err);
+  }
+
   // Resolve service name
   const serv =
     resolveCanonicalServiceSync(companyId, serviceId) ||
@@ -666,6 +804,13 @@ export async function removeSavedServiceReference(
   savedServicesStore.set(userId, filtered);
   saveUserStore("services", userId, filtered);
 
+  // Authoritative Firestore removal
+  try {
+    removeUserReference(userId, "service", targetId);
+  } catch (err) {
+    console.warn("[PersonalWorkspace] Firestore removeSavedServiceReference fallback:", err);
+  }
+
   if (existing) {
     const serv = resolveCanonicalServiceSync(existing.companyId, existing.serviceId);
     const targetName = serv?.name || existing.serviceId;
@@ -687,16 +832,15 @@ export function resolveCanonicalServiceSync(
   serviceId: string
 ): ServiceEntity | null {
   const company =
-    getCompanyByIdFromRegistry(marineSector, companyId) ||
-    getCompanyBySlug(marineSector, companyId) ||
-    marineSector.network?.companies?.find((c) => c.id === companyId || c.slug === companyId);
+    getCompanyByIdFromRegistry(undefined, companyId) ||
+    getCompanyBySlug(undefined, companyId);
   if (company) {
     const servs = getCompanyServices(company);
     const found = servs.find((s) => s.id === serviceId || s.slug === serviceId);
     if (found) return found;
   }
 
-  const allComps = getCompanies(marineSector);
+  const allComps = getCompanies();
   for (const comp of allComps) {
     const servs = getCompanyServices(comp);
     const found = servs.find((s) => s.id === serviceId || s.slug === serviceId);
@@ -813,6 +957,13 @@ export function createCollection(
   collectionsStore.set(userId, userCollections);
   saveUserStore("collections", userId, userCollections);
 
+  // Authoritative Firestore persistence
+  try {
+    saveFirestoreUserCollection(userId, newCol);
+  } catch (err) {
+    console.warn("[PersonalWorkspace] Firestore createCollection fallback:", err);
+  }
+
   recordPersonalActivity(userId, {
     type: "CREATE_COLLECTION",
     targetId: newCol.id,
@@ -857,6 +1008,13 @@ export function renameCollection(
   collection.name = trimmedName;
   collection.updatedAt = new Date().toISOString();
   saveUserStore("collections", userId, userCollections);
+
+  // Authoritative Firestore persistence
+  try {
+    saveFirestoreUserCollection(userId, collection);
+  } catch (err) {
+    console.warn("[PersonalWorkspace] Firestore renameCollection fallback:", err);
+  }
 
   recordPersonalActivity(userId, {
     type: "RENAME_COLLECTION",
@@ -921,6 +1079,14 @@ export function updateCollection(
 
   collection.updatedAt = new Date().toISOString();
   saveUserStore("collections", userId, userCollections);
+
+  // Authoritative Firestore persistence
+  try {
+    saveFirestoreUserCollection(userId, collection);
+  } catch (err) {
+    console.warn("[PersonalWorkspace] Firestore updateCollection fallback:", err);
+  }
+
   notifyWorkspaceChange();
   return collection;
 }
@@ -948,6 +1114,13 @@ export function deleteCollection(userId: string, collectionId: string): boolean 
   const filtered = userCollections.filter((c) => c.id !== collectionId);
   collectionsStore.set(userId, filtered);
   saveUserStore("collections", userId, filtered);
+
+  // Authoritative Firestore deletion
+  try {
+    deleteFirestoreUserCollection(userId, collectionId);
+  } catch (err) {
+    console.warn("[PersonalWorkspace] Firestore deleteCollection fallback:", err);
+  }
 
   recordPersonalActivity(userId, {
     type: "DELETE_COLLECTION",
@@ -1043,6 +1216,13 @@ export async function addItemToCollection(
   collection.items.push(newItem);
   collection.updatedAt = new Date().toISOString();
 
+  // Authoritative Firestore persistence
+  try {
+    saveFirestoreUserCollection(userId, collection);
+  } catch (err) {
+    console.warn("[PersonalWorkspace] Firestore addItemToCollection fallback:", err);
+  }
+
   let targetName = `${item.type.toUpperCase()}: ${newItem.referenceId}`;
   if (normalizedType === "company") {
     const c = resolveCanonicalCompanySync(newItem.referenceId);
@@ -1091,6 +1271,13 @@ export function removeItemFromCollection(
 
   collection.items = collection.items.filter((i) => i.id !== targetItem.id);
   collection.updatedAt = new Date().toISOString();
+
+  // Authoritative Firestore persistence
+  try {
+    saveFirestoreUserCollection(userId, collection);
+  } catch (err) {
+    console.warn("[PersonalWorkspace] Firestore removeItemFromCollection fallback:", err);
+  }
 
   recordPersonalActivity(userId, {
     type: "REMOVE_FROM_COLLECTION",
@@ -1235,6 +1422,13 @@ export function clearUserActivities(userId: string): boolean {
   if (!userId) return false;
   activityStore.set(userId, []);
   saveUserStore("activity", userId, []);
+
+  try {
+    clearFirestoreUserActivities(userId);
+  } catch (err) {
+    console.warn("[PersonalWorkspace] Firestore clearUserActivities fallback:", err);
+  }
+
   notifyWorkspaceChange();
   return true;
 }
@@ -1293,6 +1487,14 @@ export function recordPersonalActivity(
   }
   activityStore.set(userId, userActs);
   saveUserStore("activity", userId, userActs);
+
+  // Authoritative Firestore persistence
+  try {
+    recordFirestoreUserActivity(userId, newRecord);
+  } catch (err) {
+    console.warn("[PersonalWorkspace] Firestore recordPersonalActivity fallback:", err);
+  }
+
   notifyWorkspaceChange();
   return newRecord;
 }

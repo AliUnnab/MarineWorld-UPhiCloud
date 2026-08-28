@@ -360,7 +360,7 @@ export function CommercialPropertyDetailModal({
                       {onLaunchEditor && (
                         <button
                           onClick={() => {
-                            const dummySlot: DigitalPropertySlot = {
+                            const propertySlot: DigitalPropertySlot = {
                               slotId: property.slotId,
                               slotCode: property.canonicalPropertyKey,
                               tier: property.tier as any,
@@ -368,7 +368,7 @@ export function CommercialPropertyDetailModal({
                               state: "RESERVED",
                               locationName: property.propertyName,
                             };
-                            onLaunchEditor(dummySlot, property.cityId, property.regionCode);
+                            onLaunchEditor(propertySlot, property.cityId, property.regionCode);
                           }}
                           className="w-full mt-2 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-colors"
                         >
@@ -385,7 +385,7 @@ export function CommercialPropertyDetailModal({
                       {onLaunchEditor && (
                         <button
                           onClick={() => {
-                            const dummySlot: DigitalPropertySlot = {
+                            const propertySlot: DigitalPropertySlot = {
                               slotId: property.slotId,
                               slotCode: property.canonicalPropertyKey,
                               tier: property.tier as any,
@@ -393,7 +393,7 @@ export function CommercialPropertyDetailModal({
                               state: "PUBLISHED",
                               locationName: property.propertyName,
                             };
-                            onLaunchEditor(dummySlot, property.cityId, property.regionCode);
+                            onLaunchEditor(propertySlot, property.cityId, property.regionCode);
                           }}
                           className="w-full py-3 bg-royal hover:bg-royal-light text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-colors shadow-lg"
                         >

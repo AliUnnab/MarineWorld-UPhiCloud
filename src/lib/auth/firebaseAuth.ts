@@ -19,51 +19,30 @@ import type { AuthContext } from "./developmentAuthProvider";
 
 const env = (typeof import.meta !== "undefined" && (import.meta as unknown as { env?: Record<string, string> }).env) || {};
 
-// Firebase client configuration
-export const firebaseConfig = {
-  apiKey: env.VITE_FIREBASE_API_KEY || "AIzaSyMarineWorldCityProdKey2026",
-  authDomain: env.VITE_FIREBASE_AUTH_DOMAIN || "marineworld-city.firebaseapp.com",
-  projectId: env.VITE_FIREBASE_PROJECT_ID || "marineworld-city",
-  storageBucket: env.VITE_FIREBASE_STORAGE_BUCKET || "marineworld-city.appspot.com",
-  messagingSenderId: env.VITE_FIREBASE_MESSAGING_SENDER_ID || "402495042043",
-  appId: env.VITE_FIREBASE_APP_ID || "1:402495042043:web:marineworld72890134",
-};
+import {
+  app as sharedApp,
+  auth as sharedAuth,
+  googleAuthProvider as sharedGoogleAuthProvider,
+  firebaseConfig,
+} from "@/lib/firebase";
+
+export { firebaseConfig };
 
 export function isFirebaseConfigured(): boolean {
   return Boolean(
     firebaseConfig.apiKey &&
-      firebaseConfig.apiKey !== "AIzaSyMarineWorldCityProdKey2026" &&
-      firebaseConfig.projectId &&
-      firebaseConfig.projectId !== "marineworld-city"
+      firebaseConfig.projectId
   );
 }
 
-let appInstance: FirebaseApp | null = null;
-let authInstance: Auth | null = null;
-export const googleAuthProvider = new GoogleAuthProvider();
-googleAuthProvider.addScope("email");
-googleAuthProvider.addScope("profile");
-googleAuthProvider.setCustomParameters({
-  prompt: "select_account",
-});
+export const googleAuthProvider = sharedGoogleAuthProvider;
 
 export function getFirebaseApp(): FirebaseApp {
-  if (!appInstance) {
-    if (getApps().length > 0) {
-      appInstance = getApp();
-    } else {
-      appInstance = initializeApp(firebaseConfig);
-    }
-  }
-  return appInstance;
+  return sharedApp;
 }
 
 export function getFirebaseAuth(): Auth {
-  if (!authInstance) {
-    const app = getFirebaseApp();
-    authInstance = getAuth(app);
-  }
-  return authInstance;
+  return sharedAuth;
 }
 
 export function getGoogleAuthProvider(): GoogleAuthProvider {

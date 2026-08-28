@@ -1,5 +1,6 @@
 import { getPersistenceMode } from "./persistenceMode";
 import { getFirebaseApp } from "@/lib/auth/firebaseAuth";
+import { sanitizeUndefined } from "./firestoreSanitize";
 import {
   getFirestore,
   doc,
@@ -348,7 +349,7 @@ export async function recordCommercialAudit(
     try {
       const db = getFirestore(getFirebaseApp());
       const ref = doc(db, "companies", audit.companyId, "auditEvents", audit.auditId);
-      await setDoc(ref, audit, { merge: true });
+      await setDoc(ref, sanitizeUndefined(audit), { merge: true });
     } catch (err) {
       console.warn("[CommercialRepo] Firestore save audit fallback:", err);
     }

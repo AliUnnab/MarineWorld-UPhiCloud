@@ -182,7 +182,7 @@ export function CompanyCorporateModule({
                       </span>
                       <span className="text-mute">•</span>
                       <span className="text-stone font-semibold">
-                        {company.recordType === "DEMONSTRATION" ? "DEMONSTRATION RECORD" : "PUBLIC RECORD"}
+                        PUBLIC RECORD
                       </span>
                     </div>
 

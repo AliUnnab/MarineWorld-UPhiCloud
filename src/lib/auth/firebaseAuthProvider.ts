@@ -1,12 +1,9 @@
 /**
- * MarineWorld.City — Production Firebase Authentication Provider (Isolated Future Provider)
- * Implements AuthProviderInterface using Firebase Authentication SDK.
- * Disconnected / inert when Firebase configuration is not present.
+ * MarineWorld.City — Production Firebase Authentication Provider
+ * Implements AuthProviderInterface using Firebase Authentication SDK directly.
  */
 
-import { initializeApp, getApps, getApp, type FirebaseApp } from "firebase/app";
 import {
-  getAuth,
   signInWithEmailAndPassword as fbSignInWithEmailAndPassword,
   createUserWithEmailAndPassword as fbCreateUserWithEmailAndPassword,
   signOut as fbSignOut,
@@ -15,69 +12,26 @@ import {
   type Auth,
   type User as FirebaseUser,
 } from "firebase/auth";
+import { app, auth, firebaseConfig } from "@/lib/firebase";
+import type { FirebaseApp } from "firebase/app";
 import type {
   AuthContext,
   AuthStateCallback,
   AuthProviderInterface,
-} from "./developmentAuthProvider";
+} from "./authTypes";
 
-const env =
-  (typeof import.meta !== "undefined" &&
-    (import.meta as unknown as { env?: Record<string, string> }).env) ||
-  {};
-
-// Firebase configuration for MarineWorld.City
-export const firebaseConfig = {
-  apiKey: env.VITE_FIREBASE_API_KEY || "",
-  authDomain: env.VITE_FIREBASE_AUTH_DOMAIN || "",
-  projectId: env.VITE_FIREBASE_PROJECT_ID || "",
-  storageBucket: env.VITE_FIREBASE_STORAGE_BUCKET || "",
-  messagingSenderId: env.VITE_FIREBASE_MESSAGING_SENDER_ID || "",
-  appId: env.VITE_FIREBASE_APP_ID || "",
-};
+export { firebaseConfig };
 
 export function isFirebaseConfigured(): boolean {
-  return Boolean(
-    firebaseConfig.apiKey &&
-      firebaseConfig.apiKey !== "AIzaSyMarineWorldCityProdKey2026" &&
-      firebaseConfig.projectId
-  );
+  return Boolean(firebaseConfig.apiKey && firebaseConfig.projectId);
 }
 
-let appInstance: FirebaseApp | null = null;
-let authInstance: Auth | null = null;
-
-/**
- * Initializes and returns the singleton Firebase App instance (only when configured)
- */
-export function getFirebaseApp(): FirebaseApp | null {
-  if (!isFirebaseConfigured()) {
-    return null;
-  }
-  if (!appInstance) {
-    if (getApps().length > 0) {
-      appInstance = getApp();
-    } else {
-      appInstance = initializeApp(firebaseConfig);
-    }
-  }
-  return appInstance;
+export function getFirebaseApp(): FirebaseApp {
+  return app;
 }
 
-/**
- * Initializes and returns the singleton Firebase Auth instance (only when configured)
- */
-export function getFirebaseAuth(): Auth | null {
-  if (!isFirebaseConfigured()) {
-    return null;
-  }
-  if (!authInstance) {
-    const app = getFirebaseApp();
-    if (app) {
-      authInstance = getAuth(app);
-    }
-  }
-  return authInstance;
+export function getFirebaseAuth(): Auth {
+  return auth;
 }
 
 /**
@@ -100,111 +54,221 @@ export function mapFirebaseUserToAuthContext(user: FirebaseUser | null): AuthCon
   return {
     uid: user.uid,
     email: user.email || undefined,
-    displayName:
-      user.displayName ||
-      (user.email ? user.email.split("@")[0] : "Authenticated User"),
+    displayName: user.displayName || user.email?.split("@")[0] || "User",
     photoURL: user.photoURL || undefined,
     emailVerified: user.emailVerified,
-    isAnonymous: Boolean(user.isAnonymous),
+    isAnonymous: user.isAnonymous,
     isDevelopmentSession: false,
     providerId: user.providerData?.[0]?.providerId || "password",
   };
 }
 
-/**
- * Production FirebaseAuthProvider implementing AuthProviderInterface
- * Operates cleanly in disconnected state until Firebase project is provisioned.
- */
+const AUTH_STORAGE_KEY = "marineworld_auth_session";
+
+function loadCachedSession(): AuthContext | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(AUTH_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && parsed.uid) {
+        return parsed as AuthContext;
+      }
+    }
+  } catch (err) {
+    console.warn("[FirebaseAuthProvider] Error loading cached session:", err);
+  }
+  return null;
+}
+
+function saveCachedSession(user: AuthContext | null): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (user && user.uid) {
+      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(user));
+    } else {
+      localStorage.removeItem(AUTH_STORAGE_KEY);
+    }
+  } catch (err) {
+    console.warn("[FirebaseAuthProvider] Error saving cached session:", err);
+  }
+}
+
 export class FirebaseAuthProvider implements AuthProviderInterface {
-  public getProviderType(): "FIREBASE" {
+  private currentUser: AuthContext;
+  private isInitialized: boolean = false;
+  private initPromise: Promise<AuthContext>;
+  private resolveInit!: (auth: AuthContext) => void;
+
+  private listeners: Set<AuthStateCallback> = new Set();
+  private unsubscribeNative: (() => void) | null = null;
+
+  constructor() {
+    const cached = loadCachedSession();
+    this.currentUser = cached || {
+      uid: null,
+      email: undefined,
+      displayName: undefined,
+      photoURL: undefined,
+      emailVerified: false,
+      isAnonymous: false,
+      isDevelopmentSession: false,
+      providerId: undefined,
+    };
+
+    this.initPromise = new Promise<AuthContext>((resolve) => {
+      this.resolveInit = resolve;
+    });
+
+    this.initNativeListener();
+  }
+
+  private initNativeListener(): void {
+    if (typeof window === "undefined") {
+      this.isInitialized = true;
+      this.resolveInit(this.currentUser);
+      return;
+    }
+    try {
+      this.unsubscribeNative = fbOnAuthStateChanged(auth, (user) => {
+        if (user) {
+          this.currentUser = mapFirebaseUserToAuthContext(user);
+          saveCachedSession(this.currentUser);
+        } else {
+          // If native Firebase user is null, check if we have a valid corporate/company session cached in localStorage
+          const cached = loadCachedSession();
+          if (cached && cached.uid) {
+            this.currentUser = cached;
+          } else {
+            this.currentUser = {
+              uid: null,
+              email: undefined,
+              displayName: undefined,
+              photoURL: undefined,
+              emailVerified: false,
+              isAnonymous: false,
+              isDevelopmentSession: false,
+              providerId: undefined,
+            };
+            saveCachedSession(null);
+          }
+        }
+        if (!this.isInitialized) {
+          this.isInitialized = true;
+          this.resolveInit(this.currentUser);
+        }
+        this.notifyListeners();
+      });
+    } catch (err) {
+      console.warn("[FirebaseAuthProvider] Failed to attach native auth listener:", err);
+      this.isInitialized = true;
+      this.resolveInit(this.currentUser);
+    }
+  }
+
+  private notifyListeners(): void {
+    const snapshot = { ...this.currentUser };
+    this.listeners.forEach((callback) => {
+      try {
+        callback(snapshot);
+      } catch (err) {
+        console.error("[FirebaseAuthProvider] Error in auth state callback:", err);
+      }
+    });
+  }
+
+  isAuthReady(): boolean {
+    return this.isInitialized;
+  }
+
+  async waitForAuthReady(): Promise<AuthContext> {
+    if (this.isInitialized) {
+      return this.getCurrentUser();
+    }
+    return this.initPromise;
+  }
+
+  getProviderType(): "FIREBASE" {
     return "FIREBASE";
   }
 
-  public isConnected(): boolean {
+  isConnected(): boolean {
     return isFirebaseConfigured();
   }
 
-  public getCurrentUser(): AuthContext {
-    try {
-      const auth = getFirebaseAuth();
-      if (!auth) {
-        return {
-          uid: null,
-          email: undefined,
-          displayName: undefined,
-          photoURL: undefined,
-          emailVerified: false,
-          isDevelopmentSession: false,
-        };
-      }
-      return mapFirebaseUserToAuthContext(auth.currentUser);
-    } catch {
-      return {
-        uid: null,
-        email: undefined,
-        displayName: undefined,
-        photoURL: undefined,
-        emailVerified: false,
-        isDevelopmentSession: false,
-      };
-    }
+  getCurrentUser(): AuthContext {
+    return { ...this.currentUser };
   }
 
-  public async signInWithEmailAndPassword(
-    email: string,
-    password: string
-  ): Promise<AuthContext> {
-    const auth = getFirebaseAuth();
-    if (!auth) {
-      throw new Error("Firebase Authentication is not configured or connected yet.");
-    }
-    const cred = await fbSignInWithEmailAndPassword(auth, email.trim(), password);
-    return mapFirebaseUserToAuthContext(cred.user);
+  setCurrentUser(user: AuthContext): void {
+    this.currentUser = { ...user };
+    saveCachedSession(user.uid ? this.currentUser : null);
+    this.notifyListeners();
   }
 
-  public async createUserWithEmailAndPassword(
+  clearCurrentUser(): void {
+    this.currentUser = {
+      uid: null,
+      email: undefined,
+      displayName: undefined,
+      photoURL: undefined,
+      emailVerified: false,
+      isAnonymous: false,
+      isDevelopmentSession: false,
+      providerId: undefined,
+    };
+    saveCachedSession(null);
+    this.notifyListeners();
+  }
+
+  async signInWithEmailAndPassword(email: string, pass: string): Promise<AuthContext> {
+    const credential = await fbSignInWithEmailAndPassword(auth, email, pass);
+    this.currentUser = mapFirebaseUserToAuthContext(credential.user);
+    saveCachedSession(this.currentUser);
+    this.notifyListeners();
+    return this.currentUser;
+  }
+
+  async createUserWithEmailAndPassword(
     email: string,
-    password: string,
+    pass: string,
     displayName?: string
   ): Promise<AuthContext> {
-    const auth = getFirebaseAuth();
-    if (!auth) {
-      throw new Error("Firebase Authentication is not configured or connected yet.");
+    const credential = await fbCreateUserWithEmailAndPassword(auth, email, pass);
+    if (displayName && credential.user) {
+      await updateProfile(credential.user, { displayName });
     }
-    const cred = await fbCreateUserWithEmailAndPassword(
-      auth,
-      email.trim(),
-      password
-    );
-    if (displayName && cred.user) {
-      await updateProfile(cred.user, { displayName });
-    }
-    return mapFirebaseUserToAuthContext(cred.user);
+    this.currentUser = mapFirebaseUserToAuthContext(credential.user);
+    saveCachedSession(this.currentUser);
+    this.notifyListeners();
+    return this.currentUser;
   }
 
-  public async signOut(): Promise<void> {
-    const auth = getFirebaseAuth();
-    if (auth) {
-      await fbSignOut(auth);
-    }
-  }
-
-  public onAuthStateChanged(callback: AuthStateCallback): () => void {
+  async signOut(): Promise<void> {
     try {
-      const auth = getFirebaseAuth();
-      if (!auth) {
-        callback(this.getCurrentUser());
-        return () => {};
-      }
-      return fbOnAuthStateChanged(auth, (user) => {
-        const mapped = mapFirebaseUserToAuthContext(user);
-        callback(mapped);
-      });
-    } catch {
-      callback(this.getCurrentUser());
-      return () => {};
+      await fbSignOut(auth);
+    } catch (err) {
+      console.warn("[FirebaseAuthProvider] Native signOut warning:", err);
     }
+    this.clearCurrentUser();
+  }
+
+  onAuthStateChanged(callback: AuthStateCallback): () => void {
+    this.listeners.add(callback);
+    callback(this.getCurrentUser());
+    return () => {
+      this.listeners.delete(callback);
+    };
+  }
+
+  destroy(): void {
+    if (this.unsubscribeNative) {
+      this.unsubscribeNative();
+      this.unsubscribeNative = null;
+    }
+    this.listeners.clear();
   }
 }
 
 export const firebaseAuthProvider = new FirebaseAuthProvider();
+

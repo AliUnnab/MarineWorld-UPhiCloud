@@ -207,11 +207,12 @@ export function MarineWorldCommercialConsolePage({
     }
   };
 
-  // Confirm Payment & Entitlements Webhook Simulator
+  // Confirm Payment & Entitlements Webhook Simulator / Operator Confirmation
   const handleConfirmPaymentWebhook = async (agreementId: string) => {
-    const res = await confirmProviderPayment(agreementId, operatorEmail, "MOCK_TRANSACTION_PAYMENT_SETTLED");
+    const txnId = `TXN_SETTLED_${Date.now().toString(36).toUpperCase()}`;
+    const res = await confirmProviderPayment(agreementId, operatorEmail, txnId);
     if (res.success) {
-      showFeedback("success", `Payment and cloud entitlement confirmed for Agreement ${agreementId}. Status advanced to PAYMENT_CONFIRMED.`);
+      showFeedback("success", `Payment and cloud entitlement confirmed for Agreement ${agreementId} (Ref: ${txnId}). Status advanced to PAYMENT_CONFIRMED.`);
       handleRefresh();
     } else {
       showFeedback("error", res.error || "Failed to confirm payment.");

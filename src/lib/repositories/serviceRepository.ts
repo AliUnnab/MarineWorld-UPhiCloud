@@ -1,36 +1,88 @@
 import type { ServiceEntity } from "@/lib/types";
+import { db } from "@/lib/firebase";
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  setDoc,
+  deleteDoc,
+  onSnapshot,
+  type Unsubscribe,
+} from "firebase/firestore";
 
 /**
- * Stage 10.6 — Service Repository
+ * Pure Firestore Service Repository
  * Data Access Layer for /companies/{companyId}/services/{serviceId}
  */
 
-const serviceStore = new Map<string, ServiceEntity[]>();
-
 export async function findServiceById(companyId: string, serviceId: string): Promise<ServiceEntity | null> {
-  const services = serviceStore.get(companyId) || [];
-  return services.find((s) => s.id === serviceId) || null;
+  if (!companyId || !serviceId) return null;
+  try {
+    const docRef = doc(db, "companies", companyId, "services", serviceId);
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      return { id: snap.id, ...snap.data() } as ServiceEntity;
+    }
+  } catch (err) {
+    console.warn(`[ServiceRepository] Firestore findServiceById failed for ${companyId}/${serviceId}:`, err);
+  }
+  return null;
 }
 
 export async function findServicesByCompany(companyId: string): Promise<ServiceEntity[]> {
-  return serviceStore.get(companyId) || [];
+  if (!companyId) return [];
+  try {
+    const colRef = collection(db, "companies", companyId, "services");
+    const snap = await getDocs(colRef);
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() } as ServiceEntity));
+  } catch (err) {
+    console.warn(`[ServiceRepository] Firestore findServicesByCompany failed for ${companyId}:`, err);
+    return [];
+  }
 }
 
 export async function saveService(service: ServiceEntity): Promise<ServiceEntity> {
-  const existing = serviceStore.get(service.companyId) || [];
-  const idx = existing.findIndex((s) => s.id === service.id);
-  if (idx >= 0) {
-    existing[idx] = service;
-  } else {
-    existing.push(service);
+  const payload: ServiceEntity = {
+    ...service,
+    updatedAt: new Date().toISOString(),
+    createdAt: service.createdAt || new Date().toISOString(),
+  };
+
+  if (service.companyId && service.id) {
+    try {
+      const docRef = doc(db, "companies", service.companyId, "services", service.id);
+      await setDoc(docRef, payload, { merge: true });
+    } catch (err) {
+      console.warn(`[ServiceRepository] Firestore saveService error for ${service.id}:`, err);
+    }
   }
-  serviceStore.set(service.companyId, existing);
-  return service;
+
+  return payload;
 }
 
 export async function deleteServiceRecord(companyId: string, serviceId: string): Promise<boolean> {
-  const existing = serviceStore.get(companyId) || [];
-  const filtered = existing.filter((s) => s.id !== serviceId);
-  serviceStore.set(companyId, filtered);
-  return filtered.length < existing.length;
+  if (!companyId || !serviceId) return false;
+  try {
+    const docRef = doc(db, "companies", companyId, "services", serviceId);
+    await deleteDoc(docRef);
+    return true;
+  } catch (err) {
+    console.warn(`[ServiceRepository] Firestore deleteServiceRecord error for ${companyId}/${serviceId}:`, err);
+    return false;
+  }
+}
+
+export function subscribeToCompanyServices(
+  companyId: string,
+  callback: (services: ServiceEntity[]) => void
+): Unsubscribe {
+  if (!companyId) {
+    callback([]);
+    return () => {};
+  }
+  const colRef = collection(db, "companies", companyId, "services");
+  return onSnapshot(colRef, (snap) => {
+    callback(snap.docs.map((d) => ({ id: d.id, ...d.data() } as ServiceEntity)));
+  });
 }

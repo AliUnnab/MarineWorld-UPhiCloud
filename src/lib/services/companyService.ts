@@ -18,13 +18,13 @@ import type {
   AIExecutiveAction,
 } from "@/lib/types";
 import { notifyListeners as notifyTwinListeners } from "@/lib/businessTwinStore";
-import { marineSector } from "@/lib/sectors/marine";
 import { registerCompanyMember } from "@/lib/services/securityService";
 import {
   saveCompanyRecordSync,
   getCompanyRecordSync,
   findAllCompaniesSync,
 } from "@/lib/repositories/companyRepository";
+import { saveNode as saveNodeRepo, deleteNodeRecord as deleteNodeRepo } from "@/lib/repositories/nodeRepository";
 
 /**
  * Company Service — Domain Service for Canonical Company, Member, Node, and Physical Facility Entities.
@@ -158,179 +158,7 @@ export function ensureCanonicalCompany(profile: CompanyProfile): CompanyEntity {
   return canonicalCompany;
 }
 
-// Pre-seed demonstration companies from sector configuration
-marineSector.network.companies.forEach((comp) => {
-  const profile: CompanyProfile = comp as unknown as CompanyProfile;
-  ensureCanonicalCompany(profile);
-});
-
-// Pre-seed canonical company "argento-marine"
-ensureCanonicalCompany({
-  id: "argento-marine",
-  name: "Argento Marine",
-  tradingName: "Argento Marine",
-  legalName: "Argento Marine B.V.",
-  slug: "argento-marine",
-  businessId: "MW-BUS-ARGENTO-MARITIME",
-  organizationType: "COMPANY",
-  ownerId: "usr-owner-001",
-  initials: "AM",
-  recordType: "DEMONSTRATION",
-  industry: "Maritime Services",
-  city: "Rotterdam",
-  cityIds: ["rotterdam", "shipyard", "marineworld"],
-  location: "Rotterdam, Netherlands",
-  country: "Netherlands",
-  registrationCountry: "Netherlands",
-  verificationStatus: "verified",
-  capabilities: ["Maritime Logistics", "Offshore Services"],
-  aiStatus: "ready",
-  operatingStatus: "ACTIVE",
-  officialEmail: "owner@argento-marine.com",
-  officialPhone: "+31 10 555 0190",
-  products: ["Autonomous Subsea Survey Drone", "Hybrid Marine Propulsion Pod"],
-  services: ["Vessel Performance Optimization", "Offshore Hull Inspection & NDT"],
-  offerings: [
-    {
-      id: "prod-argento-01",
-      companyId: "argento-marine",
-      name: "Autonomous Subsea Survey Drone",
-      type: "product",
-      category: "Subsea Robotics",
-      code: "AM-ROV-100",
-      status: "PUBLISHED",
-      shortDescription: "Autonomous submersible inspection vehicle for hull structural health diagnostics.",
-      specifications: { depthRating: "300m", batteryLife: "8h" },
-    },
-    {
-      id: "prod-argento-02",
-      companyId: "argento-marine",
-      name: "Hybrid Marine Propulsion Pod",
-      type: "product",
-      category: "Propulsion Systems",
-      code: "AM-MPD-200",
-      status: "PUBLISHED",
-      shortDescription: "High-precision digital telemetry logger and hybrid electric pod for commercial ships.",
-      specifications: { power: "1500 kW", efficiency: "96%" },
-    },
-    {
-      id: "serv-argento-01",
-      companyId: "argento-marine",
-      name: "Vessel Performance Optimization",
-      type: "service",
-      category: "Maritime Engineering",
-      status: "ACTIVE",
-      shortDescription: "Continuous computational fluid dynamics and route energy optimization.",
-    },
-    {
-      id: "serv-argento-02",
-      companyId: "argento-marine",
-      name: "Offshore Hull Inspection & NDT",
-      type: "service",
-      category: "Inspection & Certification",
-      status: "ACTIVE",
-      shortDescription: "Non-destructive ultrasonic testing and class society renewal inspections.",
-    },
-  ],
-});
-
-// Pre-seed canonical test fixture companies: "company_001" and "company_002"
-ensureCanonicalCompany({
-  id: "company_001",
-  name: "Argento Maritime Technology",
-  tradingName: "Argento Maritime Technology",
-  legalName: "Argento Maritime Technology B.V.",
-  slug: "company_001",
-  businessId: "MW-BUS-company_001",
-  organizationType: "COMPANY",
-  ownerId: "usr-owner-company-001",
-  initials: "AMT",
-  recordType: "DEMONSTRATION",
-  industry: "Maritime Technology",
-  city: "Rotterdam",
-  cityIds: ["rotterdam", "marineworld"],
-  location: "Rotterdam, Netherlands",
-  country: "Netherlands",
-  registrationCountry: "Netherlands",
-  verificationStatus: "verified",
-  capabilities: ["Marine Hull Engineering", "Propulsion Diagnostics"],
-  aiStatus: "ready",
-  operatingStatus: "ACTIVE",
-  officialEmail: "contact@company001.marine",
-  officialPhone: "+31 10 555 0191",
-  products: ["Composite Hull Structure 01"],
-  services: ["Propulsion Diagnostics & Maintenance"],
-  offerings: [
-    {
-      id: "prod_hull_01",
-      companyId: "company_001",
-      name: "Composite Hull Structure 01",
-      type: "product",
-      category: "Vessel Structures",
-      code: "AMT-HULL-01",
-      status: "PUBLISHED",
-      shortDescription: "Advanced lightweight composite vessel hull structure for commercial ships.",
-      specifications: { material: "Carbon Composite", weightClass: "Light" },
-    },
-    {
-      id: "srv_propulsion_01",
-      companyId: "company_001",
-      name: "Propulsion Diagnostics & Maintenance",
-      type: "service",
-      category: "Propulsion Engineering",
-      status: "ACTIVE",
-      shortDescription: "Continuous maritime propulsion diagnostics, tuning, and preventative maintenance.",
-    },
-  ],
-});
-
-ensureCanonicalCompany({
-  id: "company_002",
-  name: "Crest Ocean Systems",
-  tradingName: "Crest Ocean Systems",
-  legalName: "Crest Ocean Systems B.V.",
-  slug: "company_002",
-  businessId: "MW-BUS-company_002",
-  organizationType: "COMPANY",
-  ownerId: "usr-owner-company-002",
-  initials: "COS",
-  recordType: "DEMONSTRATION",
-  industry: "Subsea Systems",
-  city: "Amsterdam",
-  cityIds: ["amsterdam", "marineworld"],
-  location: "Amsterdam, Netherlands",
-  country: "Netherlands",
-  registrationCountry: "Netherlands",
-  verificationStatus: "verified",
-  capabilities: ["Sonar Arrays", "Autonomous Survey"],
-  aiStatus: "ready",
-  operatingStatus: "ACTIVE",
-  officialEmail: "contact@company002.marine",
-  officialPhone: "+31 20 555 0192",
-  products: ["Bathymetric Deep Sonar"],
-  services: ["Autonomous Ocean Survey Service"],
-  offerings: [
-    {
-      id: "prod_sonar_02",
-      companyId: "company_002",
-      name: "Bathymetric Deep Sonar",
-      type: "product",
-      category: "Acoustic Sensors",
-      code: "COS-SNR-02",
-      status: "PUBLISHED",
-      shortDescription: "High-resolution bathymetric deep sonar scanning array.",
-    },
-    {
-      id: "srv_survey_02",
-      companyId: "company_002",
-      name: "Autonomous Ocean Survey Service",
-      type: "service",
-      category: "Subsea Operations",
-      status: "ACTIVE",
-      shortDescription: "Autonomous subsea survey and high-density bathymetric mapping.",
-    },
-  ],
-});
+// Pure Firestore Mode: Data is hydrated dynamically from Firestore companyRepository
 
 /**
  * Get canonical company by ID
@@ -437,6 +265,9 @@ export function addCompanyNode(
 
   existing.push(newNode);
   companyNodesMap.set(companyId, existing);
+  saveNodeRepo(newNode).catch((err) => {
+    console.warn(`[CompanyService] Async node save failed for ${newNode.id}:`, err);
+  });
   notifyTwinListeners();
 
   return newNode;
@@ -460,6 +291,9 @@ export function updateCompanyNode(
     updatedAt: new Date().toISOString(),
   };
   companyNodesMap.set(companyId, nodes);
+  saveNodeRepo(nodes[index]).catch((err) => {
+    console.warn(`[CompanyService] Async node update failed for ${nodeId}:`, err);
+  });
   notifyTwinListeners();
 
   return nodes[index];
@@ -473,6 +307,9 @@ export function removeCompanyNode(companyId: string, nodeId: string): boolean {
   const filtered = nodes.filter((n) => n.id !== nodeId);
   if (filtered.length === nodes.length) return false;
   companyNodesMap.set(companyId, filtered);
+  deleteNodeRepo(companyId, nodeId).catch((err) => {
+    console.warn(`[CompanyService] Async node deletion failed for ${nodeId}:`, err);
+  });
   notifyTwinListeners();
   return true;
 }
@@ -546,6 +383,12 @@ function initializeCompanyFacilities(companyId: string): PhysicalFacility[] {
   const compName = company?.displayName || company?.legalName || "Marine Enterprise";
   const compCity = company?.city || company?.headquartersCity || "Rotterdam";
   const compCountry = company?.country || "Netherlands";
+
+  // Check if company already has physicalFacilities saved in Firestore
+  if (company?.physicalFacilities && Array.isArray(company.physicalFacilities) && company.physicalFacilities.length > 0) {
+    companyFacilitiesMap.set(companyId, company.physicalFacilities);
+    return company.physicalFacilities;
+  }
 
   // Check if already seeded
   if (companyFacilitiesMap.has(companyId)) {
@@ -802,6 +645,19 @@ export function addPhysicalFacility(
   facilities.push(newFacility);
   companyFacilitiesMap.set(companyId, facilities);
 
+  // Sync to Firestore company entity
+  const comp = getCompanyById(companyId);
+  if (comp) {
+    comp.physicalFacilities = facilities;
+    if (newFacility.isHeadquarters) {
+      comp.city = newFacility.city;
+      comp.country = newFacility.country;
+      comp.location = `${newFacility.city}, ${newFacility.country}`;
+      comp.registeredHeadquarters = newFacility;
+    }
+    saveCompanyRecordSync(comp);
+  }
+
   // Synchronize with CompanyNodeEntity for backward compatibility
   addCompanyNode(companyId, {
     name: newFacility.facilityName,
@@ -845,16 +701,17 @@ export function updatePhysicalFacility(
 
   companyFacilitiesMap.set(companyId, [...facilities]);
 
-  // If this is HQ, sync basic city/country to company record
-  if (facilities[index].isHeadquarters) {
-    const comp = getCompanyById(companyId);
-    if (comp) {
+  // Sync to Firestore company entity
+  const comp = getCompanyById(companyId);
+  if (comp) {
+    comp.physicalFacilities = [...facilities];
+    if (facilities[index].isHeadquarters) {
       comp.city = facilities[index].city;
       comp.country = facilities[index].country;
       comp.location = `${facilities[index].city}, ${facilities[index].country}`;
       comp.registeredHeadquarters = facilities[index];
-      saveCompanyRecordSync(comp);
     }
+    saveCompanyRecordSync(comp);
   }
 
   notifyTwinListeners();
@@ -877,6 +734,17 @@ export function removePhysicalFacility(companyId: string, facilityId: string): b
   }
 
   companyFacilitiesMap.set(companyId, remaining);
+
+  // Sync to Firestore company entity
+  const comp = getCompanyById(companyId);
+  if (comp) {
+    comp.physicalFacilities = remaining;
+    if (target.isHeadquarters && remaining.length > 0) {
+      comp.registeredHeadquarters = remaining[0];
+    }
+    saveCompanyRecordSync(comp);
+  }
+
   notifyTwinListeners();
   return true;
 }

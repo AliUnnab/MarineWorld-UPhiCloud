@@ -1,5 +1,5 @@
-import { useState, useMemo } from "react";
-import type { SectorConfig } from "@/lib/types";
+import { useState, useMemo, useEffect } from "react";
+import type { SectorConfig, SectorCity, CompanyEntity } from "@/lib/types";
 import { SectorCityTopChrome } from "@/components/foundation/SectorCityTopChrome";
 import { GlobalFooter } from "@/components/foundation/GlobalFooter";
 import { PageMetadata } from "@/components/foundation/PageMetadata";
@@ -10,6 +10,8 @@ import {
   getCompanyProducts,
   getCompanyServices,
 } from "@/lib/registry";
+import { getSectorCityById } from "@/services/sectorService";
+import { listCompanies } from "@/services/companyService";
 import {
   CANONICAL_CITY_REGIONS,
   resolveRegionEdition,
@@ -31,38 +33,98 @@ export function SectorCityDetailsPage({
   config: SectorConfig;
   citySlug: string;
 }) {
-  const city = getCityBySlug(config, citySlug) ?? config.explorer.cities[0];
+  const [city, setCity] = useState<SectorCity | null>(null);
+  const [liveCompanies, setLiveCompanies] = useState<CompanyEntity[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    setIsLoading(true);
+    getSectorCityById(citySlug)
+      .then((c) => {
+        setCity(c || null);
+      })
+      .catch((err) => {
+        console.warn("[SectorCityDetailsPage] Error loading city:", err);
+        setCity(null);
+      })
+      .finally(() => {
+        setIsLoading(false);
+      });
+
+    listCompanies()
+      .then((comps) => {
+        if (comps && comps.length > 0) setLiveCompanies(comps);
+      })
+      .catch(() => {});
+  }, [citySlug]);
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-canvas flex flex-col items-center justify-center p-6 text-center font-sans">
+        <Globe className="w-10 h-10 text-royal animate-pulse mb-3" />
+        <h2 className="text-lg font-bold text-graphite">Sektör Şehri Yükleniyor...</h2>
+        <p className="text-xs text-stone mt-1">Dijital mimari verileri doğrulanıyor.</p>
+      </div>
+    );
+  }
+
+  if (!city) {
+    return (
+      <div className="min-h-screen bg-canvas flex flex-col items-center justify-center p-6 text-center font-sans">
+        <div className="w-16 h-16 rounded-full bg-soft text-royal flex items-center justify-center mb-4">
+          <Globe className="w-8 h-8" />
+        </div>
+        <h1 className="text-2xl font-extrabold text-graphite tracking-tight">Sektör Şehri Bulunamadı</h1>
+        <p className="text-sm text-stone max-w-md mt-2">
+          Talep edilen &apos;{citySlug}&apos; sektör şehri veritabanında bulunamadı.
+        </p>
+        <a
+          href="/cities"
+          className="mt-6 px-6 py-2.5 rounded-card-sm bg-slate-900 text-white text-xs font-bold uppercase tracking-wider hover:bg-slate-800 transition-colors"
+        >
+          Tüm Sektör Şehirlerine Dön &rarr;
+        </a>
+      </div>
+    );
+  }
+
   const parentDomain = getIndustryDomainById(city.industryDomainId);
   const parentDomainName = parentDomain?.name ?? city.category;
   
   const availableRegions = CANONICAL_CITY_REGIONS;
   const activeRegionEdition = resolveRegionEdition(city.id, "global");
 
-  const allCityCompanies = useMemo(() => getCompaniesInCity(config, city.id), [config, city.id]);
-  const verifiedCompanies = useMemo(() => allCityCompanies.filter((c) => (c.verificationStatus as string)?.toLowerCase() === "verified"), [allCityCompanies]);
-  const totalOfferingsCount = useMemo(() => allCityCompanies.reduce((acc, c) => acc + (getCompanyProducts(c)?.length || 0) + (getCompanyServices(c)?.length || 0), 0), [allCityCompanies]);
-  const countryPavilions = useMemo(() => getCountryPavilions(config, city.id, activeRegionEdition.regionCode), [config, city.id, activeRegionEdition.regionCode]);
+  const allCityCompanies = liveCompanies.length > 0
+    ? liveCompanies.filter((c) => {
+        const normCityId = city.id.toLowerCase().replace(/\.city$/, "");
+        const cityIds = [
+          ...((c as any).cityIds || c.sectorCityIds || []),
+          c.primarySectorCityId,
+          c.primaryRegistryNode,
+        ].filter(Boolean).map((s) => String(s).toLowerCase().replace(/\.city$/, ""));
+        return cityIds.some((cid) => cid.includes(normCityId) || normCityId.includes(cid));
+      })
+    : [];
+  const verifiedCompanies = allCityCompanies.filter((c) => (c.verificationStatus as string)?.toLowerCase() === "verified");
+  const totalOfferingsCount = allCityCompanies.reduce((acc, c) => acc + (getCompanyProducts(c as any)?.length || 0) + (getCompanyServices(c as any)?.length || 0), 0);
+  const countryPavilions = getCountryPavilions(config, city.id, activeRegionEdition.regionCode);
   
-  const allRegionsData = useMemo(() => {
-    return CANONICAL_CITY_REGIONS.map((region) => {
-      const proj = getPublicPropertyProjections(config, city.id, region.code);
-      return {
-        region,
-        landmark: proj.landmark,
-        activeFlagshipCount: proj.flagships.filter((f) => !!f.companyName).length,
-        presenceCount: proj.presence.length,
-        isOccupied: !!proj.landmark,
-      };
-    });
-  }, [config, city.id]);
+  const allRegionsData = CANONICAL_CITY_REGIONS.map((region) => {
+    const proj = getPublicPropertyProjections(config, city.id, region.code);
+    return {
+      region,
+      landmark: proj.landmark,
+      activeFlagshipCount: proj.flagships.filter((f) => !f.companyName).length,
+      presenceCount: proj.presence.length,
+      isOccupied: !proj.landmark,
+    };
+  });
 
-  const totalPlacementsCount = useMemo(() => allRegionsData.reduce((acc, r) => acc + (r.landmark ? 1 : 0) + r.activeFlagshipCount + r.presenceCount, 0), [allRegionsData]);
-  const totalCountriesCount = useMemo(() => {
-    const countriesSet = new Set<string>();
-    allCityCompanies.forEach((c) => { if (c.country) countriesSet.add(c.country.trim().toUpperCase()); });
-    countryPavilions.forEach((p) => { if (p.countryName) countriesSet.add(p.countryName.trim().toUpperCase()); });
-    return Math.max(countriesSet.size, 1);
-  }, [allCityCompanies, countryPavilions]);
+  const totalPlacementsCount = allRegionsData.reduce((acc, r) => acc + (r.landmark ? 1 : 0) + r.activeFlagshipCount + r.presenceCount, 0);
+  const countriesSet = new Set<string>();
+  allCityCompanies.forEach((c) => { if (c.country) countriesSet.add(c.country.trim().toUpperCase()); });
+  countryPavilions.forEach((p) => { if (p.countryName) countriesSet.add(p.countryName.trim().toUpperCase()); });
+  const totalCountriesCount = Math.max(countriesSet.size, 1);
 
   const breadcrumbs = [
     { label: "MarineWorld.City", href: "/" },

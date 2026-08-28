@@ -10,96 +10,16 @@ import type {
 } from "@/lib/types";
 import { getCompanyInquiries } from "@/lib/connectStore";
 
-// In-memory store for platform events
+// In-memory store for platform events synced with Firestore /metrics
 let EVENT_STORE: PlatformEvent[] = [];
 const LISTENERS: Array<() => void> = [];
 
-// Seed initial realistic activity events for established companies
 function seedInitialEvents() {
-  if (EVENT_STORE.length > 0) return;
-
-  const now = new Date();
-  const daysToGenerate = 90;
-
-  // Companies to seed initial realistic demonstration events for
-  const seedCompanyIds = [
-    "crest-group-materials",
-    "vanguard-marine-engineering",
-    "oceanic-subsea-systems",
-  ];
-
-  seedCompanyIds.forEach((companyId) => {
-    // Generate deterministic pseudo-random baseline metrics over 90 days
-    for (let dayOffset = daysToGenerate; dayOffset >= 0; dayOffset--) {
-      const date = new Date(now.getTime() - dayOffset * 24 * 60 * 60 * 1000);
-      const isoStr = date.toISOString();
-
-      // Deterministic variation using dayOffset and companyId length
-      const seedVal = (dayOffset * 7 + companyId.length * 13) % 100;
-      
-      // Daily volumes
-      const dailyProfileViews = 15 + (seedVal % 25);
-      const dailyProductViews = 10 + (seedVal % 20);
-      const dailyServiceViews = 5 + (seedVal % 12);
-      const dailyCtaClicks = 2 + (seedVal % 5);
-      const dailySearchAppearances = 20 + (seedVal % 30);
-
-      // Record profile views
-      for (let i = 0; i < dailyProfileViews; i++) {
-        EVENT_STORE.push({
-          id: `evt-${companyId}-pv-${dayOffset}-${i}`,
-          eventType: "company_view",
-          companyId,
-          timestamp: new Date(date.getTime() + i * 30 * 60 * 1000).toISOString(),
-          sectorId: "marine",
-          sectorCityId: "southampton",
-        });
-      }
-
-      // Record product views
-      for (let i = 0; i < dailyProductViews; i++) {
-        const prodId = companyId === "crest-group-materials" 
-          ? (i % 2 === 0 ? "cg-prod-900" : "cg-prod-t700")
-          : `prod-${companyId}-${i % 3}`;
-        
-        EVENT_STORE.push({
-          id: `evt-${companyId}-prv-${dayOffset}-${i}`,
-          eventType: "product_view",
-          companyId,
-          productId: prodId,
-          timestamp: new Date(date.getTime() + i * 45 * 60 * 1000).toISOString(),
-          sectorId: "marine",
-        });
-      }
-
-      // Record service views
-      for (let i = 0; i < dailyServiceViews; i++) {
-        const servId = companyId === "crest-group-materials" ? "serv-cg-01" : `serv-${companyId}-1`;
-        EVENT_STORE.push({
-          id: `evt-${companyId}-srv-${dayOffset}-${i}`,
-          eventType: "service_view",
-          companyId,
-          serviceId: servId,
-          timestamp: new Date(date.getTime() + i * 60 * 60 * 1000).toISOString(),
-          sectorId: "marine",
-        });
-      }
-
-      // Record CTA Clicks
-      for (let i = 0; i < dailyCtaClicks; i++) {
-        EVENT_STORE.push({
-          id: `evt-${companyId}-cta-${dayOffset}-${i}`,
-          eventType: "cta_click",
-          companyId,
-          timestamp: new Date(date.getTime() + i * 120 * 60 * 1000).toISOString(),
-        });
-      }
-    }
-  });
+  // Pure Firestore mode
 }
 
-// Auto-seed on load
-seedInitialEvents();
+
+import { incrementCompanyMetric } from "@/lib/repositories/metricsRepository";
 
 /**
  * Record a canonical platform event (e.g. view, click, inquiry creation)
@@ -115,6 +35,21 @@ export function recordPlatformEvent(
 
   EVENT_STORE.push(newEvent);
   notifyListeners();
+
+  // Async persist to Firestore metrics
+  if (eventData.companyId) {
+    const fieldMap: Record<string, "profileViews" | "productViews" | "serviceViews" | "inquiriesCount"> = {
+      company_view: "profileViews",
+      product_view: "productViews",
+      service_view: "serviceViews",
+      inquiry_created: "inquiriesCount",
+    };
+    const field = fieldMap[eventData.eventType];
+    if (field) {
+      incrementCompanyMetric(eventData.companyId, field);
+    }
+  }
+
   return newEvent;
 }
 

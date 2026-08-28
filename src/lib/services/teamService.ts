@@ -4,6 +4,13 @@ import { getCompanyById } from "@/lib/services/companyService";
 import { getCurrentAuthSession, type AuthContext } from "@/lib/services/securityService";
 import { updateMemberRole, updateMembershipStatus, recordGovernanceAudit } from "@/lib/services/governanceService";
 import { buildInstitutionalEmailHtml, buildInstitutionalEmailText } from "@/lib/services/emailTemplates";
+import {
+  saveCompanyMember,
+  updateCompanyMemberRole as updateFirestoreMemberRole,
+  removeCompanyMember as removeFirestoreMember,
+  getCompanyMembers,
+  subscribeToCompanyMembers,
+} from "@/services/membershipService";
 
 export interface CompanyTeamMember {
   userId: string;
@@ -390,6 +397,13 @@ export function inviteTeamMember(
   };
 
   saveMember(newMemberEntity);
+  saveCompanyMember(companyId, newMemberEntity).catch((err) => {
+    console.warn("[TeamService] Firestore saveCompanyMember error:", err);
+  });
+
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("marineworld_members_updated", { detail: { companyId } }));
+  }
 
   const company = getCompanyById(companyId);
   const businessId = company?.businessId || `MW-BUS-${companyId.toUpperCase()}`;
@@ -506,6 +520,13 @@ export function resendInvitation(
   };
 
   saveMember(updated);
+  saveCompanyMember(companyId, updated).catch((err) => {
+    console.warn("[TeamService] Firestore resendInvitation error:", err);
+  });
+
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("marineworld_members_updated", { detail: { companyId } }));
+  }
 
   const company = getCompanyById(companyId);
   const businessId = company?.businessId || `MW-BUS-${companyId.toUpperCase()}`;
@@ -582,7 +603,14 @@ export function updateTeamMemberRole(
   auth?: AuthContext
 ): { success: boolean; error?: string } {
   const normRole = normalizeRole(newRole);
-  return updateMemberRole(companyId, targetUserId, normRole, auth);
+  updateFirestoreMemberRole(companyId, targetUserId, normRole).catch((err) => {
+    console.warn("[TeamService] Firestore update role error:", err);
+  });
+  const res = updateMemberRole(companyId, targetUserId, normRole, auth);
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("marineworld_members_updated", { detail: { companyId } }));
+  }
+  return res;
 }
 
 /**
@@ -601,7 +629,19 @@ export function suspendTeamMember(
     return { success: false, error: "Owner protection guard: Company Owner cannot be suspended." };
   }
 
-  return updateMembershipStatus(companyId, targetUserId, "SUSPENDED", currentAuth);
+  if (target) {
+    saveCompanyMember(companyId, {
+      ...target,
+      status: "SUSPENDED",
+      updatedAt: new Date().toISOString(),
+    }).catch(() => {});
+  }
+
+  const res = updateMembershipStatus(companyId, targetUserId, "SUSPENDED", currentAuth);
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("marineworld_members_updated", { detail: { companyId } }));
+  }
+  return res;
 }
 
 /**
@@ -613,7 +653,22 @@ export function reactivateTeamMember(
   auth?: AuthContext
 ): { success: boolean; error?: string } {
   const currentAuth = auth || getCurrentAuthSession();
-  return updateMembershipStatus(companyId, targetUserId, "ACTIVE", currentAuth);
+  const members = getCompanyTeam(companyId);
+  const target = members.find((m) => m.userId === targetUserId);
+
+  if (target) {
+    saveCompanyMember(companyId, {
+      ...target,
+      status: "ACTIVE",
+      updatedAt: new Date().toISOString(),
+    }).catch(() => {});
+  }
+
+  const res = updateMembershipStatus(companyId, targetUserId, "ACTIVE", currentAuth);
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("marineworld_members_updated", { detail: { companyId } }));
+  }
+  return res;
 }
 
 /**
@@ -639,6 +694,9 @@ export function revokeTeamMemberAccess(
     }
   }
 
+  removeFirestoreMember(companyId, targetUserId).catch((err) => {
+    console.warn("[TeamService] Firestore remove member error:", err);
+  });
   deleteMember(companyId, targetUserId);
 
   const company = getCompanyById(companyId);
@@ -653,6 +711,10 @@ export function revokeTeamMemberAccess(
     targetUserId,
     `Revoked company access for '${target.displayName}' (${target.businessEmail}).`
   );
+
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("marineworld_members_updated", { detail: { companyId } }));
+  }
 
   return { success: true };
 }

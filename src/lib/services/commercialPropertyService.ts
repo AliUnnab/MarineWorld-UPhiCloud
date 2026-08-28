@@ -817,6 +817,14 @@ function seedInitialCommercialLedger(): void {
 
 initializeCommercialInventory();
 
+let cachedAllInventoryList: CommercialDigitalProperty[] | null = null;
+let lastSweepTimestamp = 0;
+const SWEEP_INTERVAL_MS = 60_000; // run at most once per minute
+
+export function invalidateCommercialInventoryCache(): void {
+  cachedAllInventoryList = null;
+}
+
 // -------------------------------------------------------------
 // INVENTORY & READ ACCESSORS
 // -------------------------------------------------------------
@@ -829,7 +837,11 @@ export function getAllCommercialInventory(filters?: {
   initializeCommercialInventory();
   sweepExpiredHolds();
 
-  let list = Array.from(commercialInventoryStore.values());
+  if (!cachedAllInventoryList) {
+    cachedAllInventoryList = Array.from(commercialInventoryStore.values());
+  }
+
+  let list = cachedAllInventoryList;
 
   if (filters?.cityId) {
     list = list.filter((p) => p.cityId.toLowerCase() === filters.cityId!.toLowerCase());
@@ -852,14 +864,12 @@ export function getCommercialProperty(
   slotId: string
 ): CommercialDigitalProperty | undefined {
   initializeCommercialInventory();
-  sweepExpiredHolds();
   const key = getCommercialPropertyKey(cityId, regionCode, slotId);
   return commercialInventoryStore.get(key);
 }
 
 export function getCommercialPropertyByKey(canonicalKey: string): CommercialDigitalProperty | undefined {
   initializeCommercialInventory();
-  sweepExpiredHolds();
   return Array.from(commercialInventoryStore.values()).find(
     (p) => p.canonicalPropertyKey === canonicalKey || p.canonicalPropertyKey.toUpperCase() === canonicalKey.toUpperCase()
   );
@@ -871,8 +881,10 @@ export function getCommercialPropertyByKey(canonicalKey: string): CommercialDigi
  */
 export function getCompanyCommercialHoldings(companyId: string): CommercialDigitalProperty[] {
   initializeCommercialInventory();
-  sweepExpiredHolds();
-  return Array.from(commercialInventoryStore.values()).filter(
+  if (!cachedAllInventoryList) {
+    cachedAllInventoryList = Array.from(commercialInventoryStore.values());
+  }
+  return cachedAllInventoryList.filter(
     (p) =>
       (p.tenantCompanyId === companyId ||
         p.tenantCompanyId?.toLowerCase() === companyId.toLowerCase()) &&

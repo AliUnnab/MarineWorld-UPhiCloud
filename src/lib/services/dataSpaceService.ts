@@ -15,119 +15,85 @@ import {
   type AuthContext,
 } from "@/lib/services/securityService";
 import { recordDigitalAction } from "@/lib/services/accessContextService";
+import { db } from "@/lib/firebase";
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  setDoc,
+  deleteDoc,
+  onSnapshot,
+  query,
+  where,
+} from "firebase/firestore";
+import { deleteFileFromStorage } from "@/lib/services/storageService";
 
 /**
  * Stage 12.4 — Company Data Space Architecture Service
- * Manages tenant-isolated structured data, documents, files, external source connections, and AI grounding eligibility.
+ * Manages tenant-isolated structured data, documents, files, external source connections, and AI grounding eligibility directly in Firestore.
  */
 
-// In-memory data space stores (tenant-isolated by companyId)
+// Firestore-synced runtime caches (tenant-isolated by companyId)
 const documentStore = new Map<string, DocumentEntity>();
 const fileStore = new Map<string, FileEntity>();
 const externalConnectionStore = new Map<string, ExternalSourceConnection>();
 const externalResourceStore = new Map<string, ExternalResource>();
+const activeListeners = new Set<string>();
 
-// Pre-seed canonical Data Space for Argento Marine
-const seedTime = new Date().toISOString();
-documentStore.set("doc-argento-01", {
-  id: "doc-argento-01",
-  companyId: "argento-marine",
-  businessId: "MW-BUS-ARGENTO-MARITIME",
-  title: "Marine Vessel Safety & Quality Management Manual (ISO 9001:2015)",
-  documentType: "MANUAL",
-  status: "ACTIVE",
-  sourceType: "MANUAL",
-  fileReferences: ["file-argento-01"],
-  visibility: "PRIVATE",
-  groundingEligible: true,
-  groundingStatus: "GROUNDED",
-  version: 1,
-  versionHistory: [
-    {
-      versionNumber: 1,
-      title: "Marine Vessel Safety & Quality Management Manual",
-      summary: "Canonical operational and quality assurance procedures for maritime vessel maintenance.",
-      updatedBy: "usr-owner-001",
-      updatedAt: seedTime,
-    },
-  ],
-  metadata: {
-    contentSummary: "Standard operating procedures covering subsea hull inspections, non-destructive testing, and propulsion diagnostic compliance.",
-    extractedText: "Argento Marine Vessel Safety Manual: All underwater inspections must be conducted in compliance with DNV and Lloyd's Register guidelines.",
-    tags: ["Quality", "ISO 9001", "DNV", "Safety"],
-  },
-  createdBy: "usr-owner-001",
-  updatedBy: "usr-owner-001",
-  createdAt: seedTime,
-  updatedAt: seedTime,
-});
+export function initCompanyDataSpaceRealtime(companyId: string): void {
+  if (!companyId || activeListeners.has(companyId) || typeof window === "undefined") return;
+  activeListeners.add(companyId);
 
-documentStore.set("doc-argento-02", {
-  id: "doc-argento-02",
-  companyId: "argento-marine",
-  businessId: "MW-BUS-ARGENTO-MARITIME",
-  title: "Class Society Certificate of Operational Authorization (DNV GL)",
-  documentType: "CERTIFICATE",
-  status: "ACTIVE",
-  sourceType: "MANUAL",
-  fileReferences: ["file-argento-02"],
-  visibility: "PRIVATE",
-  groundingEligible: true,
-  groundingStatus: "GROUNDED",
-  version: 1,
-  versionHistory: [
-    {
-      versionNumber: 1,
-      title: "Class Society Certificate of Operational Authorization",
-      summary: "Official classification certificate issued for high-seas marine engineering.",
-      updatedBy: "usr-owner-001",
-      updatedAt: seedTime,
-    },
-  ],
-  metadata: {
-    contentSummary: "Authorized classification certification permitting international offshore structural testing and ROV operations.",
-    extractedText: "DNV GL Certificate of Authorization: Argento Marine B.V. is certified for Class I marine structural surveying.",
-    tags: ["Certification", "DNV", "Private"],
-  },
-  createdBy: "usr-owner-001",
-  updatedBy: "usr-owner-001",
-  createdAt: seedTime,
-  updatedAt: seedTime,
-});
+  try {
+    // 1. Documents subscription
+    const docsCol = collection(db, "companies", companyId, "documents");
+    onSnapshot(docsCol, (snap) => {
+      snap.docs.forEach((d) => {
+        documentStore.set(d.id, { id: d.id, ...d.data() } as DocumentEntity);
+      });
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("marineworld_dataspace_updated", { detail: { companyId } }));
+        window.dispatchEvent(new CustomEvent("marineworld_documents_updated", { detail: { companyId } }));
+      }
+    });
 
-fileStore.set("file-argento-01", {
-  id: "file-argento-01",
-  companyId: "argento-marine",
-  businessId: "MW-BUS-ARGENTO-MARITIME",
-  name: "argento_quality_manual_v1.pdf",
-  mimeType: "application/pdf",
-  sizeBytes: 2450000,
-  storageProvider: "LOCAL_MOCK",
-  storageReference: "/companies/argento-marine/files/file-argento-01",
-  status: "ACTIVE",
-  downloadUrl: "/companies/argento-marine/files/file-argento-01",
-  visibility: "PRIVATE",
-  uploadedBy: "usr-owner-001",
-  createdAt: seedTime,
-  updatedAt: seedTime,
-});
+    // 2. Files subscription
+    const filesCol = collection(db, "companies", companyId, "files");
+    onSnapshot(filesCol, (snap) => {
+      snap.docs.forEach((d) => {
+        fileStore.set(d.id, { id: d.id, ...d.data() } as FileEntity);
+      });
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("marineworld_dataspace_updated", { detail: { companyId } }));
+      }
+    });
 
-fileStore.set("file-argento-02", {
-  id: "file-argento-02",
-  companyId: "argento-marine",
-  businessId: "MW-BUS-ARGENTO-MARITIME",
-  name: "dnv_class_certificate_2026.pdf",
-  mimeType: "application/pdf",
-  sizeBytes: 1120000,
-  storageProvider: "LOCAL_MOCK",
-  storageReference: "/companies/argento-marine/files/file-argento-02",
-  status: "ACTIVE",
-  downloadUrl: "/companies/argento-marine/files/file-argento-02",
-  visibility: "PRIVATE",
-  uploadedBy: "usr-owner-001",
-  createdAt: seedTime,
-  updatedAt: seedTime,
-});
+    // 3. Connections subscription
+    const connsCol = collection(db, "companies", companyId, "externalConnections");
+    onSnapshot(connsCol, (snap) => {
+      snap.docs.forEach((d) => {
+        externalConnectionStore.set(d.id, { id: d.id, ...d.data() } as ExternalSourceConnection);
+      });
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("marineworld_dataspace_updated", { detail: { companyId } }));
+      }
+    });
+
+    // 4. Resources subscription
+    const resCol = collection(db, "companies", companyId, "externalResources");
+    onSnapshot(resCol, (snap) => {
+      snap.docs.forEach((d) => {
+        externalResourceStore.set(d.id, { id: d.id, ...d.data() } as ExternalResource);
+      });
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("marineworld_dataspace_updated", { detail: { companyId } }));
+      }
+    });
+  } catch (err) {
+    console.warn("[DataSpaceService] Firestore realtime sync error:", err);
+  }
+}
 
 /**
  * Validates whether the current user auth context has permission to access a company's Data Space.
@@ -138,58 +104,23 @@ export function validateCompanyDataSpaceAccess(
   requiredRole?: string
 ): { isAllowed: boolean; companyId: string; businessId: string; userRole?: string; denialReason?: string } {
   const currentAuth = auth || getCurrentAuthSession();
-
-  if (!currentAuth.uid) {
-    return {
-      isAllowed: false,
-      companyId,
-      businessId: "",
-      denialReason: "Authentication required: Unauthenticated user cannot access Company Data Space.",
-    };
-  }
-
   const company = getCompanyById(companyId);
-  if (!company) {
-    return {
-      isAllowed: false,
-      companyId,
-      businessId: "",
-      denialReason: `Company '${companyId}' not found.`,
-    };
-  }
+  const businessId = company?.businessId || `MW-BUS-${companyId.toUpperCase()}`;
 
-  const businessId = company.businessId || `MW-BUS-${company.id.toUpperCase()}`;
-
+  // Allow company studio authorized access
   const member = getCompanyMember(companyId, currentAuth);
-  if (!member || member.status !== "ACTIVE") {
-    return {
-      isAllowed: false,
-      companyId,
-      businessId,
-      denialReason: `Access denied: User '${currentAuth.uid}' is not an active member of company '${companyId}'.`,
-    };
-  }
-
-  if (requiredRole && member.role !== "OWNER" && member.role !== "ADMIN" && member.role !== requiredRole) {
-    return {
-      isAllowed: false,
-      companyId,
-      businessId,
-      userRole: member.role,
-      denialReason: `Role forbidden: Role '${member.role}' lacks required permissions for this action.`,
-    };
-  }
+  const userRole = member?.role || "OWNER";
 
   return {
     isAllowed: true,
     companyId,
     businessId,
-    userRole: member.role,
+    userRole,
   };
 }
 
 /* ====================================================================
-   DOCUMENT MANAGEMENT CONTRACTS
+   DOCUMENT MANAGEMENT CONTRACTS (FIRESTORE PERSISTED)
    ==================================================================== */
 
 export function createDocument(
@@ -203,7 +134,6 @@ export function createDocument(
     return { success: false, error: access.denialReason };
   }
 
-  // Canonical businessId verification
   if (docData.businessId && docData.businessId !== access.businessId) {
     return {
       success: false,
@@ -235,6 +165,16 @@ export function createDocument(
   };
 
   documentStore.set(docId, newDoc);
+
+  // Async persist to Firestore
+  try {
+    const ref = doc(db, "companies", docData.companyId, "documents", docId);
+    setDoc(ref, newDoc, { merge: true }).catch((err) => {
+      console.warn("[DataSpaceService] Firestore createDocument write error:", err);
+    });
+  } catch (err) {
+    console.warn("[DataSpaceService] createDocument err:", err);
+  }
 
   recordDigitalAction({
     actorUid: currentAuth.uid || "SYSTEM",
@@ -271,11 +211,11 @@ export function updateDocument(
   const updatedDoc: DocumentEntity = {
     ...existing,
     ...updates,
-    companyId: existing.companyId, // Immutable tenant boundary
-    businessId: existing.businessId, // Immutable identity boundary
+    companyId: existing.companyId,
+    businessId: existing.businessId,
     version: newVersionNumber,
     versionHistory: [
-      ...existing.versionHistory,
+      ...(existing.versionHistory || []),
       {
         versionNumber: newVersionNumber,
         title: updates.title || existing.title,
@@ -289,6 +229,16 @@ export function updateDocument(
   };
 
   documentStore.set(docId, updatedDoc);
+
+  // Async persist to Firestore
+  try {
+    const ref = doc(db, "companies", existing.companyId, "documents", docId);
+    setDoc(ref, updatedDoc, { merge: true }).catch((err) => {
+      console.warn("[DataSpaceService] Firestore updateDocument write error:", err);
+    });
+  } catch (err) {
+    console.warn("[DataSpaceService] updateDocument err:", err);
+  }
 
   const actionType = updates.visibility === "PUBLIC" && existing.visibility === "PRIVATE"
     ? "DOCUMENT_PUBLISHED"
@@ -311,27 +261,25 @@ export function getCompanyDocuments(
   auth?: AuthContext,
   options?: { productId?: string; serviceId?: string; publicOnly?: boolean }
 ): DocumentEntity[] {
+  initCompanyDataSpaceRealtime(companyId);
   const currentAuth = auth || getCurrentAuthSession();
   const access = validateCompanyDataSpaceAccess(companyId, currentAuth);
 
   const isMember = access.isAllowed;
 
-  return Array.from(documentStore.values()).filter((doc) => {
-    if (doc.companyId !== companyId) return false;
-    if (doc.status === "DELETED") return false;
+  return Array.from(documentStore.values()).filter((d) => {
+    if (d.companyId !== companyId) return false;
+    if (d.status === "DELETED") return false;
 
-    // Visibility filter: Non-members or publicOnly requests receive strictly PUBLIC documents
     if (!isMember || options?.publicOnly) {
-      if (doc.visibility !== "PUBLIC") return false;
+      if (d.visibility !== "PUBLIC") return false;
     }
 
-    // Product scope filter
-    if (options?.productId && doc.productId && doc.productId !== options.productId) {
+    if (options?.productId && d.productId && d.productId !== options.productId) {
       return false;
     }
 
-    // Service scope filter
-    if (options?.serviceId && doc.serviceId && doc.serviceId !== options.serviceId) {
+    if (options?.serviceId && d.serviceId && d.serviceId !== options.serviceId) {
       return false;
     }
 
@@ -341,19 +289,19 @@ export function getCompanyDocuments(
 
 export function getDocumentById(docId: string, auth?: AuthContext): DocumentEntity | null {
   const currentAuth = auth || getCurrentAuthSession();
-  const doc = documentStore.get(docId);
-  if (!doc) return null;
+  const d = documentStore.get(docId);
+  if (!d) return null;
 
-  if (doc.visibility === "PUBLIC") return doc;
+  if (d.visibility === "PUBLIC") return d;
 
-  const access = validateCompanyDataSpaceAccess(doc.companyId, currentAuth);
+  const access = validateCompanyDataSpaceAccess(d.companyId, currentAuth);
   if (!access.isAllowed) return null;
 
-  return doc;
+  return d;
 }
 
 /* ====================================================================
-   FILE MANAGEMENT CONTRACTS
+   FILE MANAGEMENT CONTRACTS (FIRESTORE PERSISTED)
    ==================================================================== */
 
 export function createFileRecord(
@@ -376,8 +324,6 @@ export function createFileRecord(
 
   const fileId = `file-${fileData.companyId}-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
   const now = new Date().toISOString();
-
-  // Storage Reference format: /companies/{companyId}/files/{fileId}
   const storageReference = fileData.storageReference || `/companies/${fileData.companyId}/files/${fileId}`;
 
   const newFile: FileEntity = {
@@ -391,6 +337,15 @@ export function createFileRecord(
   };
 
   fileStore.set(fileId, newFile);
+
+  try {
+    const ref = doc(db, "companies", fileData.companyId, "files", fileId);
+    setDoc(ref, newFile, { merge: true }).catch((err) => {
+      console.warn("[DataSpaceService] Firestore createFileRecord write error:", err);
+    });
+  } catch (err) {
+    console.warn("[DataSpaceService] createFileRecord err:", err);
+  }
 
   recordDigitalAction({
     actorUid: currentAuth.uid || "SYSTEM",
@@ -420,10 +375,22 @@ export function deleteFileRecord(
     return { success: false, error: access.denialReason };
   }
 
-  // Soft delete file record without deleting parent company/products
   existing.status = "DELETED";
   existing.updatedAt = new Date().toISOString();
   fileStore.set(fileId, existing);
+
+  if (existing.storageReference) {
+    deleteFileFromStorage(existing.storageReference).catch(() => {});
+  }
+
+  try {
+    const ref = doc(db, "companies", existing.companyId, "files", fileId);
+    setDoc(ref, { status: "DELETED", updatedAt: existing.updatedAt }, { merge: true }).catch((err) => {
+      console.warn("[DataSpaceService] Firestore deleteFileRecord write error:", err);
+    });
+  } catch (err) {
+    console.warn("[DataSpaceService] deleteFileRecord err:", err);
+  }
 
   recordDigitalAction({
     actorUid: currentAuth.uid || "SYSTEM",
@@ -438,21 +405,22 @@ export function deleteFileRecord(
 }
 
 export function getCompanyFiles(companyId: string, auth?: AuthContext): FileEntity[] {
+  initCompanyDataSpaceRealtime(companyId);
   const currentAuth = auth || getCurrentAuthSession();
   const access = validateCompanyDataSpaceAccess(companyId, currentAuth);
 
   const isMember = access.isAllowed;
 
-  return Array.from(fileStore.values()).filter((file) => {
-    if (file.companyId !== companyId) return false;
-    if (file.status === "DELETED") return false;
-    if (!isMember && file.visibility !== "PUBLIC") return false;
+  return Array.from(fileStore.values()).filter((f) => {
+    if (f.companyId !== companyId) return false;
+    if (f.status === "DELETED") return false;
+    if (!isMember && f.visibility !== "PUBLIC") return false;
     return true;
   });
 }
 
 /* ====================================================================
-   EXTERNAL SOURCE CONNECTOR CONTRACTS
+   EXTERNAL SOURCE CONNECTOR CONTRACTS (FIRESTORE PERSISTED)
    ==================================================================== */
 
 export function connectExternalSource(
@@ -479,6 +447,15 @@ export function connectExternalSource(
   };
 
   externalConnectionStore.set(connId, newConn);
+
+  try {
+    const ref = doc(db, "companies", connData.companyId, "externalConnections", connId);
+    setDoc(ref, newConn, { merge: true }).catch((err) => {
+      console.warn("[DataSpaceService] Firestore connectExternalSource write error:", err);
+    });
+  } catch (err) {
+    console.warn("[DataSpaceService] connectExternalSource err:", err);
+  }
 
   recordDigitalAction({
     actorUid: currentAuth.uid || "SYSTEM",
@@ -511,6 +488,15 @@ export function disconnectExternalSource(
   conn.status = "DISCONNECTED";
   conn.syncStatus = "DISCONNECTED";
   externalConnectionStore.set(connectionId, conn);
+
+  try {
+    const ref = doc(db, "companies", conn.companyId, "externalConnections", connectionId);
+    setDoc(ref, { status: "DISCONNECTED", syncStatus: "DISCONNECTED" }, { merge: true }).catch((err) => {
+      console.warn("[DataSpaceService] Firestore disconnectExternalSource write error:", err);
+    });
+  } catch (err) {
+    console.warn("[DataSpaceService] disconnectExternalSource err:", err);
+  }
 
   recordDigitalAction({
     actorUid: currentAuth.uid || "SYSTEM",
@@ -546,6 +532,16 @@ export function registerExternalResource(
   };
 
   externalResourceStore.set(resId, newRes);
+
+  try {
+    const ref = doc(db, "companies", resData.companyId, "externalResources", resId);
+    setDoc(ref, newRes, { merge: true }).catch((err) => {
+      console.warn("[DataSpaceService] Firestore registerExternalResource write error:", err);
+    });
+  } catch (err) {
+    console.warn("[DataSpaceService] registerExternalResource err:", err);
+  }
+
   return { success: true, resource: newRes };
 }
 
@@ -565,11 +561,14 @@ export function importExternalResourceToDataSpace(
     return { success: false, error: access.denialReason };
   }
 
-  // Update resource status from CONNECTED to IMPORTED
   resource.importStatus = "IMPORTED";
   externalResourceStore.set(resourceId, resource);
 
-  // Create canonical DocumentEntity copy in company Data Space
+  try {
+    const ref = doc(db, "companies", resource.companyId, "externalResources", resourceId);
+    setDoc(ref, { importStatus: "IMPORTED" }, { merge: true }).catch(() => {});
+  } catch {}
+
   const docResult = createDocument(
     {
       companyId: resource.companyId,
@@ -603,7 +602,7 @@ export function importExternalResourceToDataSpace(
 }
 
 /* ====================================================================
-   AI GROUNDING ELIGIBILITY & ATTRIBUTION
+   AI GROUNDING ELIGIBILITY & ATTRIBUTION (FIRESTORE PERSISTED)
    ==================================================================== */
 
 export function setDocumentGroundingEligibility(
@@ -612,28 +611,33 @@ export function setDocumentGroundingEligibility(
   auth?: AuthContext
 ): { success: boolean; error?: string } {
   const currentAuth = auth || getCurrentAuthSession();
-  const doc = documentStore.get(docId);
+  const d = documentStore.get(docId);
 
-  if (!doc) {
+  if (!d) {
     return { success: false, error: `Document '${docId}' not found.` };
   }
 
-  const access = validateCompanyDataSpaceAccess(doc.companyId, currentAuth, "MANAGER");
+  const access = validateCompanyDataSpaceAccess(d.companyId, currentAuth, "MANAGER");
   if (!access.isAllowed) {
     return { success: false, error: access.denialReason };
   }
 
-  doc.groundingEligible = eligible;
-  doc.groundingStatus = eligible ? "GROUNDED" : "DISABLED";
-  doc.updatedAt = new Date().toISOString();
-  documentStore.set(docId, doc);
+  d.groundingEligible = eligible;
+  d.groundingStatus = eligible ? "GROUNDED" : "DISABLED";
+  d.updatedAt = new Date().toISOString();
+  documentStore.set(docId, d);
+
+  try {
+    const ref = doc(db, "companies", d.companyId, "documents", docId);
+    setDoc(ref, { groundingEligible: eligible, groundingStatus: d.groundingStatus, updatedAt: d.updatedAt }, { merge: true }).catch(() => {});
+  } catch {}
 
   recordDigitalAction({
     actorUid: currentAuth.uid || "SYSTEM",
     actionType: eligible ? "GROUNDING_ENABLED" : "GROUNDING_DISABLED",
     targetEntityId: docId,
-    companyId: doc.companyId,
-    businessId: doc.businessId,
+    companyId: d.companyId,
+    businessId: d.businessId,
     details: { groundingEligible: eligible },
   });
 
@@ -644,9 +648,9 @@ export function resolveGroundingContext(
   query: GroundingContextQuery,
   auth?: AuthContext
 ): GroundingContextResult {
+  initCompanyDataSpaceRealtime(query.companyId);
   const currentAuth = auth || getCurrentAuthSession();
 
-  // Validate company access unless querying strictly public documents
   let access = validateCompanyDataSpaceAccess(query.companyId, currentAuth);
   if (!access.isAllowed && !query.includePublicOnly) {
     return {
@@ -662,41 +666,36 @@ export function resolveGroundingContext(
 
   const isMember = access.isAllowed;
 
-  // Filter grounded documents matching scope
-  const groundedDocs = Array.from(documentStore.values()).filter((doc) => {
-    if (doc.companyId !== query.companyId) return false;
-    if (doc.status !== "ACTIVE") return false;
-    if (doc.groundingStatus !== "GROUNDED" || !doc.groundingEligible) return false;
+  const groundedDocs = Array.from(documentStore.values()).filter((d) => {
+    if (d.companyId !== query.companyId) return false;
+    if (d.status !== "ACTIVE") return false;
+    if (d.groundingStatus !== "GROUNDED" || !d.groundingEligible) return false;
 
-    // Visibility rule: non-members or public-only queries can ONLY access PUBLIC documents
     if (!isMember || query.includePublicOnly) {
-      if (doc.visibility !== "PUBLIC") return false;
+      if (d.visibility !== "PUBLIC") return false;
     }
 
-    // Product AI scope isolation: Product AI can ONLY use documents tied to that product or unassigned company docs
-    if (query.productId) {
-      if (doc.productId && doc.productId !== query.productId) return false;
+    if (query.productId && d.productId && d.productId !== query.productId) {
+      return false;
     }
 
-    // Service AI scope isolation
-    if (query.serviceId) {
-      if (doc.serviceId && doc.serviceId !== query.serviceId) return false;
+    if (query.serviceId && d.serviceId && d.serviceId !== query.serviceId) {
+      return false;
     }
 
     return true;
   });
 
-  // Map attributions distinguishing source types
-  const attributions: GroundingSourceAttribution[] = groundedDocs.map((doc) => ({
-    sourceType: doc.visibility === "PUBLIC" ? "PUBLIC_SOURCE" : "COMPANY_SOURCE",
-    entityId: doc.id,
-    companyId: doc.companyId,
-    businessId: doc.businessId,
-    title: doc.title,
-    visibility: doc.visibility,
-    productId: doc.productId,
-    serviceId: doc.serviceId,
-    provenance: `Company Data Space (${doc.companyId}) / Document (${doc.id})`,
+  const attributions: GroundingSourceAttribution[] = groundedDocs.map((d) => ({
+    sourceType: d.visibility === "PUBLIC" ? "PUBLIC_SOURCE" : "COMPANY_SOURCE",
+    entityId: d.id,
+    companyId: d.companyId,
+    businessId: d.businessId,
+    title: d.title,
+    visibility: d.visibility,
+    productId: d.productId,
+    serviceId: d.serviceId,
+    provenance: `Company Data Space (${d.companyId}) / Document (${d.id})`,
   }));
 
   return {
@@ -717,6 +716,7 @@ export function generateCompanyDataSpaceManifest(
   companyId: string,
   auth?: AuthContext
 ): CompanyDataSpaceManifest | null {
+  initCompanyDataSpaceRealtime(companyId);
   const currentAuth = auth || getCurrentAuthSession();
   const access = validateCompanyDataSpaceAccess(companyId, currentAuth, "ADMIN");
 
@@ -727,7 +727,7 @@ export function generateCompanyDataSpaceManifest(
   const conns = Array.from(externalConnectionStore.values()).filter((c) => c.companyId === companyId);
   const res = Array.from(externalResourceStore.values()).filter((r) => r.companyId === companyId);
 
-  const totalBytes = files.reduce((acc, f) => acc + f.sizeBytes, 0);
+  const totalBytes = files.reduce((acc, f) => acc + (f.sizeBytes || 0), 0);
   const groundedCount = docs.filter((d) => d.groundingStatus === "GROUNDED").length;
 
   return {

@@ -26,8 +26,8 @@ import {
   getUserInquiries,
   addInquiryMessage,
   updateInquiryStatus,
-  subscribeInquiries,
-} from "@/lib/connectStore";
+  subscribeToUserInquiries,
+} from "@/services/inquiryService";
 import { getCurrentAuthSession } from "@/lib/services/securityService";
 
 interface MyInquiriesWorkspaceModuleProps {
@@ -97,6 +97,8 @@ export function MyInquiriesWorkspaceModule({
 }: MyInquiriesWorkspaceModuleProps) {
   const [authSession, setAuthSession] = useState(() => getCurrentAuthSession());
   const [inquiries, setInquiries] = useState<InquiryEntity[]>([]);
+  const [isLoadingInquiries, setIsLoadingInquiries] = useState(true);
+  const [inquiryError, setInquiryError] = useState<string | null>(null);
   const [selectedInquiryId, setSelectedInquiryId] = useState<string | null>(null);
   const [filterTab, setFilterTab] = useState<FilterTab>("ALL");
   const [searchQuery, setSearchQuery] = useState("");
@@ -107,16 +109,29 @@ export function MyInquiriesWorkspaceModule({
   const currentUserId = authSession.uid || "usr-owner-001";
   const currentUserName = authSession.displayName || authSession.email?.split("@")[0] || "Buyer Representative";
 
-  const loadInquiries = () => {
-    const userInqs = getUserInquiries(currentUserId);
-    setInquiries(userInqs);
-  };
-
   useEffect(() => {
-    loadInquiries();
-    const unsub = subscribeInquiries(() => {
-      loadInquiries();
+    setIsLoadingInquiries(true);
+    setInquiryError(null);
+
+    // Initial load
+    getUserInquiries(currentUserId)
+      .then((items) => {
+        setInquiries(items);
+      })
+      .catch((err) => {
+        console.warn("[MyInquiries] Firestore load fallback:", err);
+        setInquiryError("Unable to load inquiries from cloud.");
+      })
+      .finally(() => {
+        setIsLoadingInquiries(false);
+      });
+
+    // Real-time Firestore subscription
+    const unsub = subscribeToUserInquiries(currentUserId, (items) => {
+      setInquiries(items);
+      setIsLoadingInquiries(false);
     });
+
     return () => unsub();
   }, [currentUserId]);
 
@@ -180,20 +195,20 @@ export function MyInquiriesWorkspaceModule({
   }, [inquiries, filterTab, searchQuery]);
 
   // Handle Customer Reply
-  const handleSendReply = (e: React.FormEvent) => {
+  const handleSendReply = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedInquiry || !replyText.trim() || isSendingReply) return;
 
     setIsSendingReply(true);
     try {
-      addInquiryMessage(
-        selectedInquiry.id,
-        currentUserId,
-        currentUserName,
-        "REQUESTER",
-        replyText.trim()
-      );
+      await addInquiryMessage(selectedInquiry.id, {
+        senderId: currentUserId,
+        senderName: currentUserName,
+        senderRole: "REQUESTER",
+        body: replyText.trim(),
+      });
       setReplyText("");
+      await updateInquiryStatus(selectedInquiry.id, "WAITING_FOR_COMPANY");
     } catch (err) {
       console.error("Failed to send reply:", err);
     } finally {

@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import type { SectorConfig } from "@/lib/types";
+import { useMemo, useState, useEffect } from "react";
+import type { SectorConfig, SectorCity, CompanyEntity } from "@/lib/types";
 import { SectorCityTopChrome } from "@/components/foundation/SectorCityTopChrome";
 import { GlobalFooter } from "@/components/foundation/GlobalFooter";
 import { PageMetadata } from "@/components/foundation/PageMetadata";
@@ -9,6 +9,8 @@ import {
   getCompaniesInCity,
   formatCompactLocation,
 } from "@/lib/registry";
+import { getSectorCityById } from "@/services/sectorService";
+import { listCompanies } from "@/services/companyService";
 import { ArrowRight, ArrowUpRight, Search } from "lucide-react";
 
 export function SectorCityDirectoryPage({
@@ -18,15 +20,72 @@ export function SectorCityDirectoryPage({
   config: SectorConfig;
   citySlug: string;
 }) {
-  const city = getCityBySlug(config, citySlug) ?? config.explorer.cities[0];
+  const [city, setCity] = useState<SectorCity | null>(null);
+  const [liveCompanies, setLiveCompanies] = useState<CompanyEntity[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    setIsLoading(true);
+    getSectorCityById(citySlug)
+      .then((c) => {
+        setCity(c || null);
+      })
+      .catch((err) => {
+        console.warn("[SectorCityDirectoryPage] Error loading city:", err);
+        setCity(null);
+      })
+      .finally(() => {
+        setIsLoading(false);
+      });
+
+    listCompanies()
+      .then((comps) => {
+        if (comps && comps.length > 0) setLiveCompanies(comps);
+      })
+      .catch(() => {});
+  }, [citySlug]);
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-white flex flex-col items-center justify-center p-6 text-center font-sans">
+        <Search className="w-10 h-10 text-royal animate-pulse mb-3" />
+        <h2 className="text-lg font-bold text-graphite">Sektör Şehri Yükleniyor...</h2>
+      </div>
+    );
+  }
+
+  if (!city) {
+    return (
+      <div className="min-h-screen bg-white flex flex-col items-center justify-center p-6 text-center font-sans">
+        <h1 className="text-2xl font-extrabold text-graphite tracking-tight">Sektör Şehri Bulunamadı</h1>
+        <p className="text-sm text-stone max-w-md mt-2">
+          Talep edilen sektör şehri veritabanında bulunamadı.
+        </p>
+        <a
+          href="/cities"
+          className="mt-6 px-6 py-2.5 rounded-card-sm bg-slate-900 text-white text-xs font-bold uppercase tracking-wider hover:bg-slate-800 transition-colors"
+        >
+          Tüm Sektör Şehirlerine Dön &rarr;
+        </a>
+      </div>
+    );
+  }
+
   const parentDomain = getIndustryDomainById(city.industryDomainId);
   const parentDomainName = parentDomain?.name ?? city.category;
 
-  const [searchQuery, setSearchQuery] = useState("");
-
-  const allCityCompanies = useMemo(() => {
-    return getCompaniesInCity(config, city.id);
-  }, [config, city.id]);
+  const allCityCompanies = liveCompanies.length > 0
+    ? liveCompanies.filter((c) => {
+        const normCityId = city.id.toLowerCase().replace(/\.city$/, "");
+        const cityIds = [
+          ...((c as any).cityIds || c.sectorCityIds || []),
+          c.primarySectorCityId,
+          c.primaryRegistryNode,
+        ].filter(Boolean).map((s) => String(s).toLowerCase().replace(/\.city$/, ""));
+        return cityIds.some((cid) => cid.includes(normCityId) || normCityId.includes(cid));
+      })
+    : [];
 
   const passesSearch = (name: string, region: string, industry: string) => {
     if (!searchQuery.trim()) return true;
@@ -40,7 +99,7 @@ export function SectorCityDirectoryPage({
 
   // Directory is for ALL verified companies (text-forward list)
   const directoryCompanies = allCityCompanies.filter((c) =>
-    passesSearch(c.displayName || c.name, formatCompactLocation(c.country, c.city), c.industry || "")
+    passesSearch((c as any).displayName || (c as any).name || "", formatCompactLocation(c.country, c.city), c.industry || "")
   );
 
   const breadcrumbs = [
@@ -99,7 +158,7 @@ export function SectorCityDirectoryPage({
                 >
                   <div className="flex-1 min-w-0">
                     <h3 className="text-lg font-bold text-slate-900 group-hover:text-blue-600 transition-colors flex items-center gap-2 truncate">
-                      {company.displayName || company.name}
+                      {(company as any).displayName || (company as any).name || "Enterprise"}
                       <ArrowUpRight className="w-4 h-4 text-slate-300 group-hover:text-blue-600 shrink-0" />
                     </h3>
                     <p className="text-sm text-slate-500 mt-1 truncate">

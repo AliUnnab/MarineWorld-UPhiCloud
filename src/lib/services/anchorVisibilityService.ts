@@ -1,5 +1,7 @@
 import { SectorConfig } from "@/lib/types";
 import { getCityAnchor, isCompanyAnchor } from "@/lib/registry";
+import { db } from "@/lib/firebase";
+import { collection, doc, setDoc, getDocs, query, where, limit } from "firebase/firestore";
 
 export type AdvisorOpenSource = "sector_city_page" | "directory_compact_strip" | "company_page";
 
@@ -30,31 +32,46 @@ export interface AnchorVisibilityReport {
   bySource: AnchorSourceBreakdown;
   recentEvents: AdvisorOpenEvent[];
   lastImpressionAt: string | null;
-  storageMode: "CLIENT_PERSISTED_TELEMETRY";
+  storageMode: "FIRESTORE_PERSISTED_TELEMETRY";
   telemetryNotice: string;
 }
 
-const STORAGE_KEY = "mw_advisor_visibility_events_v1";
 const EVENT_NAME = "mw_advisor_open_event_recorded";
+const memoryEventsStore: AdvisorOpenEvent[] = [];
 
 /**
- * Retrieve raw persisted event log from browser storage
+ * Retrieve raw persisted event log from runtime store
  */
 export function getAllAdvisorOpenEvents(): AdvisorOpenEvent[] {
-  if (typeof window === "undefined") return [];
+  return memoryEventsStore;
+}
+
+/**
+ * Async fetch events from Firestore collection anchorVisibilityEvents
+ */
+export async function fetchAnchorVisibilityEventsFromFirestore(companyId?: string): Promise<AdvisorOpenEvent[]> {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch (e) {
-    console.error("Failed to read advisor open events:", e);
-    return [];
+    const colRef = collection(db, "anchorVisibilityEvents");
+    let q = query(colRef, limit(100));
+    if (companyId) {
+      q = query(colRef, where("anchorCompanyId", "==", companyId.toLowerCase()), limit(100));
+    }
+    const snap = await getDocs(q);
+    const events = snap.docs.map((d) => d.data() as AdvisorOpenEvent);
+    events.forEach((evt) => {
+      if (!memoryEventsStore.some((m) => m.id === evt.id)) {
+        memoryEventsStore.push(evt);
+      }
+    });
+    return events;
+  } catch (err) {
+    console.warn("[AnchorVisibilityService] Firestore fetch error:", err);
+    return memoryEventsStore;
   }
 }
 
 /**
- * Record a genuine City Advisor open event
+ * Record a genuine City Advisor open event to Firestore and runtime store
  */
 export function recordAdvisorOpenEvent(payload: {
   cityId: string;
@@ -77,20 +94,25 @@ export function recordAdvisorOpenEvent(payload: {
     anchorCompanyName: payload.anchorCompanyName,
   };
 
-  if (typeof window !== "undefined") {
-    try {
-      const existing = getAllAdvisorOpenEvents();
-      // Keep up to last 500 events to prevent unbounded localStorage growth
-      const updated = [newEvent, ...existing].slice(0, 500);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+  memoryEventsStore.unshift(newEvent);
+  if (memoryEventsStore.length > 500) {
+    memoryEventsStore.pop();
+  }
 
-      // Notify in-session subscribers
-      window.dispatchEvent(
-        new CustomEvent(EVENT_NAME, { detail: newEvent })
-      );
-    } catch (e) {
-      console.error("Failed to persist advisor open event:", e);
-    }
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(
+      new CustomEvent(EVENT_NAME, { detail: newEvent })
+    );
+  }
+
+  // Asynchronously record to Firestore collection anchorVisibilityEvents
+  try {
+    const docRef = doc(db, "anchorVisibilityEvents", newEvent.id);
+    setDoc(docRef, newEvent, { merge: true }).catch((err) => {
+      console.warn("[AnchorVisibilityService] Firestore record error:", err);
+    });
+  } catch (err) {
+    console.warn("[AnchorVisibilityService] Firestore write failed:", err);
   }
 
   return newEvent;
@@ -107,18 +129,10 @@ export function subscribeAdvisorVisibility(callback: (event?: AdvisorOpenEvent) 
     callback(custom.detail);
   };
 
-  const handleStorage = (e: StorageEvent) => {
-    if (e.key === STORAGE_KEY) {
-      callback();
-    }
-  };
-
   window.addEventListener(EVENT_NAME, handleCustom);
-  window.addEventListener("storage", handleStorage);
 
   return () => {
     window.removeEventListener(EVENT_NAME, handleCustom);
-    window.removeEventListener("storage", handleStorage);
   };
 }
 
@@ -138,84 +152,65 @@ export function getAnchorVisibilityReport(
   let matchedCityDomain = "";
   let anchorName = "";
 
-  if (config) {
-    for (const city of config.explorer?.cities || []) {
+  if (config && config.explorer && config.explorer.cities) {
+    for (const city of config.explorer.cities) {
+      if (matchedCityId && city.id.toLowerCase() !== matchedCityId) continue;
       const anchorCred = getCityAnchor(config, city.id);
-      if (
-        anchorCred &&
-        (anchorCred.company.id.toLowerCase() === cleanCompId ||
-          (anchorCred.company.slug && anchorCred.company.slug.toLowerCase() === cleanCompId))
-      ) {
-        if (!matchedCityId || matchedCityId === city.id.toLowerCase()) {
-          matchedCityId = city.id;
-          matchedCityDomain = city.domain.toUpperCase();
-          anchorName = anchorCred.company.displayName || anchorCred.company.name;
-          break;
-        }
+      if (anchorCred && anchorCred.company && (anchorCred.company.id.toLowerCase() === cleanCompId || anchorCred.company.slug?.toLowerCase() === cleanCompId)) {
+        matchedCityId = city.id;
+        matchedCityDomain = city.domain || `${city.id.toUpperCase()}.CITY`;
+        anchorName = anchorCred.company.displayName || anchorCred.company.name;
+        break;
       }
     }
   }
 
-  if (!matchedCityDomain && matchedCityId) {
-    matchedCityDomain = `${matchedCityId.toUpperCase()}.CITY`;
-  }
-
-  // Filter events where this company was the anchor, OR where the event happened in their anchor city
-  const filteredEvents = events.filter((ev) => {
-    const evCity = (ev.cityId || "").toLowerCase();
-    const evAnchorComp = (ev.anchorCompanyId || "").toLowerCase();
-
-    if (evAnchorComp && (evAnchorComp === cleanCompId)) {
-      return true;
-    }
-    if (matchedCityId && evCity === matchedCityId) {
-      return true;
-    }
+  // Filter events by anchorCompanyId OR referringCompanyId OR matchedCityId
+  const matchingEvents = events.filter((evt) => {
+    if (evt.anchorCompanyId && evt.anchorCompanyId.toLowerCase() === cleanCompId) return true;
+    if (evt.referringCompanyId && evt.referringCompanyId.toLowerCase() === cleanCompId) return true;
+    if (matchedCityId && evt.cityId.toLowerCase() === matchedCityId) return true;
     return false;
   });
 
-  const bySource: AnchorSourceBreakdown = {
+  const breakdown: AnchorSourceBreakdown = {
     sector_city_page: 0,
     directory_compact_strip: 0,
     company_page: 0,
   };
 
-  for (const ev of filteredEvents) {
-    if (ev.source in bySource) {
-      bySource[ev.source]++;
-    }
+  for (const evt of matchingEvents) {
+    if (evt.source === "sector_city_page") breakdown.sector_city_page++;
+    else if (evt.source === "directory_compact_strip") breakdown.directory_compact_strip++;
+    else if (evt.source === "company_page") breakdown.company_page++;
   }
 
-  const totalImpressions = filteredEvents.length;
-  const lastImpressionAt = filteredEvents.length > 0 ? filteredEvents[0].timestamp : null;
+  const lastEvent = matchingEvents[0];
 
   return {
-    anchorCompanyId: companyId,
-    anchorCompanyName: anchorName || "Anchor Enterprise",
-    cityId: matchedCityId,
-    cityDomain: matchedCityDomain || (matchedCityId ? `${matchedCityId.toUpperCase()}.CITY` : "ALL SECTOR CITIES"),
-    totalImpressions,
-    bySource,
-    recentEvents: filteredEvents.slice(0, 20),
-    lastImpressionAt,
-    storageMode: "CLIENT_PERSISTED_TELEMETRY",
-    telemetryNotice:
-      "All metrics represent genuine, real-time client telemetry captured across live sessions in this browser. To ensure persistent multi-device durability across all worldwide traffic, enterprise analytics are aggregated through the sovereign ledger in production.",
+    anchorCompanyId: cleanCompId,
+    anchorCompanyName: anchorName || companyId,
+    cityId: matchedCityId || "all-cities",
+    cityDomain: matchedCityDomain || "SECTOR-CITY",
+    totalImpressions: matchingEvents.length,
+    bySource: breakdown,
+    recentEvents: matchingEvents.slice(0, 20),
+    lastImpressionAt: lastEvent ? lastEvent.timestamp : null,
+    storageMode: "FIRESTORE_PERSISTED_TELEMETRY",
+    telemetryNotice: "Live telemetry served via MarineWorld Data Layer.",
   };
 }
 
-/**
- * Format a human-readable label for the event source
- */
 export function formatAdvisorSourceLabel(source: AdvisorOpenSource): string {
   switch (source) {
     case "sector_city_page":
-      return "Sector City Entrance";
+      return "Sector City Node";
     case "directory_compact_strip":
-      return "Companies Directory Filter";
+      return "Directory Anchor Strip";
     case "company_page":
-      return "Company Profile Referral";
+      return "Enterprise Profile";
     default:
-      return "Direct System Trigger";
+      return source;
   }
 }
+

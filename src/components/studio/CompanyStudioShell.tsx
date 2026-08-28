@@ -45,6 +45,7 @@ import type {
 } from "@/lib/types";
 import {
   resolveCompanyStudioAccess,
+  resolveCompanyStudioAccessAsync,
   getStudioNavigation,
   getCompanyDataSpace,
   getStudioDocuments,
@@ -61,6 +62,8 @@ import {
   getCompanyMember,
   signOutCurrentUser,
   subscribeAuthState,
+  isAuthInitialized,
+  waitForAuthReady,
   type AuthContext,
 } from "@/lib/services/securityService";
 import { getCompanyById, getActionAttributionLog, getCompanyNodes } from "@/lib/services/companyService";
@@ -83,11 +86,10 @@ import { CompanyStudioConnectView } from "./CompanyStudioConnectView";
 import { CompanyStudioContactsView } from "./CompanyStudioContactsView";
 import { CompanyStudioTeamView } from "./CompanyStudioTeamView";
 import { CompanyStudioAuditView } from "./CompanyStudioAuditView";
-import { getCompanyInquiries, subscribeInquiries } from "@/lib/connectStore";
+import { getCompanyInquiries, subscribeToCompanyInquiries } from "@/services/inquiryService";
 import { CompanyStudioReadinessBar, computeCompanyReadiness } from "./CompanyStudioReadinessBar";
 import { CompanyStudioPreviewContainer } from "./CompanyStudioPreviewContainer";
-import { marineSector } from "@/lib/sectors/marine";
-import { getCompanyBySlug } from "@/lib/registry";
+import { getCompanyRecordSync, getCompanyRecord } from "@/lib/repositories/companyRepository";
 
 export type StudioAuthUIState =
   | "AUTH_LOADING"
@@ -151,6 +153,7 @@ export const CompanyStudioShell: React.FC<CompanyStudioShellProps> = ({
   const [accessResult, setAccessResult] = useState<CompanyStudioAccessResult | null>(null);
   const [navItems, setNavItems] = useState<StudioNavItem[]>([]);
   const [auth, setAuth] = useState<AuthContext>(() => getCurrentAuthSession());
+  const [isAuthLoading, setIsAuthLoading] = useState<boolean>(() => !isAuthInitialized());
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -160,24 +163,53 @@ export const CompanyStudioShell: React.FC<CompanyStudioShellProps> = ({
   useEffect(() => {
     const unsubscribe = subscribeAuthState((newAuth) => {
       setAuth(newAuth);
+      setIsAuthLoading(false);
     });
+
+    if (isAuthInitialized()) {
+      setIsAuthLoading(false);
+    } else {
+      waitForAuthReady().then((readyAuth) => {
+        setAuth(readyAuth);
+        setIsAuthLoading(false);
+      });
+    }
+
     return () => unsubscribe();
   }, []);
 
   useEffect(() => {
-    const access = resolveCompanyStudioAccess(auth, requestedCompanyId);
-    setAccessResult(access);
-
-    if (access.isAllowed && access.companyId && auth.uid) {
-      const items = getStudioNavigation(access.companyId, auth.uid, auth);
-      setNavItems(items);
+    if (isAuthLoading) return;
+    if (!auth.uid) {
+      setAccessResult(null);
+      return;
     }
-  }, [requestedCompanyId, auth.uid]);
+
+    let isMounted = true;
+    resolveCompanyStudioAccessAsync(auth, requestedCompanyId).then((access) => {
+      if (!isMounted) return;
+      setAccessResult(access);
+
+      if (access.isAllowed && access.companyId && auth.uid) {
+        const items = getStudioNavigation(access.companyId, auth.uid, auth);
+        setNavItems(items);
+        getCompanyRecord(access.companyId).then(() => {
+          if (isMounted) {
+            setRefreshKey((k) => k + 1);
+          }
+        });
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [requestedCompanyId, auth.uid, isAuthLoading]);
 
   const currentCompanyId = accessResult?.companyId || requestedCompanyId || "";
   const company = useMemo(() => {
     if (!currentCompanyId) return undefined;
-    return getCompanyById(currentCompanyId) || (getCompanyBySlug(marineSector, currentCompanyId) as unknown as CompanyEntity);
+    return getCompanyById(currentCompanyId) || (getCompanyRecordSync(currentCompanyId) as unknown as CompanyEntity) || undefined;
   }, [currentCompanyId, refreshKey]);
 
   const productsList = useMemo(() => {
@@ -202,23 +234,37 @@ export const CompanyStudioShell: React.FC<CompanyStudioShellProps> = ({
 
   const capabilitiesList = (company as any)?.primaryCapabilities || (company as any)?.capabilities || [];
 
-  const [studioInquiries, setStudioInquiries] = useState(() =>
-    currentCompanyId ? getCompanyInquiries(currentCompanyId) : []
-  );
+  const [studioInquiries, setStudioInquiries] = useState<any[]>([]);
 
   useEffect(() => {
     if (!currentCompanyId) return;
-    setStudioInquiries(getCompanyInquiries(currentCompanyId));
-    const unsub = subscribeInquiries(() => {
-      setStudioInquiries(getCompanyInquiries(currentCompanyId));
+    getCompanyInquiries(currentCompanyId)
+      .then((inqs) => {
+        if (inqs) setStudioInquiries(inqs);
+      })
+      .catch(() => {});
+
+    const unsub = subscribeToCompanyInquiries(currentCompanyId, (inqs) => {
+      setStudioInquiries(inqs);
     });
+
     const handleCustomEvent = () => {
-      setStudioInquiries(getCompanyInquiries(currentCompanyId));
+      getCompanyInquiries(currentCompanyId).then((inqs) => setStudioInquiries(inqs));
     };
+
+    const handleDocsUpdate = () => {
+      setRefreshKey((k) => k + 1);
+    };
+
     window.addEventListener("marineworld_inquiry_updated", handleCustomEvent);
+    window.addEventListener("marineworld_documents_updated", handleDocsUpdate);
+    window.addEventListener("marineworld_dataspace_updated", handleDocsUpdate);
+
     return () => {
       unsub();
       window.removeEventListener("marineworld_inquiry_updated", handleCustomEvent);
+      window.removeEventListener("marineworld_documents_updated", handleDocsUpdate);
+      window.removeEventListener("marineworld_dataspace_updated", handleDocsUpdate);
     };
   }, [currentCompanyId]);
 
@@ -241,15 +287,34 @@ export const CompanyStudioShell: React.FC<CompanyStudioShellProps> = ({
     );
   }, [company, productsList.length, servicesList.length, documentsList.length, nodesList.length, capabilitiesList.length, refreshKey]);
 
-  const handleSignOut = () => {
-    signOutCurrentUser();
-    setAuth({ uid: null, isDevelopmentSession: true });
+  const dataSpace = useMemo(() => (currentCompanyId ? getCompanyDataSpace(currentCompanyId, auth) : null), [currentCompanyId, auth.uid, refreshKey]);
+  const metrics = useMemo(() => (currentCompanyId ? getStudioOverviewMetrics(currentCompanyId, auth) : null), [currentCompanyId, auth.uid, refreshKey]);
+  const sub = useMemo(() => (currentCompanyId ? getCompanySubscription(currentCompanyId) : null), [currentCompanyId, refreshKey]);
+  const entitlements = useMemo(() => (currentCompanyId ? getCompanyEntitlements(currentCompanyId) : []), [currentCompanyId, refreshKey]);
+  const member = useMemo(() => (currentCompanyId ? getCompanyMember(currentCompanyId, auth) : null), [currentCompanyId, auth.uid, refreshKey]);
+  const twinSummary = useMemo(() => (currentCompanyId ? getStudioBusinessTwinSummary(currentCompanyId) : null), [currentCompanyId, refreshKey]);
+
+  const handleSignOut = async () => {
+    await signOutCurrentUser();
+    setAuth({ uid: null, isDevelopmentSession: false });
     setAccessResult(null);
     setAuthError(null);
     if (onExitStudio) {
       onExitStudio();
     }
   };
+
+  // 0. AUTH RESOLUTION LOADING STATE
+  if (isAuthLoading) {
+    return (
+      <div className="min-h-screen bg-canvas text-graphite flex items-center justify-center p-6 antialiased font-sans">
+        <div className="text-center">
+          <div className="w-8 h-8 border-2 border-royal border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-stone text-sm font-medium">Verifying Secure Enterprise Credentials...</p>
+        </div>
+      </div>
+    );
+  }
 
   // 1. UNAUTHENTICATED STATE & DEVELOPMENT LOGIN
   if (!auth.uid) {
@@ -263,20 +328,20 @@ export const CompanyStudioShell: React.FC<CompanyStudioShellProps> = ({
             window.dispatchEvent(new PopStateEvent("popstate"));
           }
         }}
-        onLoginSuccess={() => {
+        onLoginSuccess={async () => {
           const newAuth = getCurrentAuthSession();
           setAuth(newAuth);
-          const access = resolveCompanyStudioAccess(newAuth, requestedCompanyId);
+          const access = await resolveCompanyStudioAccessAsync(newAuth, requestedCompanyId);
           setAccessResult(access);
         }}
       />
     );
   }
 
-  // 2. LOADING STATE
+  // 2. GATE LOADING STATE
   if (!accessResult) {
     return (
-      <div className="min-h-screen bg-canvas text-graphite flex items-center justify-center p-6">
+      <div className="min-h-screen bg-canvas text-graphite flex items-center justify-center p-6 antialiased font-sans">
         <div className="text-center">
           <div className="w-8 h-8 border-2 border-royal border-t-transparent rounded-full animate-spin mx-auto mb-4" />
           <p className="text-stone text-sm font-medium">Resolving Company Studio Operational Gate...</p>
@@ -358,13 +423,6 @@ export const CompanyStudioShell: React.FC<CompanyStudioShellProps> = ({
   }
 
   // 4. AUTHENTICATED_ACTIVE STATE: FULL STUDIO WORKSPACE
-  const dataSpace = getCompanyDataSpace(currentCompanyId, auth);
-  const metrics = getStudioOverviewMetrics(currentCompanyId, auth);
-  const sub = getCompanySubscription(currentCompanyId);
-  const entitlements = getCompanyEntitlements(currentCompanyId);
-  const member = getCompanyMember(currentCompanyId, auth);
-  const twinSummary = getStudioBusinessTwinSummary(currentCompanyId);
-
   const renderModuleIcon = (iconName: string) => {
     switch (iconName) {
       case "LayoutDashboard": return <LayoutDashboard className="w-4 h-4" />;

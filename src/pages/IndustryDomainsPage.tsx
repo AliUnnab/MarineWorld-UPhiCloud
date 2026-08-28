@@ -1,4 +1,5 @@
-import type { SectorConfig } from "@/lib/types";
+import { useState, useEffect } from "react";
+import type { SectorConfig, SectorCity, IndustryDomainEntity } from "@/lib/types";
 import { PageShell } from "@/components/foundation/PageShell";
 import {
   DigiBadge,
@@ -8,10 +9,33 @@ import {
   Reveal,
 } from "@/components/digione/primitives";
 import { getCities, getCitiesByDomain, getMarineDomains } from "@/lib/registry";
+import { listSectorCities, listIndustryDomains } from "@/services/sectorService";
 
 export function IndustryDomainsPage({ config }: { config: SectorConfig }) {
-  const cities = getCities(config);
-  const domains = getMarineDomains();
+  const [liveCities, setLiveCities] = useState<SectorCity[]>([]);
+  const [liveDomains, setLiveDomains] = useState<IndustryDomainEntity[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    setIsLoading(true);
+    Promise.all([
+      listSectorCities(),
+      listIndustryDomains(),
+    ])
+      .then(([cities, domains]) => {
+        setLiveCities(cities || []);
+        setLiveDomains((domains || []) as unknown as IndustryDomainEntity[]);
+      })
+      .catch((err) => {
+        console.warn("[IndustryDomainsPage] Firestore load error:", err);
+      })
+      .finally(() => {
+        setIsLoading(false);
+      });
+  }, []);
+
+  const cities = liveCities;
+  const domains = liveDomains;
 
   const breadcrumbs = [
     { label: "MARINEWORLD", href: "/" },

@@ -30,8 +30,7 @@ import {
 import type { DocumentEntity, CompanyEntity, CompanyOffering } from "@/lib/types";
 import { getCompanyById } from "@/lib/services/companyService";
 import { getCurrentAuthSession, type AuthContext } from "@/lib/services/securityService";
-import { marineSector } from "@/lib/sectors/marine";
-import { getCompanyBySlug } from "@/lib/registry";
+import { getCompanyRecordSync } from "@/lib/repositories/companyRepository";
 import { getCompanyOfferings } from "@/lib/services/offeringEntityService";
 import {
   getCompanyDocumentConflicts,
@@ -39,6 +38,7 @@ import {
 } from "@/lib/services/knowledgeConflictService";
 import {
   getKnowledgeSources,
+  getKnowledgeSourcesAsync,
   registerIngestedSource,
   disableGrounding,
   enableGrounding,
@@ -47,6 +47,10 @@ import {
   removeSourceLink,
   deleteSourceSafely,
 } from "@/lib/services/knowledgeLifecycleService";
+import {
+  getCompanyDocuments,
+  subscribeToCompanyDocuments,
+} from "@/services/knowledgeService";
 import { DocumentConflictModal } from "@/components/studio/knowledge/DocumentConflictModal";
 import { AddKnowledgeSourceModal } from "@/components/studio/knowledge/AddKnowledgeSourceModal";
 import { SourceActionMenu } from "@/components/studio/knowledge/SourceActionMenu";
@@ -87,7 +91,7 @@ export const CompanyStudioKnowledgeView: React.FC<CompanyStudioKnowledgeViewProp
   const currentAuth = auth || getCurrentAuthSession();
   const canonicalCompany =
     getCompanyById(companyId) ||
-    (getCompanyBySlug(marineSector, companyId) as unknown as CompanyEntity);
+    (getCompanyRecordSync(companyId) as unknown as CompanyEntity);
 
   const [activeFilter, setActiveFilter] = useState<KnowledgeClassification>("ALL");
   const [activeStateFilter, setActiveStateFilter] = useState<KnowledgeStateFilter>("ACTIVE");
@@ -110,9 +114,19 @@ export const CompanyStudioKnowledgeView: React.FC<CompanyStudioKnowledgeViewProp
   } | null>(null);
   const [safeDeleteDoc, setSafeDeleteDoc] = useState<DocumentEntity | null>(null);
 
-  const reloadData = () => {
-    const docs = getKnowledgeSources(companyId);
-    setDocuments(docs);
+  const reloadData = async () => {
+    try {
+      const cloudDocs = await getCompanyDocuments(companyId);
+      if (cloudDocs && cloudDocs.length > 0) {
+        setDocuments(cloudDocs);
+      } else {
+        const local = getKnowledgeSources(companyId);
+        setDocuments(local);
+      }
+    } catch {
+      const local = getKnowledgeSources(companyId);
+      setDocuments(local);
+    }
 
     const offs = getCompanyOfferings(companyId);
     setOfferings(offs);
@@ -123,6 +137,17 @@ export const CompanyStudioKnowledgeView: React.FC<CompanyStudioKnowledgeViewProp
 
   useEffect(() => {
     reloadData();
+
+    // Bind real-time Firestore subscription
+    const unsub = subscribeToCompanyDocuments(companyId, (liveDocs) => {
+      if (liveDocs) {
+        setDocuments(liveDocs);
+      }
+    });
+
+    return () => {
+      unsub();
+    };
   }, [companyId]);
 
   // Derived Statistics

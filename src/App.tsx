@@ -36,6 +36,9 @@ import {
   isInstitutionalOrganization,
 } from "@/lib/services/ecosystemOrganizationService";
 
+import { getCurrentAuthSession } from "@/lib/services/securityService";
+import { getActiveOrganizationContext, getUserMemberships } from "@/lib/services/accessContextService";
+
 export default function App() {
   const [path, setPath] = useState(() => window.location.pathname);
 
@@ -81,6 +84,33 @@ export default function App() {
   const config = MARITIME_CONFIG;
 
   const renderContent = () => {
+    // Check if user is a company user attempting to visit visitor/personal workspace routes
+    if (
+      path.startsWith("/workspace") ||
+      path.startsWith("/visitor") ||
+      path === "/saved/companies" ||
+      path === "/saved/products" ||
+      path === "/saved/services" ||
+      path === "/workspace/inquiries" ||
+      path === "/inquiries" ||
+      path === "/collections" ||
+      path === "/workspace/collections" ||
+      path === "/activity" ||
+      path === "/workspace/activity" ||
+      path === "/account"
+    ) {
+      const currentAuth = getCurrentAuthSession();
+      if (currentAuth.uid) {
+        const memberships = getUserMemberships(currentAuth.uid);
+        const activeCtx = getActiveOrganizationContext(currentAuth.uid);
+        const companyId = activeCtx?.companyId || (memberships.length > 0 ? memberships[0]?.companyId : null);
+        if (companyId) {
+          window.history.replaceState({}, "", "/studio");
+          setPath("/studio");
+          return null;
+        }
+      }
+    }
     // CANONICAL STANDALONE PRODUCT & SERVICE ROUTES ({slug}.{sector}.marineworld.city / /products/:slug / /services/:slug):
     if (path.startsWith("/products/") || path.startsWith("/services/") || path.startsWith("/offerings/")) {
       const parts = path.split("/").filter(Boolean);

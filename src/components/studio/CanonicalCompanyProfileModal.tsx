@@ -31,6 +31,12 @@ import {
   Trash2,
 } from "lucide-react";
 
+import {
+  uploadFileToStorage,
+  deleteFileFromStorage,
+  validateStorageFile,
+} from "@/lib/services/storageService";
+
 interface CanonicalCompanyProfileModalProps {
   company: CompanyProfile;
   isOpen: boolean;
@@ -115,34 +121,68 @@ export function CanonicalCompanyProfileModal({
   const [logoUploadMsg, setLogoUploadMsg] = useState<string | null>(null);
   const [coverUploadMsg, setCoverUploadMsg] = useState<string | null>(null);
 
-  const handleLogoFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleLogoFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const dataUrl = event.target?.result as string;
-      if (dataUrl) {
-        setFormData((prev) => ({ ...prev, logoUrl: dataUrl }));
-        setLogoUploadMsg(`Uploaded logo: ${file.name}`);
-        setTimeout(() => setLogoUploadMsg(null), 4000);
+    const validation = validateStorageFile(file, "IMAGE", 10 * 1024 * 1024);
+    if (!validation.valid) {
+      setLogoUploadMsg(validation.error || "Invalid logo image.");
+      return;
+    }
+
+    try {
+      setLogoUploadMsg("Uploading logo to Firebase Storage...");
+      const previousUrl = formData.logoUrl;
+      const res = await uploadFileToStorage(file, {
+        companyId: company.id,
+        categoryFolder: "brand",
+        fileRole: "logo",
+      });
+
+      if (previousUrl && previousUrl.includes("firebasestorage.app")) {
+        deleteFileFromStorage(previousUrl).catch(() => {});
       }
-    };
-    reader.readAsDataURL(file);
+
+      setFormData((prev) => ({ ...prev, logoUrl: res.url }));
+      setLogoUploadMsg(`Uploaded logo: ${file.name}`);
+      setTimeout(() => setLogoUploadMsg(null), 4000);
+    } catch (err: any) {
+      setLogoUploadMsg(`Logo upload failed: ${err.message || "Error"}`);
+    } finally {
+      e.target.value = "";
+    }
   };
 
-  const handleCoverFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleCoverFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const dataUrl = event.target?.result as string;
-      if (dataUrl) {
-        setFormData((prev) => ({ ...prev, coverImage: dataUrl }));
-        setCoverUploadMsg(`Uploaded flagship photo: ${file.name}`);
-        setTimeout(() => setCoverUploadMsg(null), 4000);
+    const validation = validateStorageFile(file, "IMAGE", 25 * 1024 * 1024);
+    if (!validation.valid) {
+      setCoverUploadMsg(validation.error || "Invalid facility photo.");
+      return;
+    }
+
+    try {
+      setCoverUploadMsg("Uploading facility photo to Firebase Storage...");
+      const previousCover = formData.coverImage;
+      const res = await uploadFileToStorage(file, {
+        companyId: company.id,
+        categoryFolder: "brand",
+        fileRole: "cover",
+      });
+
+      if (previousCover && previousCover.includes("firebasestorage.app")) {
+        deleteFileFromStorage(previousCover).catch(() => {});
       }
-    };
-    reader.readAsDataURL(file);
+
+      setFormData((prev) => ({ ...prev, coverImage: res.url }));
+      setCoverUploadMsg(`Uploaded flagship photo: ${file.name}`);
+      setTimeout(() => setCoverUploadMsg(null), 4000);
+    } catch (err: any) {
+      setCoverUploadMsg(`Facility photo upload failed: ${err.message || "Error"}`);
+    } finally {
+      e.target.value = "";
+    }
   };
 
   if (!isOpen) return null;

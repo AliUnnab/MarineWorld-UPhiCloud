@@ -1,4 +1,5 @@
 import express from "express";
+import http from "http";
 import path from "path";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
@@ -25,7 +26,7 @@ const __dirname = path.dirname(__filename);
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) || 3000;
 
   // Raw body parser for Stripe webhook signature verification
   app.use(
@@ -265,10 +266,15 @@ async function startServer() {
     }
   });
 
+  const httpServer = http.createServer(app);
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        hmr: { server: httpServer },
+      },
       appType: "spa",
     });
     app.use(vite.middlewares);
@@ -280,7 +286,7 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
+  httpServer.listen(PORT, "0.0.0.0", () => {
     console.log(`[MarineWorld Server] Running on http://0.0.0.0:${PORT}`);
   });
 }

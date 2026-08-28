@@ -14,6 +14,7 @@ import { getCompanyProducts, getCompanyServices } from "@/lib/registry";
 import { recordPlatformEvent } from "@/lib/metricsStore";
 import { getPhysicalFacilities, getRegisteredHeadquarters } from "@/lib/services/companyService";
 import { getCurrentAuthSession, hasCompanyRole, isAuthenticated } from "@/lib/services/securityService";
+import { generateAIContent } from "@/lib/gemini";
 
 export type UserRole = "OWNER" | "ADMIN" | "MANAGER" | "SALES" | "OPERATIONS" | "VIEWER";
 
@@ -616,13 +617,34 @@ export async function processCompanyAIQuery(
     };
   }
 
-  // Default Fallback Response
+  // Dynamic LLM Generation for Custom Queries using Gemini
+  let dynamicAnswer = `Analysis for ${company.name}: Your company maintains an active Business Twin (${twin.overallCompleteness}% score) with ${totalProfileViews} profile views and ${inquiries.length} Connect inquiries. I am grounded in your verified platform data.`;
+
+  try {
+    const prompt = `You are the executive AI advisor for ${company.name} (${twin.identity.industry || "Marine & Maritime"}).
+Company Context:
+- Legal Name: ${company.legalName || company.name}
+- Completeness: ${twin.overallCompleteness}%
+- Profile Views: ${totalProfileViews}
+- Products: ${products.length} active
+- Inquiries: ${inquiries.length} logged
+User Query: "${sanitizedQuery}"
+Provide a grounded, professional response within 2 concise paragraphs.`;
+    const liveAnswer = await generateAIContent(prompt, "You are an AI maritime enterprise advisor.");
+    if (liveAnswer && liveAnswer.trim().length > 20) {
+      dynamicAnswer = liveAnswer.trim();
+    }
+  } catch (err) {
+    console.debug("[AIService] Gemini content generation note:", err);
+  }
+
+  // Default Fallback / Live Response
   return {
     id: `ai-${Date.now()}`,
     timestamp,
     companyId,
     query: sanitizedQuery,
-    answer: `Analysis for ${company.name}: Your company maintains an active Business Twin (${twin.overallCompleteness}% score) with ${totalProfileViews} profile views and ${inquiries.length} Connect inquiries. I am grounded in your verified platform data.`,
+    answer: dynamicAnswer,
     evidence: [
       {
         source: "BUSINESS TWIN",

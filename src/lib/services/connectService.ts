@@ -11,6 +11,8 @@ import {
 } from "@/lib/services/securityService";
 import { resolveAccessContext } from "@/lib/services/accessContextService";
 import { checkActionEligibility, recordRiskSignal } from "@/lib/services/personalTrustService";
+import { db } from "@/lib/firebase";
+import { collection, onSnapshot } from "firebase/firestore";
 
 /**
  * Connect Service — Domain Service for Canonical Commercial Interactions & Inquiries.
@@ -18,13 +20,29 @@ import { checkActionEligibility, recordRiskSignal } from "@/lib/services/persona
  * sender (fromUserId, fromCompanyId) -> recipient (toCompanyId, companyNodeId) -> context -> status -> timestamps.
  */
 
-const connectStore = new Map<string, ConnectEntity[]>();
-
 const FORBIDDEN_PLACEHOLDER_USERS = new Set([
   "authenticated-user",
   "user-demo",
   "test-user",
 ]);
+
+// Firestore-synced runtime cache
+const runtimeConnectCache = new Map<string, ConnectEntity[]>();
+const activeListeners = new Set<string>();
+
+export function initCompanyConnectRealtime(companyId: string): void {
+  if (!companyId || activeListeners.has(companyId) || typeof window === "undefined") return;
+  activeListeners.add(companyId);
+  try {
+    const colRef = collection(db, "companies", companyId, "connect");
+    onSnapshot(colRef, (snap) => {
+      const list = snap.docs.map((d) => ({ id: d.id, ...d.data() } as ConnectEntity));
+      runtimeConnectCache.set(companyId, list);
+    });
+  } catch (err) {
+    console.warn("[ConnectService] Realtime sync error:", err);
+  }
+}
 
 export interface SenderConnectContext {
   senderUserId: string;
@@ -38,7 +56,7 @@ export interface SenderConnectContext {
  * Reset / Clear user connect context cache
  */
 export function clearUserConnectContext(_userId?: string): void {
-  // Cleans transient connect caches if needed
+  // Transient cleanup
 }
 
 /**
@@ -193,16 +211,11 @@ export async function createConnect(connect: ConnectEntity, auth?: AuthContext):
 }
 
 export async function getConnect(companyId: string, connectId: string): Promise<ConnectEntity | null> {
-  const fromRepo = await findConnectById(companyId, connectId);
-  if (fromRepo) return fromRepo;
-  const records = getCompanyConnectRecords(companyId);
-  return records.find((c) => c.id === connectId) || null;
+  return await findConnectById(companyId, connectId);
 }
 
 export async function listConnects(companyId: string): Promise<ConnectEntity[]> {
-  const fromRepo = await findConnectsByCompany(companyId);
-  if (fromRepo && fromRepo.length > 0) return fromRepo;
-  return getCompanyConnectRecords(companyId);
+  return await findConnectsByCompany(companyId);
 }
 
 export async function updateConnect(companyId: string, connectId: string, updates: Partial<ConnectEntity>): Promise<ConnectEntity | null> {
@@ -247,15 +260,15 @@ export function inquiryToConnectEntity(inquiry: InquiryEntity): ConnectEntity {
  * Get canonical connect records for a target company
  */
 export function getCompanyConnectRecords(companyId: string): ConnectEntity[] {
-  return connectStore.get(companyId) || [];
+  initCompanyConnectRealtime(companyId);
+  return runtimeConnectCache.get(companyId) || [];
 }
 
 /**
- * Save or record a new Connect interaction
+ * Save or record a new Connect interaction directly to Firestore & sync cache
  */
 export function saveConnectInteraction(interaction: Omit<ConnectEntity, "id" | "createdAt" | "updatedAt"> & { id?: string }): ConnectEntity {
   const companyId = interaction.companyId || interaction.toCompanyId || "company_001";
-  const existing = connectStore.get(companyId) || [];
   const now = new Date().toISOString();
 
   const canonicalConnect: ConnectEntity = {
@@ -266,14 +279,16 @@ export function saveConnectInteraction(interaction: Omit<ConnectEntity, "id" | "
     updatedAt: now,
   };
 
-  const index = existing.findIndex((c) => c.id === canonicalConnect.id);
-  if (index >= 0) {
-    existing[index] = canonicalConnect;
+  const current = runtimeConnectCache.get(companyId) || [];
+  const idx = current.findIndex((c) => c.id === canonicalConnect.id);
+  if (idx >= 0) {
+    current[idx] = canonicalConnect;
   } else {
-    existing.push(canonicalConnect);
+    current.push(canonicalConnect);
   }
+  runtimeConnectCache.set(companyId, current);
 
-  connectStore.set(companyId, existing);
+  saveRepoConnect(canonicalConnect).catch(() => {});
   return canonicalConnect;
 }
 
@@ -281,8 +296,8 @@ export function saveConnectInteraction(interaction: Omit<ConnectEntity, "id" | "
  * Update interaction status
  */
 export function updateConnectStatus(companyId: string, connectId: string, status: ConnectEntity["status"]): ConnectEntity | undefined {
-  const records = connectStore.get(companyId) || [];
-  const record = records.find((c) => c.id === connectId);
+  const current = runtimeConnectCache.get(companyId) || [];
+  const record = current.find((c) => c.id === connectId);
   if (!record) return undefined;
 
   record.status = status;
@@ -290,7 +305,8 @@ export function updateConnectStatus(companyId: string, connectId: string, status
   if (status === "RESOLVED" || status === "CLOSED") {
     record.resolvedAt = new Date().toISOString();
   }
+  runtimeConnectCache.set(companyId, current);
 
-  connectStore.set(companyId, records);
+  saveRepoConnect(record).catch(() => {});
   return record;
 }

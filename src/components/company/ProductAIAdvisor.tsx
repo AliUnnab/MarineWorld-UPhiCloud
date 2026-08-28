@@ -50,6 +50,23 @@ export function ProductAIAdvisor({ product, company, relatedServices, onInquire 
         sources: res.sourcesUsed,
         queryAsked: questionText,
       });
+
+      // Log AI interaction to Firestore
+      try {
+        import("@/services/aiService").then(({ logAIInteraction }) => {
+          logAIInteraction({
+            id: `ai-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            userId: authUid,
+            companyId: company.id,
+            entityType: "PRODUCT",
+            entityId: product.id,
+            queryText: questionText,
+            responseText: res.response,
+            confidence: res.confidence,
+            timestamp: new Date().toISOString(),
+          });
+        });
+      } catch {}
     } catch (err: any) {
       setActiveAnswer({
         text: "I don't have verified information about that in this product's published data.",

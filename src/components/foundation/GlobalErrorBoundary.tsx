@@ -41,11 +41,24 @@ export class GlobalErrorBoundary extends Component<Props, State> {
   }
 
   private handleReload = () => {
-    window.location.reload();
+    this.setState({ hasError: false, error: null, errorInfo: null });
+    if (typeof window !== "undefined") {
+      window.location.reload();
+    }
+  };
+
+  private handleGoStudio = () => {
+    this.setState({ hasError: false, error: null, errorInfo: null });
+    if (typeof window !== "undefined") {
+      window.location.href = "/studio";
+    }
   };
 
   private handleGoHome = () => {
-    window.location.href = "/";
+    this.setState({ hasError: false, error: null, errorInfo: null });
+    if (typeof window !== "undefined") {
+      window.location.href = "/";
+    }
   };
 
   public render() {
@@ -87,9 +100,17 @@ export class GlobalErrorBoundary extends Component<Props, State> {
               </button>
 
               <button
+                id="btn-error-studio"
+                onClick={this.handleGoStudio}
+                className="w-full sm:w-auto px-6 py-3 rounded-xl bg-mist border border-line text-graphite font-bold text-sm hover:bg-linesoft transition flex items-center justify-center gap-2 cursor-pointer"
+              >
+                Open Studio
+              </button>
+
+              <button
                 id="btn-error-home"
                 onClick={this.handleGoHome}
-                className="w-full sm:w-auto px-6 py-3 rounded-xl bg-canvas border border-line text-graphite font-bold text-sm hover:bg-mist transition flex items-center justify-center gap-2 cursor-pointer"
+                className="w-full sm:w-auto px-6 py-3 rounded-xl bg-canvas border border-line text-stone font-bold text-sm hover:bg-mist hover:text-graphite transition flex items-center justify-center gap-2 cursor-pointer"
               >
                 <Home className="w-4 h-4" />
                 Return to Home

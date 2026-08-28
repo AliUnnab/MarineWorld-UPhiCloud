@@ -6,6 +6,28 @@ import type {
   GroundingEligibilityStatus,
 } from "@/lib/types";
 import { getCompanyDocumentConflicts } from "@/lib/services/knowledgeConflictService";
+import { db } from "@/lib/firebase";
+import { doc, setDoc, deleteDoc } from "firebase/firestore";
+
+async function syncDocToFirestore(document: DocumentEntity) {
+  if (!document || !document.companyId || !document.id) return;
+  try {
+    const docRef = doc(db, "companies", document.companyId, "documents", document.id);
+    await setDoc(docRef, document, { merge: true });
+  } catch (err) {
+    console.warn(`[KnowledgeLifecycleService] Firestore sync error for doc ${document.id}:`, err);
+  }
+}
+
+async function deleteDocFromFirestore(companyId: string, docId: string) {
+  if (!companyId || !docId) return;
+  try {
+    const docRef = doc(db, "companies", companyId, "documents", docId);
+    await deleteDoc(docRef);
+  } catch (err) {
+    console.warn(`[KnowledgeLifecycleService] Firestore delete error for doc ${docId}:`, err);
+  }
+}
 
 export type KnowledgeLifecycleAction =
   | "SOURCE_CREATED"
@@ -49,214 +71,25 @@ export interface DependencyCheckResult {
   suggestedActions: Array<"DISABLE_GROUNDING" | "ARCHIVE_SOURCE" | "REMOVE_RELATIONSHIPS">;
 }
 
-// In-memory persistent knowledge repository store
+// Pure Firestore knowledge repository cache
 const repositoryStore = new Map<string, DocumentEntity>();
 const auditLogStore: KnowledgeAuditRecord[] = [];
 
-// Helper to seed standard records if empty
-function ensureSeedData(companyId: string) {
-  const existingForCompany = Array.from(repositoryStore.values()).filter(
-    (d) => d.companyId === companyId
-  );
-  if (existingForCompany.length > 0) return;
+// Real-time Firestore sync listener tracker
+const activeCompanyListeners = new Set<string>();
 
-  const now = new Date().toISOString();
-  const seedDocs: DocumentEntity[] = [
-    {
-      id: `doc-${companyId}-01`,
-      companyId,
-      businessId: `MW-BUS-${companyId.toUpperCase()}`,
-      title: "DNV-GL Naval Composite Structural Compliance Certificate",
-      documentType: "CERTIFICATE",
-      status: "ACTIVE",
-      sourceType: "IMPORTED",
-      fileReferences: ["file-cert-01"],
-      visibility: "PUBLIC",
-      productId: "prod-argento-01",
-      groundingStatus: "GROUNDED",
-      groundingEligible: true,
-      version: 1,
-      versionHistory: [
-        {
-          versionNumber: 1,
-          title: "DNV-GL Naval Composite Structural Compliance Certificate",
-          summary: "Initial verified classification upload from Google Drive.",
-          updatedBy: "usr-admin",
-          updatedAt: now,
-        },
-      ],
-      metadata: {
-        classification: "CERTIFICATION",
-        scope: "COMPANY",
-        confidenceScore: 98,
-        sourceReference: "/MarineWorld-Corporate-Knowledge/Certifications/DNV-GL-Naval.pdf",
-        extractedFacts: [
-          {
-            id: "f-dnv-1",
-            field: "complianceStandard",
-            fieldLabel: "Compliance Standard",
-            aiValue: "DNV-GL Naval Composite & Subsea Safety 2026",
-            canonicalValue: "DNV-GL Naval Composite & Subsea Safety 2026",
-            sourceCitation: "Certificate Header / Section 1.2",
-            confidenceScore: 98,
-            confirmationState: "COMPANY_CONFIRMED",
-            category: "CERTIFICATION",
-          },
-        ],
-      },
-      createdBy: "usr-admin",
-      updatedBy: "usr-admin",
-      createdAt: now,
-      updatedAt: now,
-    },
-    {
-      id: `doc-${companyId}-02`,
-      companyId,
-      businessId: `MW-BUS-${companyId.toUpperCase()}`,
-      title: "Autonomous Survey ROV Operator Manual & Technical Spec v4.2",
-      documentType: "TECHNICAL_SPEC",
-      status: "ACTIVE",
-      sourceType: "IMPORTED",
-      fileReferences: ["file-man-02"],
-      visibility: "PUBLIC",
-      productId: "prod-argento-01",
-      groundingStatus: "GROUNDED",
-      groundingEligible: true,
-      version: 2,
-      versionHistory: [
-        {
-          versionNumber: 1,
-          title: "Autonomous Survey ROV Operator Manual v4.0",
-          summary: "Initial manual",
-          updatedBy: "usr-admin",
-          updatedAt: now,
-        },
-        {
-          versionNumber: 2,
-          title: "Autonomous Survey ROV Operator Manual & Technical Spec v4.2",
-          summary: "Updated specs and depth rating",
-          updatedBy: "usr-admin",
-          updatedAt: now,
-        },
-      ],
-      metadata: {
-        classification: "TECHNICAL",
-        scope: "OFFERING",
-        confidenceScore: 96,
-        sourceReference: "/MarineWorld-Corporate-Knowledge/Product-Specs/ROV-Manual-v4.pdf",
-        extractedFacts: [
-          {
-            id: "f-rov-1",
-            field: "operationalDepth",
-            fieldLabel: "Maximum Depth Rating",
-            aiValue: "3,000 meters seawater (MSW)",
-            canonicalValue: "3,000 meters seawater (MSW)",
-            sourceCitation: "Datasheet Technical Matrix / Page 2",
-            confidenceScore: 99,
-            confirmationState: "COMPANY_CONFIRMED",
-            category: "SPECIFICATION",
-          },
-        ],
-      },
-      createdBy: "usr-admin",
-      updatedBy: "usr-admin",
-      createdAt: now,
-      updatedAt: now,
-    },
-    {
-      id: `doc-${companyId}-03`,
-      companyId,
-      businessId: `MW-BUS-${companyId.toUpperCase()}`,
-      title: "Computational Fluid Dynamics Vessel Route Optimization Scope",
-      documentType: "PROCEDURE",
-      status: "ACTIVE",
-      sourceType: "IMPORTED",
-      fileReferences: ["file-serv-03"],
-      visibility: "PRIVATE",
-      serviceId: "serv-argento-01",
-      groundingStatus: "GROUNDED",
-      groundingEligible: true,
-      version: 1,
-      versionHistory: [],
-      metadata: {
-        classification: "TECHNICAL",
-        scope: "OFFERING",
-        confidenceScore: 94,
-        sourceReference: "/MarineWorld-Corporate-Knowledge/Procedures/CFD-Routing.pdf",
-      },
-      createdBy: "usr-admin",
-      updatedBy: "usr-admin",
-      createdAt: now,
-      updatedAt: now,
-    },
-    {
-      id: `doc-${companyId}-04`,
-      companyId,
-      businessId: `MW-BUS-${companyId.toUpperCase()}`,
-      title: "Corporate Quality & Environmental Management Standard (ISO 14001)",
-      documentType: "POLICY",
-      status: "ACTIVE",
-      sourceType: "IMPORTED",
-      fileReferences: ["file-iso-04"],
-      visibility: "PUBLIC",
-      groundingStatus: "GROUNDED",
-      groundingEligible: true,
-      version: 1,
-      versionHistory: [],
-      metadata: {
-        classification: "GENERAL_CORPORATE",
-        scope: "COMPANY",
-        confidenceScore: 97,
-        sourceReference: "/MarineWorld-Corporate-Knowledge/Policies/ISO-14001.pdf",
-      },
-      createdBy: "usr-admin",
-      updatedBy: "usr-admin",
-      createdAt: now,
-      updatedAt: now,
-    },
-    {
-      id: `doc-${companyId}-05`,
-      companyId,
-      businessId: `MW-BUS-${companyId.toUpperCase()}`,
-      title: "North Sea Deepwater Berth 04 Engineering & Mooring Capacity Matrix",
-      documentType: "TECHNICAL_SPEC",
-      status: "ACTIVE",
-      sourceType: "IMPORTED",
-      fileReferences: ["file-fac-05"],
-      visibility: "PUBLIC",
-      groundingStatus: "GROUNDED",
-      groundingEligible: true,
-      version: 1,
-      versionHistory: [],
-      metadata: {
-        classification: "FACILITY_SPEC",
-        scope: "FACILITY",
-        facilityId: "fac-rotterdam-04",
-        facilityName: "North Sea Deepwater Berth 04",
-        confidenceScore: 99,
-        sourceReference: "/MarineWorld-Corporate-Knowledge/Facilities/Berth-04-Mooring.pdf",
-      },
-      createdBy: "usr-admin",
-      updatedBy: "usr-admin",
-      createdAt: now,
-      updatedAt: now,
-    },
-  ];
-
-  for (const doc of seedDocs) {
-    repositoryStore.set(doc.id, doc);
-    auditLogStore.push({
-      id: `aud-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-      companyId: doc.companyId,
-      sourceDocumentId: doc.id,
-      sourceTitle: doc.title,
-      actorId: "system-seed",
-      action: "SOURCE_GROUNDED",
-      timestamp: doc.createdAt,
-      previousState: { status: "DRAFT", groundingStatus: "NOT_INDEXED" },
-      newState: { status: "ACTIVE", groundingStatus: "GROUNDED", scope: (doc.metadata as any)?.scope || "COMPANY" },
-      details: { initialIngestion: true },
+export async function initCompanyKnowledgeSync(companyId: string): Promise<void> {
+  if (!companyId || activeCompanyListeners.has(companyId)) return;
+  activeCompanyListeners.add(companyId);
+  try {
+    const { subscribeToCompanyDocuments } = await import("@/services/knowledgeService");
+    subscribeToCompanyDocuments(companyId, (docs) => {
+      docs.forEach((doc) => {
+        repositoryStore.set(doc.id, doc);
+      });
     });
+  } catch (err) {
+    console.warn("[KnowledgeLifecycle] Realtime sync init error:", err);
   }
 }
 
@@ -290,6 +123,28 @@ export function getKnowledgeAuditLogs(
 }
 
 /**
+ * Retrieve all knowledge sources for a company with optional filters (Firestore connected)
+ */
+export async function getKnowledgeSourcesAsync(
+  companyId: string,
+  filter?: {
+    status?: "ALL" | "ACTIVE" | "ARCHIVED" | "DISABLED";
+    classification?: string;
+  }
+): Promise<DocumentEntity[]> {
+  try {
+    const { getCompanyDocuments } = await import("@/services/knowledgeService");
+    const cloudDocs = await getCompanyDocuments(companyId);
+    if (cloudDocs && cloudDocs.length > 0) {
+      cloudDocs.forEach((d) => repositoryStore.set(d.id, d));
+    }
+  } catch (err) {
+    console.warn("[KnowledgeLifecycle] Firestore sync fallback:", err);
+  }
+  return getKnowledgeSources(companyId, filter);
+}
+
+/**
  * Retrieve all knowledge sources for a company with optional filters
  */
 export function getKnowledgeSources(
@@ -299,7 +154,7 @@ export function getKnowledgeSources(
     classification?: string;
   }
 ): DocumentEntity[] {
-  ensureSeedData(companyId);
+  initCompanyKnowledgeSync(companyId);
 
   return Array.from(repositoryStore.values()).filter((doc) => {
     if (doc.companyId !== companyId) return false;
@@ -318,7 +173,8 @@ export function getKnowledgeSources(
       if (filter.classification === "COMMERCIAL DOCUMENTS" && doc.documentType !== "CONTRACT" && cls !== "COMMERCIAL") return false;
       if (filter.classification === "PRODUCT KNOWLEDGE" && !doc.productId) return false;
       if (filter.classification === "SERVICE KNOWLEDGE" && !doc.serviceId) return false;
-      if (filter.classification === "COMPANY KNOWLEDGE" && (doc.productId || doc.serviceId)) return false;
+      if (filter.classification === "FACILITY KNOWLEDGE" && !doc.metadata?.facilityId) return false;
+      if (filter.classification === "GENERAL CORPORATE" && (doc.productId || doc.serviceId || doc.metadata?.facilityId)) return false;
     }
 
     return true;
@@ -329,7 +185,7 @@ export function getKnowledgeSources(
  * Retrieve single knowledge source by ID
  */
 export function getSourceById(companyId: string, docId: string): DocumentEntity | null {
-  ensureSeedData(companyId);
+  initCompanyKnowledgeSync(companyId);
   const doc = repositoryStore.get(docId);
   if (!doc || doc.companyId !== companyId || doc.status === "DELETED") return null;
   return doc;
@@ -343,6 +199,7 @@ export function registerIngestedSource(
   actorId: string = "Company Operator"
 ): DocumentEntity {
   repositoryStore.set(document.id, document);
+  syncDocToFirestore(document);
 
   logKnowledgeLifecycleEvent({
     companyId: document.companyId,
@@ -379,7 +236,7 @@ export function changeSourceScope(params: {
   facilityName?: string;
   actorId?: string;
 }): { success: boolean; document?: DocumentEntity; error?: string } {
-  ensureSeedData(params.companyId);
+  initCompanyKnowledgeSync(params.companyId);
   const doc = repositoryStore.get(params.docId);
 
   if (!doc || doc.companyId !== params.companyId) {
@@ -432,6 +289,7 @@ export function changeSourceScope(params: {
   };
 
   repositoryStore.set(params.docId, updatedDoc);
+  syncDocToFirestore(updatedDoc);
 
   logKnowledgeLifecycleEvent({
     companyId: params.companyId,
@@ -465,7 +323,7 @@ export function disableGrounding(
   actorId: string = "Company Operator",
   reason?: string
 ): { success: boolean; document?: DocumentEntity; error?: string } {
-  ensureSeedData(companyId);
+  initCompanyKnowledgeSync(companyId);
   const doc = repositoryStore.get(docId);
 
   if (!doc || doc.companyId !== companyId) {
@@ -495,6 +353,7 @@ export function disableGrounding(
   };
 
   repositoryStore.set(docId, updatedDoc);
+  syncDocToFirestore(updatedDoc);
 
   logKnowledgeLifecycleEvent({
     companyId,
@@ -519,7 +378,7 @@ export function enableGrounding(
   docId: string,
   actorId: string = "Company Operator"
 ): { success: boolean; document?: DocumentEntity; error?: string } {
-  ensureSeedData(companyId);
+  initCompanyKnowledgeSync(companyId);
   const doc = repositoryStore.get(docId);
 
   if (!doc || doc.companyId !== companyId) {
@@ -549,6 +408,7 @@ export function enableGrounding(
   };
 
   repositoryStore.set(docId, updatedDoc);
+  syncDocToFirestore(updatedDoc);
 
   logKnowledgeLifecycleEvent({
     companyId,
@@ -575,7 +435,7 @@ export function archiveSource(
   actorId: string = "Company Operator",
   reason?: string
 ): { success: boolean; document?: DocumentEntity; error?: string } {
-  ensureSeedData(companyId);
+  initCompanyKnowledgeSync(companyId);
   const doc = repositoryStore.get(docId);
 
   if (!doc || doc.companyId !== companyId) {
@@ -607,6 +467,7 @@ export function archiveSource(
   };
 
   repositoryStore.set(docId, updatedDoc);
+  syncDocToFirestore(updatedDoc);
 
   logKnowledgeLifecycleEvent({
     companyId,
@@ -631,7 +492,7 @@ export function unarchiveSource(
   docId: string,
   actorId: string = "Company Operator"
 ): { success: boolean; document?: DocumentEntity; error?: string } {
-  ensureSeedData(companyId);
+  initCompanyKnowledgeSync(companyId);
   const doc = repositoryStore.get(docId);
 
   if (!doc || doc.companyId !== companyId) {
@@ -662,6 +523,7 @@ export function unarchiveSource(
   };
 
   repositoryStore.set(docId, updatedDoc);
+  syncDocToFirestore(updatedDoc);
 
   logKnowledgeLifecycleEvent({
     companyId,
@@ -688,7 +550,7 @@ export function removeSourceLink(
   docId: string,
   actorId: string = "Company Operator"
 ): { success: boolean; document?: DocumentEntity; error?: string } {
-  ensureSeedData(companyId);
+  initCompanyKnowledgeSync(companyId);
   const doc = repositoryStore.get(docId);
 
   if (!doc || doc.companyId !== companyId) {
@@ -724,6 +586,7 @@ export function removeSourceLink(
   };
 
   repositoryStore.set(docId, updatedDoc);
+  syncDocToFirestore(updatedDoc);
 
   logKnowledgeLifecycleEvent({
     companyId,
@@ -752,7 +615,7 @@ export function linkExistingSource(params: {
   facilityName?: string;
   actorId?: string;
 }): { success: boolean; document?: DocumentEntity; error?: string } {
-  ensureSeedData(params.companyId);
+  initCompanyKnowledgeSync(params.companyId);
   const doc = repositoryStore.get(params.sourceDocId);
 
   if (!doc || doc.companyId !== params.companyId) {
@@ -802,6 +665,7 @@ export function linkExistingSource(params: {
   };
 
   repositoryStore.set(params.sourceDocId, updatedDoc);
+  syncDocToFirestore(updatedDoc);
 
   logKnowledgeLifecycleEvent({
     companyId: params.companyId,
@@ -828,7 +692,7 @@ export function checkSourceDependencies(
   companyId: string,
   docId: string
 ): DependencyCheckResult {
-  ensureSeedData(companyId);
+  initCompanyKnowledgeSync(companyId);
   const doc = repositoryStore.get(docId);
 
   if (!doc || doc.companyId !== companyId) {
@@ -908,7 +772,7 @@ export function deleteSourceSafely(
   blockedReason?: string;
   dependencies?: string[];
 } {
-  ensureSeedData(companyId);
+  initCompanyKnowledgeSync(companyId);
   const doc = repositoryStore.get(docId);
 
   if (!doc || doc.companyId !== companyId) {
@@ -929,6 +793,7 @@ export function deleteSourceSafely(
   // Safe to delete
   const prevDoc = { ...doc };
   repositoryStore.delete(docId);
+  deleteDocFromFirestore(companyId, docId);
 
   logKnowledgeLifecycleEvent({
     companyId,
@@ -955,7 +820,7 @@ export function resolveActiveAIRetrievalSources(params: {
   facilityId?: string;
   isPublic?: boolean;
 }): DocumentEntity[] {
-  ensureSeedData(params.companyId);
+  initCompanyKnowledgeSync(params.companyId);
 
   return Array.from(repositoryStore.values()).filter((doc) => {
     // 1. Strict Tenant Isolation

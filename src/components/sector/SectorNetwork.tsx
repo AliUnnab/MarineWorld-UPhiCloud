@@ -1,8 +1,9 @@
-import { useMemo } from "react";
-import type { SectorConfig } from "@/lib/types";
+import { useMemo, useState, useEffect } from "react";
+import type { SectorConfig, CompanyEntity } from "@/lib/types";
 import { DigiContainer, DigiSection, DigiSectionHeader, Reveal } from "@/components/digione/primitives";
 import { CompanyCard } from "@/components/foundation";
 import { getCompanies, getCities, compareCompaniesForRegistryRanking } from "@/lib/registry";
+import { listCompanies } from "@/services/companyService";
 import { ArrowRight, Building, Globe, Layers, ShieldCheck } from "lucide-react";
 
 /**
@@ -11,8 +12,18 @@ import { ArrowRight, Building, Globe, Layers, ShieldCheck } from "lucide-react";
  */
 export function SectorNetwork({ config }: { config: SectorConfig }) {
   const { network } = config;
-  const allCompanies = useMemo(() => getCompanies(config), [config]);
+  const [liveCompanies, setLiveCompanies] = useState<any[]>(() => getCompanies(config));
   const allCities = useMemo(() => getCities(config), [config]);
+
+  useEffect(() => {
+    listCompanies()
+      .then((comps) => {
+        if (comps && comps.length > 0) setLiveCompanies(comps);
+      })
+      .catch(() => {});
+  }, []);
+
+  const allCompanies = liveCompanies;
 
   // Real verified count dynamically calculated from registry single source of truth
   const verifiedCount = useMemo(

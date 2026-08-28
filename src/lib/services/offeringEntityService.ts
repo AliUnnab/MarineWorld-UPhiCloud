@@ -8,7 +8,6 @@ import type {
 } from "@/lib/types";
 import { getCompanyById, getCompanyBySlug, saveCompany } from "@/lib/services/companyService";
 import { findAllCompaniesSync } from "@/lib/repositories/companyRepository";
-import { marineSector } from "@/lib/sectors/marine";
 import { notifyListeners as notifyTwinListeners } from "@/lib/businessTwinStore";
 import { computeOfferingGroundingStatus, generateDefaultAdvisorConfig } from "@/lib/services/offeringAIService";
 
@@ -192,6 +191,10 @@ export function evaluateOfferingPublishReadiness(
   };
 }
 
+import { findProductsByCompany } from "@/lib/repositories/productRepository";
+import { findServicesByCompany } from "@/lib/repositories/serviceRepository";
+import { getCompanyRecord } from "@/lib/repositories/companyRepository";
+
 /**
  * Get all canonical offerings for a company
  */
@@ -210,15 +213,77 @@ export function getCompanyOfferings(companyId: string): CompanyOffering[] {
     return initialized;
   }
 
-  // Default seed offerings if company has none
-  if (company) {
-    const sectorCity = company.sectorCityIds?.[0] || (company as any).cityIds?.[0] || "shipyard";
-    const defaults = getSeedOfferingsForCompany(companyId, sectorCity);
-    canonicalOfferingsStore.set(companyId, defaults);
-    return defaults;
-  }
-
   return [];
+}
+
+/**
+ * Asynchronously fetch and sync all offerings for a company directly from Firestore collections and company document
+ */
+export async function fetchCompanyOfferingsAsync(companyId: string): Promise<CompanyOffering[]> {
+  if (!companyId) return [];
+  try {
+    const comp = await getCompanyRecord(companyId);
+    const [fbProds, fbServs] = await Promise.all([
+      findProductsByCompany(companyId),
+      findServicesByCompany(companyId),
+    ]);
+
+    const mergedMap = new Map<string, CompanyOffering>();
+    if (comp?.offerings) {
+      comp.offerings.forEach((o) => {
+        if (o && o.id) mergedMap.set(o.id, initializeCanonicalOfferingDefaults(o, comp));
+      });
+    }
+
+    fbProds.forEach((p: any) => {
+      const off: CompanyOffering = {
+        ...p,
+        id: p.id,
+        entityId: p.id,
+        offeringId: p.id,
+        companyId,
+        type: "product",
+        entityType: "PRODUCT",
+        name: p.name,
+        category: p.category || "Products",
+        shortDescription: p.shortDescription || p.description || "",
+        status: (p.status === "ACTIVE" || p.status === "AVAILABLE" || p.status === "DRAFT") ? p.status : "AVAILABLE",
+        certifications: p.certifications
+          ? p.certifications.map((c: any) => (typeof c === "string" ? c : c.name || c.authority || String(c)))
+          : undefined,
+      };
+      mergedMap.set(p.id, initializeCanonicalOfferingDefaults(off, comp));
+    });
+
+    fbServs.forEach((s: any) => {
+      const off: CompanyOffering = {
+        ...s,
+        id: s.id,
+        entityId: s.id,
+        offeringId: s.id,
+        companyId,
+        type: "service",
+        entityType: "SERVICE",
+        name: s.name,
+        category: s.category || "Services",
+        shortDescription: s.shortDescription || s.description || "",
+        status: (s.status === "ACTIVE" || s.status === "AVAILABLE" || s.status === "DRAFT") ? s.status : "ACTIVE",
+        certifications: s.certifications
+          ? s.certifications.map((c: any) => (typeof c === "string" ? c : c.name || c.authority || String(c)))
+          : undefined,
+      };
+      mergedMap.set(s.id, initializeCanonicalOfferingDefaults(off, comp));
+    });
+
+    const result = Array.from(mergedMap.values());
+    if (result.length > 0) {
+      canonicalOfferingsStore.set(companyId, result);
+    }
+    return result.length > 0 ? result : getCompanyOfferings(companyId);
+  } catch (err) {
+    console.warn(`[OfferingEntityService] fetchCompanyOfferingsAsync error for ${companyId}:`, err);
+    return getCompanyOfferings(companyId);
+  }
 }
 
 /**
@@ -414,13 +479,28 @@ export function saveCanonicalOffering(
 
   canonicalOfferingsStore.set(companyId, updatedList);
 
-  // Sync back to CompanyEntity
+  // Sync back to CompanyEntity (Firestore persistent)
   const updatedCompany: CompanyEntity = {
     ...company,
     offerings: updatedList,
     updatedAt: new Date().toISOString(),
   };
   saveCompany(updatedCompany);
+
+  // Authoritative Subcollection Firestore write
+  try {
+    if (finalOffering.entityType === "PRODUCT" || finalOffering.type === "product") {
+      import("@/services/productService").then(({ saveProduct }) => {
+        saveProduct(companyId, finalOffering as any);
+      });
+    } else {
+      import("@/services/serviceService").then(({ saveService }) => {
+        saveService(companyId, finalOffering as any);
+      });
+    }
+  } catch (err) {
+    console.warn("[OfferingEntityService] Firestore subcollection write fallback:", err);
+  }
 
   notifyTwinListeners();
 
@@ -927,313 +1007,4 @@ export function queryOfferingAIAdvisorStrict(
     suggestedAction: "COMMERCIAL_RFQ",
     isGrounded: true,
   };
-}
-
-/**
- * Seed canonical offerings for initial company setup
- */
-function getSeedOfferingsForCompany(companyId: string, sectorCity: string): CompanyOffering[] {
-  const companySlug = companyId.toLowerCase().replace(/[^a-z0-9-]/g, "") || "unabil";
-  const rovSlug = "autonomous-subsea-rov-4-inspection-system";
-  const podSlug = "hybrid-electric-pod-1800kw";
-  const hullServiceSlug = "offshore-hull-inspection";
-
-  return [
-    {
-      id: `prod-${companyId}-01`,
-      entityId: `prod-${companyId}-01`,
-      offeringId: `prod-${companyId}-01`,
-      companyId,
-      companySlug,
-      name: "Autonomous Subsea ROV-4 Inspection System",
-      slug: rovSlug,
-      canonicalUrl: buildCanonicalOfferingUrl(rovSlug, companySlug, sectorCity),
-      type: "product",
-      entityType: "PRODUCT",
-      category: "Subsea Robotics & Inspection",
-      canonicalSectorCity: sectorCity,
-      sectorCity,
-      sectorCities: [sectorCity],
-      industryDomain: "maritime-services",
-      code: "AM-ROV4-X300",
-      sku: "AM-ROV4-X300",
-      status: "ACTIVE",
-      publishState: "PUBLISHED",
-      shortDescription: "Autonomous submersible inspection vehicle engineered for deep-water hull structural diagnostics and ultrasonic thickness measurement.",
-      detailedDescription: "Heavy-duty subsea vehicle designed for non-destructive hull and propeller surveys up to 450m depth with stereoscopic 4K imaging.",
-      specifications: {
-        "Max Depth Rating": "450 m (1,476 ft)",
-        "Battery Endurance": "10.5 hours continuous",
-        "Thruster Configuration": "8x Brushless Vector (6-DoF)",
-        "Payload Capacity": "18.5 kg dry / 14.0 kg wet",
-      },
-      applications: [
-        "In-Water Survey (UWILD / Class Renewal)",
-        "Offshore Riser & Mooring Line Inspection",
-        "Ballast Tank Structural Integrity Audits",
-      ],
-      certifications: [
-        "DNV GL Type Approved (Class ST-E272)",
-        "ABS Recognized Underwater Survey Tool",
-        "ISO 9001:2015 Subsea Equipment Quality Standard",
-      ],
-      standards: ["DNV-GL-ST-E272", "IMO MSC.1/Circ.1578", "IEC 60092-504"],
-      mediaReferences: [
-        {
-          id: "m-rov-01",
-          url: "https://images.unsplash.com/photo-1544551763-46a013bb70d5?auto=format&fit=crop&w=1200&q=80",
-          title: "Subsea ROV Deployment Configuration",
-          type: "cover",
-          isCover: true,
-          order: 1,
-        },
-      ],
-      groundingSources: [
-        {
-          id: "src-01",
-          title: "AM-ROV4-Subsea-Datasheet-RevD.pdf",
-          filename: "AM-ROV4-Subsea-Datasheet-RevD.pdf",
-          fileType: "PDF",
-          size: "3.4 MB",
-          sourceConfidence: 98,
-          extractedFieldsCount: 12,
-        },
-      ],
-      groundingStatus: "AI READY",
-      aiAdvisorConfig: {
-        enabled: true,
-        advisorName: "Autonomous Subsea ROV-4 AI Advisor",
-        roles: ["Technical Expert", "Application Specialist", "Sales Advisor"],
-        conversationPriorities: [
-          "Technical Specifications",
-          "Applications & Suitability",
-          "Certifications & Compliance",
-          "Commercial Information",
-          "RFQ / Offer Requests",
-        ],
-        communicationStyle: ["Precise", "Technical", "Transparent", "Solution-Oriented"],
-        status: "AI READY",
-        verifiedSourcesCount: 1,
-        lastGeneratedAt: new Date().toISOString(),
-      },
-      commercialInformation: {
-        pricingGuidance: "Commercial pricing on inquiry based on sensor suite configuration.",
-        incoterms: "FCA Rotterdam / EXW Shipyard",
-        leadTime: "4 to 6 weeks from purchase order",
-        availability: "IN STOCK / BUILT TO ORDER",
-        rfqAvailable: true,
-        minOrderQty: "1 System (Console + ROV + Tether Spool)",
-        warranty: "24-Month OEM Marine Warranty",
-      },
-      fieldConfirmations: {
-        name: "COMPANY_CONFIRMED",
-        category: "COMPANY_CONFIRMED",
-        shortDescription: "COMPANY_CONFIRMED",
-      },
-      sourceAttributions: {
-        name: "AM-ROV4-Subsea-Datasheet-RevD.pdf",
-        leadTime: "AM-ROV4-Subsea-Datasheet-RevD.pdf",
-      },
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    },
-    {
-      id: `prod-${companyId}-02`,
-      entityId: `prod-${companyId}-02`,
-      offeringId: `prod-${companyId}-02`,
-      companyId,
-      companySlug,
-      name: "Hybrid Electric Azimuth Propulsion Pod 1800 kW",
-      slug: podSlug,
-      previousSlugs: ["hybrid-electric-azimuth-propulsion-pod-1800-kw"],
-      canonicalUrl: buildCanonicalOfferingUrl(podSlug, companySlug, sectorCity),
-      type: "product",
-      entityType: "PRODUCT",
-      category: "Propulsion & Power Systems",
-      canonicalSectorCity: sectorCity,
-      sectorCity,
-      sectorCities: [sectorCity],
-      industryDomain: "maritime-services",
-      code: "HY-AZP-1800E",
-      sku: "HY-AZP-1800E",
-      status: "ACTIVE",
-      publishState: "PUBLISHED",
-      shortDescription: "Permanent magnet synchronous electric azimuth pod providing 360-degree vector thrust with ultra-low vibration and Tier III emissions compliance.",
-      detailedDescription: "Integrated hydrodynamic nozzle, water-lubricated seals, and full digital condition monitoring bus for tugs, CTVs, and ferries.",
-      specifications: {
-        "Continuous Shaft Power": "1,800 kW (2,414 hp)",
-        "Input Voltage": "690V AC, 3-Phase, 50/60 Hz",
-        "Max Propeller Diameter": "2,250 mm (CuNiAl 4-Blade)",
-        "Azimuth Rotation Speed": "3.5 RPM (360° Continuous)",
-      },
-      applications: [
-        "Escort Tugs & Terminal Vessels",
-        "Offshore Wind Farm Crew Transfer Vessels (CTV)",
-        "Zero-Emission Urban Passenger Ferries",
-      ],
-      certifications: [
-        "Lloyd's Register Class +100A1 Propulsion Approved",
-        "DNV Clean Design Certified",
-        "IMO Tier III / EPA Tier 4 Compliant",
-      ],
-      standards: ["IMO Annex VI Tier III", "IEC 60092-301"],
-      mediaReferences: [
-        {
-          id: "m-pod-01",
-          url: "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=1200&q=80",
-          title: "Azimuth Pod Assembly in Factory",
-          type: "cover",
-          isCover: true,
-          order: 1,
-        },
-      ],
-      groundingSources: [
-        {
-          id: "src-02",
-          title: "Marine-Hybrid-Pod-1800kW-Spec.pdf",
-          filename: "Marine-Hybrid-Pod-1800kW-Spec.pdf",
-          fileType: "PDF",
-          size: "4.8 MB",
-          sourceConfidence: 98,
-          extractedFieldsCount: 14,
-        },
-      ],
-      groundingStatus: "AI READY",
-      aiAdvisorConfig: {
-        enabled: true,
-        advisorName: "Hybrid Electric Propulsion Pod AI Advisor",
-        roles: ["Technical Expert", "Procurement Advisor", "Application Specialist"],
-        conversationPriorities: [
-          "Technical Specifications",
-          "Commercial Information",
-          "Certifications & Compliance",
-          "Availability & Lead Time",
-          "RFQ / Offer Requests",
-        ],
-        communicationStyle: ["Technical", "Precise", "Commercial", "Solution-Oriented"],
-        status: "AI READY",
-        verifiedSourcesCount: 1,
-        lastGeneratedAt: new Date().toISOString(),
-      },
-      commercialInformation: {
-        pricingGuidance: "Bespoke contract milestone pricing depending on shaft length and propeller alloys.",
-        incoterms: "DAP / FOB Shipyard Gate",
-        leadTime: "12 to 16 weeks standard manufacturing",
-        availability: "BUILT TO ORDER",
-        rfqAvailable: true,
-        minOrderQty: "1 Pod Drive Unit",
-        warranty: "36-Month OEM Marine Warranty with Class Guarantee",
-      },
-      fieldConfirmations: {
-        name: "COMPANY_CONFIRMED",
-        category: "COMPANY_CONFIRMED",
-        shortDescription: "COMPANY_CONFIRMED",
-      },
-      sourceAttributions: {
-        name: "Marine-Hybrid-Pod-1800kW-Spec.pdf",
-      },
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    },
-    {
-      id: `serv-${companyId}-01`,
-      entityId: `serv-${companyId}-01`,
-      offeringId: `serv-${companyId}-01`,
-      companyId,
-      companySlug,
-      name: "Offshore Hull Inspection & UWILD Survey",
-      slug: hullServiceSlug,
-      canonicalUrl: buildCanonicalOfferingUrl(hullServiceSlug, companySlug, sectorCity),
-      type: "service",
-      entityType: "SERVICE",
-      category: "Classification & In-Water Inspection",
-      canonicalSectorCity: sectorCity,
-      sectorCity,
-      sectorCities: [sectorCity],
-      industryDomain: "maritime-services",
-      code: "SRV-HULL-INSP",
-      sku: "SRV-HULL-INSP",
-      status: "ACTIVE",
-      publishState: "PUBLISHED",
-      shortDescription: "Certified in-water survey and non-destructive ultrasonic hull thickness diagnostics performed by class-approved robotic dive teams.",
-      detailedDescription: "Turnkey UWILD and intermediate class renewal surveys providing certified thickness reports, 4K digital video logs, and class-signed documentation.",
-      serviceScope: "Global drydock & afloat attendance with mobile subsea diagnostic vans and certified NDT level II surveyors.",
-      coverage: "Worldwide / 48-Hour Rapid Mobilization",
-      deliveryModel: "Turnkey On-Site Deployment with Certified Marine Surveyor",
-      specifications: {
-        "Survey Capability": "UWILD, Intermediate & Special Class Renewal",
-        "NDT Methods": "Ultrasonic Thickness (UTM), Magnetic Particle, Visual 4K",
-        "Class Society Recognition": "DNV, Lloyd's Register, ABS, BV, RINA",
-        "Turnaround Time": "Report delivery within 24 hours of dive completion",
-      },
-      applications: [
-        "In-Service FPSO / FLNG Structural Integrity Audits",
-        "Container Ship & Bulk Carrier In-Water Class Surveys",
-        "Pre-Purchase & Charter Handover Marine Condition Assessments",
-      ],
-      certifications: [
-        "DNV Recognized Service Supplier (In-Water Survey)",
-        "ABS Certified External Specialist for Hull Gauging",
-        "ISO 9001:2015 Survey Operations Standard",
-      ],
-      standards: ["IACS UR Z3", "IMO Resolution A.1156(32)", "DNV-SE-0402"],
-      mediaReferences: [
-        {
-          id: "m-hull-01",
-          url: "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=80",
-          title: "Offshore Vessel In-Water Inspection Operations",
-          type: "cover",
-          isCover: true,
-          order: 1,
-        },
-      ],
-      groundingSources: [
-        {
-          id: "src-03",
-          title: "Offshore-Hull-Inspection-Service-Scope.pdf",
-          filename: "Offshore-Hull-Inspection-Service-Scope.pdf",
-          fileType: "PDF",
-          size: "2.6 MB",
-          sourceConfidence: 99,
-          extractedFieldsCount: 11,
-        },
-      ],
-      groundingStatus: "AI READY",
-      aiAdvisorConfig: {
-        enabled: true,
-        advisorName: "Offshore Hull Inspection AI Advisor",
-        roles: ["Technical Expert", "Application Specialist", "Procurement Advisor"],
-        conversationPriorities: [
-          "Technical Specifications",
-          "Applications & Suitability",
-          "Certifications & Compliance",
-          "Commercial Information",
-          "RFQ / Offer Requests",
-        ],
-        communicationStyle: ["Precise", "Technical", "Transparent", "Solution-Oriented"],
-        status: "AI READY",
-        verifiedSourcesCount: 1,
-        lastGeneratedAt: new Date().toISOString(),
-      },
-      commercialInformation: {
-        pricingGuidance: "Standard day rate plus equipment mobilization based on vessel LOA and port location.",
-        incoterms: "On-Site Port / Offshore Anchorage",
-        leadTime: "48 to 72 hours worldwide mobilization",
-        availability: "IMMEDIATE DISPATCH",
-        rfqAvailable: true,
-        minOrderQty: "1 Survey Campaign",
-        warranty: "Class Guaranteed Survey Acceptance",
-      },
-      fieldConfirmations: {
-        name: "COMPANY_CONFIRMED",
-        category: "COMPANY_CONFIRMED",
-        shortDescription: "COMPANY_CONFIRMED",
-      },
-      sourceAttributions: {
-        name: "Offshore-Hull-Inspection-Service-Scope.pdf",
-      },
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    },
-  ];
 }

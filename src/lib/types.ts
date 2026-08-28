@@ -473,8 +473,8 @@ export interface CompanyProfile {
   slug?: string;
   name: string;
   initials: string;
-  /** Keeps demonstration records visibly separate from public registry data. */
-  recordType: "DEMONSTRATION" | "PUBLIC_REGISTRY";
+  /** Registry record classification. */
+  recordType?: "PUBLIC_REGISTRY" | string;
   industry: string;
   city: string;
   /** IDs of Sector Cities this company belongs to — supports multi-city membership. */
@@ -1332,6 +1332,12 @@ export interface CompanyEntity {
   address?: string;
   verificationStatus?: "VERIFIED" | "PENDING" | "UNVERIFIED" | "SUSPENDED" | "REJECTED" | CompanyVerificationStatus | string;
   ownerId?: string;
+  passwordHash?: string;
+  plainPasswordDraft?: string;
+  onboardingStep?: number;
+  onboardingCompleted?: boolean;
+  requestedPlanCode?: PlanCode | string;
+  planDetails?: Plan;
   sectorAttributes?: Record<string, any>;
   sectorCityId?: string;
   // Ecosystem Organization Affiliation
@@ -2149,6 +2155,7 @@ export interface SubscriptionIntent {
   companyId: string;
   businessId: string;
   planId: string;
+  planCode?: PlanCode | string;
   amount: number;
   catalogAmount?: number;
   discountPercentage?: number;
@@ -2186,6 +2193,8 @@ export interface CreateCompanyOnboardingRequest {
   country: string;
   requestedPlanCode: PlanCode;
   creatorEmail: string;
+  password?: string;
+  passwordHash?: string;
   enrollmentCode?: string;
 }
 

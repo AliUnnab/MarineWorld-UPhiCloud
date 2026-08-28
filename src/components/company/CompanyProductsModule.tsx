@@ -1,13 +1,14 @@
 import { useState, useMemo, useEffect } from "react";
 import type { CompanyProfile, SectorCity, IndustryDomainEntity, SectorConfig, ProductEntity } from "@/lib/types";
 import { getCompanyProducts, getCompanyProductBySlug, getCompanyServices, getProductBySlug } from "@/lib/registry";
+import { getProductsByCompany, subscribeToCompanyProducts } from "@/services/productService";
 import { injectJsonLd, buildProductSchema } from "@/lib/services/schemaOrgService";
 import { Icon } from "@/components/digione/icons";
 import { DigiBadge, DigiButton } from "@/components/digione/primitives";
 import { ProductAIAdvisor } from "./ProductAIAdvisor";
 import { SaveEntityButton } from "@/components/foundation/SaveEntityButton";
 import { AddToCollectionButton } from "@/components/foundation/AddToCollectionButton";
-import { Copy, Check, Share2, ExternalLink } from "lucide-react";
+import { Copy, Check, Share2, ExternalLink, Loader2, AlertCircle } from "lucide-react";
 import { ShareProtocolModal } from "./ShareProtocolModal";
 
 /* ------------------------------------------------------------
@@ -138,15 +139,48 @@ export function CompanyProductsModule({
     }
   };
 
-  const products = useMemo(() => getCompanyProducts(company), [company]);
+  // Fallback initial products from company model
+  const fallbackProducts = useMemo(() => getCompanyProducts(company), [company]);
+  const [liveProducts, setLiveProducts] = useState<ProductEntity[]>(fallbackProducts);
+  const [isLoadingLive, setIsLoadingLive] = useState(true);
+  const [liveError, setLiveError] = useState<string | null>(null);
+
+  // Subscribe to real-time Firestore products for this company
+  useEffect(() => {
+    if (!company?.id) {
+      setIsLoadingLive(false);
+      return;
+    }
+
+    setIsLoadingLive(true);
+    setLiveError(null);
+
+    // Initial load + Realtime listener
+    const unsubscribe = subscribeToCompanyProducts(company.id, (fetchedProducts) => {
+      if (fetchedProducts && fetchedProducts.length > 0) {
+        setLiveProducts(fetchedProducts);
+      } else {
+        setLiveProducts(fallbackProducts);
+      }
+      setIsLoadingLive(false);
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [company?.id, fallbackProducts]);
+
+  const products = liveProducts.length > 0 ? liveProducts : fallbackProducts;
 
   // Resolve raw product by slug across company or global registry
   const rawProduct = useMemo(() => {
     if (!activeProductSlug) return undefined;
+    const inLive = liveProducts.find((p) => p.slug === activeProductSlug || p.id === activeProductSlug);
+    if (inLive) return inLive;
     const inCompany = getCompanyProductBySlug(company, activeProductSlug);
     if (inCompany) return inCompany;
     return getProductBySlug(activeProductSlug);
-  }, [company, activeProductSlug]);
+  }, [liveProducts, company, activeProductSlug]);
 
   const selectedProduct = useMemo(() => {
     if (rawProduct && company?.id && (rawProduct.companyId === company.id || !rawProduct.companyId)) {

@@ -408,11 +408,6 @@ export function EcosystemOverviewView({
                       <div>
                         <div className="flex items-center gap-1.5">
                           <span className="font-bold text-slate-900">{member.companyName}</span>
-                          {(member.companyName.includes("#") || /#\d+/.test(member.companyName)) && (
-                            <span className="inline-flex items-center text-[9px] font-bold text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200/80" title="Demo record for testing ecosystem workflow">
-                              Demo Record
-                            </span>
-                          )}
                         </div>
                         <span className="block text-[10px] font-medium text-slate-500">{member.contactEmail}</span>
                       </div>

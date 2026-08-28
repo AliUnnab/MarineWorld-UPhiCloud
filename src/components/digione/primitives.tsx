@@ -381,7 +381,7 @@ export function DigiTicker({ items, label }: { items: string[]; label: string })
       </div>
       <div
         className="ticker relative flex-1 overflow-hidden"
-        aria-label={`${label} — demonstration content`}
+        aria-label={`${label} — live registry activity`}
       >
         <div className="ticker-track items-center py-3.5">
           {doubled.map((item, i) => (

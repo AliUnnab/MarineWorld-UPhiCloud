@@ -198,11 +198,6 @@ export function EcosystemVerificationView({
                   <td className="py-3.5 px-4 font-bold text-slate-900">
                     <div className="flex items-center gap-1.5">
                       <span className="block">{member.companyName}</span>
-                      {(member.companyName.includes("#") || /#\d+/.test(member.companyName)) && (
-                        <span className="inline-flex items-center text-[9px] font-bold text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200/80" title="Demo record for testing ecosystem workflow">
-                          Demo Record
-                        </span>
-                      )}
                     </div>
                     <span className="block text-[10px] text-slate-500 font-medium">{member.city}, {member.country}</span>
                   </td>

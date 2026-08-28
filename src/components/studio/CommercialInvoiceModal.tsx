@@ -138,11 +138,6 @@ export function CommercialInvoiceModal({
                   <CreditCard className="w-3.5 h-3.5 text-royal" /> SOURCE: STRIPE CORPORATE DIRECT
                 </span>
                 <div className="flex items-center gap-2">
-                  {invoice.isSimulated && (
-                    <span className="px-1.5 py-0.5 rounded text-[9px] font-mono bg-slate-200 text-slate-700 font-bold uppercase">
-                      Simulated Ledger
-                    </span>
-                  )}
                   <span className="font-mono text-[11px] font-semibold text-emerald-700">
                     BILLING STATUS: {invoice.status}
                   </span>

@@ -23,7 +23,6 @@ export interface CommercialReceipt {
   receiptNumber: string;
   issuedAt: string;
   pdfUrl?: string;
-  isSimulated?: boolean;
 }
 
 /**

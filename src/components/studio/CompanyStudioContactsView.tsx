@@ -37,10 +37,16 @@ import {
 } from "lucide-react";
 import type { CompanyProfile, CompanyEntity } from "@/lib/types";
 import { getCompanyById } from "@/lib/services/companyService";
-import { marineSector } from "@/lib/sectors/marine";
-import { getCompanyBySlug } from "@/lib/registry";
+import { getCompanyRecordSync } from "@/lib/repositories/companyRepository";
+import {
+  uploadFileToStorage,
+  deleteFileFromStorage,
+  validateStorageFile,
+} from "@/lib/services/storageService";
 import {
   getCompanyContacts,
+  fetchCompanyContactsAsync,
+  subscribeCompanyContacts,
   saveCompanyContacts,
   getDefaultCompanyContacts,
   type CompanyContactsPackage,
@@ -63,7 +69,7 @@ export const CompanyStudioContactsView: React.FC<CompanyStudioContactsViewProps>
   const canonicalCompany = useMemo(() => {
     return (
       (getCompanyById(companyId) as unknown as CompanyProfile) ||
-      (getCompanyBySlug(marineSector, companyId) as unknown as CompanyProfile) ||
+      (getCompanyRecordSync(companyId) as unknown as CompanyProfile) ||
       ({ id: companyId, slug: companyId, displayName: companyId, name: companyId } as unknown as CompanyProfile)
     );
   }, [companyId]);
@@ -92,12 +98,24 @@ export const CompanyStudioContactsView: React.FC<CompanyStudioContactsViewProps>
   const [isAddingSocial, setIsAddingSocial] = useState(false);
 
   useEffect(() => {
-    setData(getCompanyContacts(canonicalCompany as any));
+    // Initial async Firestore fetch
+    fetchCompanyContactsAsync(canonicalCompany as any).then((fresh) => {
+      if (fresh) setData(fresh);
+    });
+
+    // Realtime subscription
+    const unsubscribe = subscribeCompanyContacts(companyId, (freshData) => {
+      setData(freshData);
+    });
+
+    return () => {
+      unsubscribe();
+    };
   }, [canonicalCompany, companyId]);
 
   // Handle Save
-  const handleSaveAll = () => {
-    const success = saveCompanyContacts(companyId, data);
+  const handleSaveAll = async () => {
+    const success = await saveCompanyContacts(companyId, data);
     if (success) {
       setSaveSuccess(true);
       if (onSaved) onSaved();
@@ -106,11 +124,11 @@ export const CompanyStudioContactsView: React.FC<CompanyStudioContactsViewProps>
   };
 
   // Reset to Defaults
-  const handleResetDefaults = () => {
+  const handleResetDefaults = async () => {
     if (window.confirm("Reset all contact nodes to recommended system defaults?")) {
       const def = getDefaultCompanyContacts(canonicalCompany as any);
       setData(def);
-      saveCompanyContacts(companyId, def);
+      await saveCompanyContacts(companyId, def);
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
     }
@@ -138,57 +156,83 @@ export const CompanyStudioContactsView: React.FC<CompanyStudioContactsViewProps>
     setIsAddingStaff(true);
   };
 
-  const handleSaveStaffForm = (e: React.FormEvent) => {
+  const handleSaveStaffForm = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingStaff || !editingStaff.name.trim()) return;
 
-    setData((prev) => {
-      const exists = prev.teamMembers.some((m) => m.id === editingStaff.id);
-      let updated: StaffMemberInfo[];
-      if (exists) {
-        updated = prev.teamMembers.map((m) => (m.id === editingStaff.id ? editingStaff : m));
-      } else {
-        updated = [...prev.teamMembers, editingStaff];
-      }
-      return { ...prev, teamMembers: updated };
-    });
+    const exists = data.teamMembers.some((m) => m.id === editingStaff.id);
+    let updated: StaffMemberInfo[];
+    if (exists) {
+      updated = data.teamMembers.map((m) => (m.id === editingStaff.id ? editingStaff : m));
+    } else {
+      updated = [...data.teamMembers, editingStaff];
+    }
 
+    const updatedPackage: CompanyContactsPackage = { ...data, teamMembers: updated };
+    setData(updatedPackage);
     setEditingStaff(null);
     setIsAddingStaff(false);
+
+    await saveCompanyContacts(companyId, updatedPackage);
+    setSaveSuccess(true);
+    setTimeout(() => setSaveSuccess(false), 3500);
+    if (onSaved) onSaved();
   };
 
-  const handleDeleteStaff = (id: string) => {
+  const handleDeleteStaff = async (id: string) => {
     if (window.confirm("Remove this representative from contacts?")) {
-      setData((prev) => ({
-        ...prev,
-        teamMembers: prev.teamMembers.filter((m) => m.id !== id),
-      }));
+      const updatedPackage: CompanyContactsPackage = {
+        ...data,
+        teamMembers: data.teamMembers.filter((m) => m.id !== id),
+      };
+      setData(updatedPackage);
+      await saveCompanyContacts(companyId, updatedPackage);
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
+      if (onSaved) onSaved();
     }
   };
 
-  const handleMoveStaff = (index: number, direction: "UP" | "DOWN") => {
+  const handleMoveStaff = async (index: number, direction: "UP" | "DOWN") => {
     const targetIdx = direction === "UP" ? index - 1 : index + 1;
     if (targetIdx < 0 || targetIdx >= data.teamMembers.length) return;
     const newArr = [...data.teamMembers];
     const item = newArr.splice(index, 1)[0];
     newArr.splice(targetIdx, 0, item);
-    setData((prev) => ({ ...prev, teamMembers: newArr }));
+    const updatedPackage: CompanyContactsPackage = { ...data, teamMembers: newArr };
+    setData(updatedPackage);
+    await saveCompanyContacts(companyId, updatedPackage);
   };
 
-  const handleStaffFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleStaffFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !editingStaff) return;
-    if (file.size > 2.5 * 1024 * 1024) {
-      alert("Please select an image smaller than 2.5 MB.");
+
+    const validation = validateStorageFile(file, "IMAGE", 5 * 1024 * 1024);
+    if (!validation.valid) {
+      alert(validation.error || "Please select a valid image (max 5MB).");
       return;
     }
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === "string") {
-        setEditingStaff({ ...editingStaff, avatar: reader.result });
+
+    try {
+      const previousAvatar = editingStaff.avatar;
+      const res = await uploadFileToStorage(file, {
+        companyId,
+        categoryFolder: "contacts",
+        subFolder: "avatars",
+        fileRole: "staff_avatar",
+      });
+
+      if (previousAvatar && previousAvatar.includes("firebasestorage.app")) {
+        deleteFileFromStorage(previousAvatar).catch(() => {});
       }
-    };
-    reader.readAsDataURL(file);
+
+      setEditingStaff({ ...editingStaff, avatar: res.url });
+    } catch (err: any) {
+      alert(`Avatar upload failed: ${err.message || "Unknown error"}`);
+    } finally {
+      e.target.value = "";
+    }
   };
 
   // ----------------- E-TRADE HANDLERS -----------------
@@ -206,31 +250,40 @@ export const CompanyStudioContactsView: React.FC<CompanyStudioContactsViewProps>
     setIsAddingETrade(true);
   };
 
-  const handleSaveETradeForm = (e: React.FormEvent) => {
+  const handleSaveETradeForm = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingETrade || !editingETrade.title.trim()) return;
 
-    setData((prev) => {
-      const exists = prev.eTradeNodes.some((n) => n.id === editingETrade.id);
-      let updated: CompanyETradeNode[];
-      if (exists) {
-        updated = prev.eTradeNodes.map((n) => (n.id === editingETrade.id ? editingETrade : n));
-      } else {
-        updated = [...prev.eTradeNodes, editingETrade];
-      }
-      return { ...prev, eTradeNodes: updated };
-    });
+    const exists = data.eTradeNodes.some((n) => n.id === editingETrade.id);
+    let updated: CompanyETradeNode[];
+    if (exists) {
+      updated = data.eTradeNodes.map((n) => (n.id === editingETrade.id ? editingETrade : n));
+    } else {
+      updated = [...data.eTradeNodes, editingETrade];
+    }
 
+    const updatedPackage: CompanyContactsPackage = { ...data, eTradeNodes: updated };
+    setData(updatedPackage);
     setEditingETrade(null);
     setIsAddingETrade(false);
+
+    await saveCompanyContacts(companyId, updatedPackage);
+    setSaveSuccess(true);
+    setTimeout(() => setSaveSuccess(false), 3500);
+    if (onSaved) onSaved();
   };
 
-  const handleDeleteETrade = (id: string) => {
+  const handleDeleteETrade = async (id: string) => {
     if (window.confirm("Remove this procurement / store node?")) {
-      setData((prev) => ({
-        ...prev,
-        eTradeNodes: prev.eTradeNodes.filter((n) => n.id !== id),
-      }));
+      const updatedPackage: CompanyContactsPackage = {
+        ...data,
+        eTradeNodes: data.eTradeNodes.filter((n) => n.id !== id),
+      };
+      setData(updatedPackage);
+      await saveCompanyContacts(companyId, updatedPackage);
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
+      if (onSaved) onSaved();
     }
   };
 
@@ -247,30 +300,39 @@ export const CompanyStudioContactsView: React.FC<CompanyStudioContactsViewProps>
     setIsAddingSocial(true);
   };
 
-  const handleSaveSocialForm = (e: React.FormEvent) => {
+  const handleSaveSocialForm = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingSocial || !editingSocial.name.trim()) return;
 
-    setData((prev) => {
-      const exists = prev.socialChannels.some((s) => s.id === editingSocial.id);
-      let updated: CompanySocialChannel[];
-      if (exists) {
-        updated = prev.socialChannels.map((s) => (s.id === editingSocial.id ? editingSocial : s));
-      } else {
-        updated = [...prev.socialChannels, editingSocial];
-      }
-      return { ...prev, socialChannels: updated };
-    });
+    const exists = data.socialChannels.some((s) => s.id === editingSocial.id);
+    let updated: CompanySocialChannel[];
+    if (exists) {
+      updated = data.socialChannels.map((s) => (s.id === editingSocial.id ? editingSocial : s));
+    } else {
+      updated = [...data.socialChannels, editingSocial];
+    }
 
+    const updatedPackage: CompanyContactsPackage = { ...data, socialChannels: updated };
+    setData(updatedPackage);
     setEditingSocial(null);
     setIsAddingSocial(false);
+
+    await saveCompanyContacts(companyId, updatedPackage);
+    setSaveSuccess(true);
+    setTimeout(() => setSaveSuccess(false), 3500);
+    if (onSaved) onSaved();
   };
 
-  const handleDeleteSocial = (id: string) => {
-    setData((prev) => ({
-      ...prev,
-      socialChannels: prev.socialChannels.filter((s) => s.id !== id),
-    }));
+  const handleDeleteSocial = async (id: string) => {
+    const updatedPackage: CompanyContactsPackage = {
+      ...data,
+      socialChannels: data.socialChannels.filter((s) => s.id !== id),
+    };
+    setData(updatedPackage);
+    await saveCompanyContacts(companyId, updatedPackage);
+    setSaveSuccess(true);
+    setTimeout(() => setSaveSuccess(false), 3000);
+    if (onSaved) onSaved();
   };
 
   // Clean phone helper
@@ -754,6 +816,17 @@ export const CompanyStudioContactsView: React.FC<CompanyStudioContactsViewProps>
                     placeholder="Marine Industrial Zone, Berth 4"
                     className="w-full px-3.5 py-2.5 rounded-xl border border-line bg-white text-xs text-graphite focus:outline-hidden focus:border-royal focus:ring-1 focus:ring-royal transition"
                   />
+                </div>
+
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={handleSaveAll}
+                    className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-royal hover:bg-royal-dark text-white text-xs font-bold transition shadow-2xs cursor-pointer"
+                  >
+                    <Save className="w-4 h-4" />
+                    <span>Save General Contacts</span>
+                  </button>
                 </div>
               </div>
             </div>

@@ -26,7 +26,7 @@ import type { CompanyEntity, CompanyProfile, CompanyNodeEntity } from "@/lib/typ
 import { getCompanyById, saveCompany, getCompanyNodes } from "@/lib/services/companyService";
 import { updateCompanyCapabilities, CANONICAL_CAPABILITIES_TAXONOMY } from "@/lib/businessTwinStore";
 import { marineSector } from "@/lib/sectors/marine";
-import { getCompanyBySlug } from "@/lib/registry";
+import { getCompanyRecordSync } from "@/lib/repositories/companyRepository";
 import { recordPositioningAudit } from "@/lib/services/auditService";
 
 const AVAILABLE_SECTORS = [
@@ -138,7 +138,7 @@ export const CompanyStudioPositioningView: React.FC<CompanyStudioPositioningView
   // Resolve Canonical Company
   const canonicalCompany =
     getCompanyById(companyId) ||
-    (getCompanyBySlug(marineSector, companyId) as unknown as CompanyEntity);
+    (getCompanyRecordSync(companyId) as unknown as CompanyEntity);
 
   // Operating Nodes (Physical presence loaded independently)
   const [operatingNodes, setOperatingNodes] = useState<CompanyNodeEntity[]>([]);
@@ -209,7 +209,7 @@ export const CompanyStudioPositioningView: React.FC<CompanyStudioPositioningView
   useEffect(() => {
     const comp =
       getCompanyById(companyId) ||
-      (getCompanyBySlug(marineSector, companyId) as unknown as CompanyEntity);
+      (getCompanyRecordSync(companyId) as unknown as CompanyEntity);
     if (comp) {
       setPrimarySector(
         (comp as any)?.primarySectorCategory || comp.industry || "Marine & Maritime"

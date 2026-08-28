@@ -23,11 +23,14 @@ import type { CompanyEntity, CompanyProfile } from "@/lib/types";
 import { getCompanyById, saveCompany } from "@/lib/services/companyService";
 import { updateBusinessIdentity } from "@/lib/businessTwinStore";
 import { resolveMarineWorldCompanyDigitalId } from "@/lib/services/companyIdentityService";
-import { marineSector } from "@/lib/sectors/marine";
-import { getCompanyBySlug } from "@/lib/registry";
+import { getCompanyRecordSync } from "@/lib/repositories/companyRepository";
 import { recordIdentityAudit } from "@/lib/services/auditService";
-
 import { getEnrolledOrganizationForCompany } from "@/lib/services/ecosystemOrganizationService";
+import {
+  uploadFileToStorage,
+  deleteFileFromStorage,
+  validateStorageFile,
+} from "@/lib/services/storageService";
 
 interface CompanyStudioIdentityViewProps {
   companyId: string;
@@ -42,45 +45,52 @@ export const CompanyStudioIdentityView: React.FC<CompanyStudioIdentityViewProps>
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
+  // Storage Upload state
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+  const [logoProgress, setLogoProgress] = useState(0);
+  const [logoUploadMsg, setLogoUploadMsg] = useState<string | null>(null);
+
+  const [isUploadingCover, setIsUploadingCover] = useState(false);
+  const [coverProgress, setCoverProgress] = useState(0);
+  const [coverUploadMsg, setCoverUploadMsg] = useState<string | null>(null);
+
   // Load canonical company record
   const canonicalCompany =
     getCompanyById(companyId) ||
-    (getCompanyBySlug(marineSector, companyId) as unknown as CompanyEntity);
+    (getCompanyRecordSync(companyId) as unknown as CompanyEntity);
 
   const initialDigitalId = useMemo(() => {
     return resolveMarineWorldCompanyDigitalId({
-      companyIdOrSlug: canonicalCompany?.id || companyId,
-      mwCompanyDigitalId: (canonicalCompany as any)?.mwCompanyDigitalId,
+      companyIdOrSlug: companyId,
+      mwCompanyDigitalId: canonicalCompany?.mwCompanyDigitalId,
       businessId: canonicalCompany?.businessId,
       companyId6Digit: (canonicalCompany as any)?.companyId6Digit,
       primaryRegistryCode: (canonicalCompany as any)?.primaryRegistryCode,
-      primarySectorCityId: canonicalCompany?.sectorCityIds?.[0],
+      primarySectorCityId: (canonicalCompany as any)?.sectorCityIds?.[0] || (canonicalCompany as any)?.cityIds?.[0],
     });
   }, [canonicalCompany, companyId]);
 
   const [formData, setFormData] = useState({
-    legalName: canonicalCompany?.legalName || canonicalCompany?.displayName || "",
-    brandName: canonicalCompany?.brandName || canonicalCompany?.displayName || "",
-    registrationNumber: (canonicalCompany as any)?.registrationNumber || "NL-89201144",
-    registrationAuthority: (canonicalCompany as any)?.registrationAuthority || "Chamber of Commerce (KvK)",
+    legalName: canonicalCompany?.legalName || canonicalCompany?.name || "",
+    brandName: (canonicalCompany as any)?.tradingName || canonicalCompany?.displayName || canonicalCompany?.name || "",
+    registrationNumber: (canonicalCompany as any)?.registrationNumber || "",
+    jurisdiction: (canonicalCompany as any)?.jurisdiction || "European Union / Netherlands",
+    registrationAuthority: (canonicalCompany as any)?.registrationAuthority || "Chamber of Commerce",
     country: canonicalCompany?.country || "Netherlands",
-    city: canonicalCompany?.city || "Rotterdam",
-    officialEmail: canonicalCompany?.email || `contact@${canonicalCompany?.slug || companyId}.com`,
-    officialPhone: canonicalCompany?.phone || "+31 10 555 0190",
+    city: canonicalCompany?.city || (canonicalCompany as any)?.headquartersCity || "Rotterdam",
+    officialEmail: (canonicalCompany as any)?.officialEmail || "",
+    officialPhone: (canonicalCompany as any)?.officialPhone || "",
     shortDescription: canonicalCompany?.shortDescription || "",
-    description: canonicalCompany?.description || "",
+    description: canonicalCompany?.description || (canonicalCompany as any)?.corporateDescription || "",
     logoUrl: canonicalCompany?.logo || canonicalCompany?.logoUrl || "",
     coverImage: canonicalCompany?.coverImage || (canonicalCompany as any)?.heroImageUrl || "",
     flagshipStatement: canonicalCompany?.flagshipStatement || (canonicalCompany as any)?.coverImageCaption || "",
   });
 
-  const [logoUploadMsg, setLogoUploadMsg] = useState<string | null>(null);
-  const [coverUploadMsg, setCoverUploadMsg] = useState<string | null>(null);
-
   useEffect(() => {
     const comp =
       getCompanyById(companyId) ||
-      (getCompanyBySlug(marineSector, companyId) as unknown as CompanyEntity);
+      (getCompanyRecordSync(companyId) as unknown as CompanyEntity);
     if (comp) {
       setFormData({
         legalName: comp.legalName || comp.displayName || "",
@@ -100,42 +110,82 @@ export const CompanyStudioIdentityView: React.FC<CompanyStudioIdentityViewProps>
     }
   }, [companyId]);
 
-  const handleLogoFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleLogoFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 10 * 1024 * 1024) {
-      setLogoUploadMsg("Logo file size exceeds 10MB limit.");
+
+    const validation = validateStorageFile(file, "IMAGE", 10 * 1024 * 1024);
+    if (!validation.valid) {
+      setLogoUploadMsg(validation.error || "Invalid logo image.");
       return;
     }
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const dataUrl = event.target?.result as string;
-      if (dataUrl) {
-        setFormData((prev) => ({ ...prev, logoUrl: dataUrl }));
-        setLogoUploadMsg(`Uploaded logo from desktop: ${file.name}`);
-        setTimeout(() => setLogoUploadMsg(null), 4500);
+
+    try {
+      setIsUploadingLogo(true);
+      setLogoProgress(0);
+      setLogoUploadMsg("Uploading logo to Firebase Storage...");
+
+      const previousUrl = formData.logoUrl;
+      const res = await uploadFileToStorage(file, {
+        companyId,
+        categoryFolder: "brand",
+        fileRole: "logo",
+        onProgress: setLogoProgress,
+      });
+
+      if (previousUrl && previousUrl.includes("firebasestorage.app")) {
+        deleteFileFromStorage(previousUrl).catch(() => {});
       }
-    };
-    reader.readAsDataURL(file);
+
+      setFormData((prev) => ({ ...prev, logoUrl: res.url }));
+      setLogoUploadMsg(`Logo successfully uploaded to Firebase Storage: ${file.name}`);
+      setTimeout(() => setLogoUploadMsg(null), 4500);
+    } catch (err: any) {
+      console.error("[CompanyStudioIdentityView] Logo upload error:", err);
+      setLogoUploadMsg(`Logo upload failed: ${err.message || "Unknown error"}`);
+    } finally {
+      setIsUploadingLogo(false);
+      e.target.value = "";
+    }
   };
 
-  const handleCoverFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleCoverFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 15 * 1024 * 1024) {
-      setCoverUploadMsg("Facility photo size exceeds 15MB limit.");
+
+    const validation = validateStorageFile(file, "IMAGE", 25 * 1024 * 1024);
+    if (!validation.valid) {
+      setCoverUploadMsg(validation.error || "Invalid facility photo.");
       return;
     }
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const dataUrl = event.target?.result as string;
-      if (dataUrl) {
-        setFormData((prev) => ({ ...prev, coverImage: dataUrl }));
-        setCoverUploadMsg(`Uploaded flagship facility photo from desktop: ${file.name}`);
-        setTimeout(() => setCoverUploadMsg(null), 4500);
+
+    try {
+      setIsUploadingCover(true);
+      setCoverProgress(0);
+      setCoverUploadMsg("Uploading facility photo to Firebase Storage...");
+
+      const previousCover = formData.coverImage;
+      const res = await uploadFileToStorage(file, {
+        companyId,
+        categoryFolder: "brand",
+        fileRole: "cover",
+        onProgress: setCoverProgress,
+      });
+
+      if (previousCover && previousCover.includes("firebasestorage.app")) {
+        deleteFileFromStorage(previousCover).catch(() => {});
       }
-    };
-    reader.readAsDataURL(file);
+
+      setFormData((prev) => ({ ...prev, coverImage: res.url }));
+      setCoverUploadMsg(`Facility photo successfully uploaded to Firebase Storage: ${file.name}`);
+      setTimeout(() => setCoverUploadMsg(null), 4500);
+    } catch (err: any) {
+      console.error("[CompanyStudioIdentityView] Cover photo upload error:", err);
+      setCoverUploadMsg(`Facility photo upload failed: ${err.message || "Unknown error"}`);
+    } finally {
+      setIsUploadingCover(false);
+      e.target.value = "";
+    }
   };
 
   // Mandatory fields evaluation for real-time validation
@@ -269,7 +319,7 @@ export const CompanyStudioIdentityView: React.FC<CompanyStudioIdentityViewProps>
           {/* Identity Readiness Status Badge */}
           <div className="shrink-0 flex items-center">
             {isSavedIdentityReady ? (
-              <div className="px-4 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center gap-2 shadow-2xs">
+              <div key="status-badge-ready" className="px-4 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center gap-2 shadow-2xs">
                 <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
                 <div className="text-left">
                   <div className="text-[11px] uppercase tracking-wider font-mono">IDENTITY READY</div>
@@ -277,7 +327,7 @@ export const CompanyStudioIdentityView: React.FC<CompanyStudioIdentityViewProps>
                 </div>
               </div>
             ) : (
-              <div className="px-4 py-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs font-bold flex items-center gap-2 shadow-2xs">
+              <div key="status-badge-progress" className="px-4 py-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs font-bold flex items-center gap-2 shadow-2xs">
                 <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
                 <div className="text-left">
                   <div className="text-[11px] uppercase tracking-wider font-mono">IDENTITY IN PROGRESS</div>
@@ -1005,23 +1055,23 @@ export const CompanyStudioIdentityView: React.FC<CompanyStudioIdentityViewProps>
         <div className="flex items-center justify-between pt-4 border-t border-line">
           <div className="text-xs text-stone">
             {isSavedIdentityReady ? (
-              <span className="text-emerald-700 font-medium flex items-center gap-1 font-mono">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                All required institutional identity fields are complete & saved.
+              <span key="identity-ready-msg" className="text-emerald-700 font-medium flex items-center gap-1 font-mono">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                <span>All required institutional identity fields are complete &amp; saved.</span>
               </span>
             ) : (
-              <span className="text-amber-800 font-medium flex items-center gap-1 font-mono">
-                <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
-                Missing: {missingFields.length > 0 ? missingFields.join(", ") : "Save to apply changes"}
+              <span key="identity-missing-msg" className="text-amber-800 font-medium flex items-center gap-1 font-mono">
+                <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                <span>Missing: {missingFields.length > 0 ? missingFields.join(", ") : "Save to apply changes"}</span>
               </span>
             )}
           </div>
 
           <div className="flex items-center gap-3">
             {saveSuccess && (
-              <span className="text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-lg flex items-center gap-1.5">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                Saved
+              <span key="save-success-tag" className="text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-lg flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                <span>Saved</span>
               </span>
             )}
             <button
@@ -1030,7 +1080,7 @@ export const CompanyStudioIdentityView: React.FC<CompanyStudioIdentityViewProps>
               className="px-6 py-2 bg-royal hover:bg-royal/90 text-white rounded-xl text-xs font-bold flex items-center gap-2 transition shadow-sm min-h-[40px]"
             >
               <Save className="w-4 h-4" />
-              Save Identity
+              <span>Save Identity</span>
             </button>
           </div>
         </div>

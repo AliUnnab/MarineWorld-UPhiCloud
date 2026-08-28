@@ -1,77 +1,66 @@
 import type { ConnectEntity } from "@/lib/types";
-import { getPersistenceMode } from "./persistenceMode";
-import { getFirebaseApp } from "@/lib/auth/firebaseAuth";
+import { db } from "@/lib/firebase";
 import {
-  getFirestore,
   doc,
   getDoc,
   setDoc,
   collection,
   getDocs,
+  deleteDoc,
+  query,
+  where,
+  orderBy,
 } from "firebase/firestore";
 
 /**
- * Stage 10.6 — Connect Repository
- * Data Access Layer for /companies/{companyId}/connect/{connectId}
+ * Pure Firestore Connect Repository
+ * Data Access Layer for /companies/{companyId}/connect/{connectId} and /inquiries
  */
 
-const connectStore = new Map<string, ConnectEntity[]>();
-
 export async function findConnectById(companyId: string, connectId: string): Promise<ConnectEntity | null> {
-  if (getPersistenceMode() === "FIRESTORE") {
-    try {
-      const db = getFirestore(getFirebaseApp());
-      const ref = doc(db, "companies", companyId, "connect", connectId);
-      const snap = await getDoc(ref);
-      if (snap.exists()) {
-        return snap.data() as ConnectEntity;
-      }
-    } catch (err) {
-      console.warn("[ConnectRepo] Firestore findConnectById fallback:", err);
+  if (!companyId || !connectId) return null;
+  try {
+    const ref = doc(db, "companies", companyId, "connect", connectId);
+    const snap = await getDoc(ref);
+    if (snap.exists()) {
+      return { id: snap.id, ...snap.data() } as ConnectEntity;
     }
+  } catch (err) {
+    console.warn("[ConnectRepo] Firestore findConnectById error:", err);
   }
-
-  const connects = connectStore.get(companyId) || [];
-  return connects.find((c) => c.id === connectId) || null;
+  return null;
 }
 
 export async function findConnectsByCompany(companyId: string): Promise<ConnectEntity[]> {
-  if (getPersistenceMode() === "FIRESTORE") {
-    try {
-      const db = getFirestore(getFirebaseApp());
-      const ref = collection(db, "companies", companyId, "connect");
-      const snap = await getDocs(ref);
-      if (!snap.empty) {
-        return snap.docs.map((d) => d.data() as ConnectEntity);
-      }
-    } catch (err) {
-      console.warn("[ConnectRepo] Firestore findConnectsByCompany fallback:", err);
-    }
+  if (!companyId) return [];
+  try {
+    const ref = collection(db, "companies", companyId, "connect");
+    const snap = await getDocs(ref);
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() } as ConnectEntity));
+  } catch (err) {
+    console.warn("[ConnectRepo] Firestore findConnectsByCompany error:", err);
+    return [];
   }
-
-  return connectStore.get(companyId) || [];
 }
 
 export async function saveConnect(connect: ConnectEntity): Promise<ConnectEntity> {
-  const existing = connectStore.get(connect.companyId) || [];
-  const idx = existing.findIndex((c) => c.id === connect.id);
-  if (idx >= 0) {
-    existing[idx] = connect;
-  } else {
-    existing.push(connect);
+  const companyId = connect.companyId || connect.toCompanyId;
+  if (!companyId || !connect.id) return connect;
+  try {
+    const ref = doc(db, "companies", companyId, "connect", connect.id);
+    await setDoc(ref, connect, { merge: true });
+  } catch (err) {
+    console.warn("[ConnectRepo] Firestore saveConnect error:", err);
   }
-  connectStore.set(connect.companyId, existing);
-
-  if (getPersistenceMode() === "FIRESTORE") {
-    try {
-      const db = getFirestore(getFirebaseApp());
-      const ref = doc(db, "companies", connect.companyId, "connect", connect.id);
-      await setDoc(ref, connect, { merge: true });
-    } catch (err) {
-      console.warn("[ConnectRepo] Firestore saveConnect fallback:", err);
-    }
-  }
-
   return connect;
 }
 
+export async function deleteConnect(companyId: string, connectId: string): Promise<void> {
+  if (!companyId || !connectId) return;
+  try {
+    const ref = doc(db, "companies", companyId, "connect", connectId);
+    await deleteDoc(ref);
+  } catch (err) {
+    console.warn("[ConnectRepo] Firestore deleteConnect error:", err);
+  }
+}

@@ -41,6 +41,10 @@ import {
   AVAILABLE_PLANS,
 } from "@/lib/services/companyOnboardingService";
 import {
+  getCompanyDocuments as getCloudCompanyDocuments,
+  subscribeToCompanyDocuments,
+} from "@/services/knowledgeService";
+import {
   getCompanyDocuments,
   getCompanyFiles,
 } from "@/lib/services/dataSpaceService";
@@ -145,10 +149,27 @@ export const CompanyStudioDashboardView: React.FC<CompanyStudioDashboardViewProp
       });
 
       setViewState("READY");
+
+      // Warm and sync from Firestore
+      getCloudCompanyDocuments(companyId).then((cloudDocs) => {
+        if (cloudDocs && cloudDocs.length > 0) {
+          setDocuments(cloudDocs);
+        }
+      }).catch(() => {});
     } catch (err: unknown) {
       setViewState("ERROR");
       setErrorMessage(err instanceof Error ? err.message : "Failed to resolve Company Studio Dashboard data.");
     }
+
+    const unsubDocs = subscribeToCompanyDocuments(companyId, (liveDocs) => {
+      if (liveDocs) {
+        setDocuments(liveDocs);
+      }
+    });
+
+    return () => {
+      unsubDocs();
+    };
   }, [companyId, currentAuth.uid]);
 
   if (viewState === "LOADING") {

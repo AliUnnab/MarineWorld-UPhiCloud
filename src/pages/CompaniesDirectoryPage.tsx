@@ -18,6 +18,7 @@ import {
   isCompanyAnchor,
   getCompaniesInCity,
 } from "@/lib/registry";
+import { listCompanies as listFirestoreCompanies } from "@/services/companyService";
 import { SaveEntityButton } from "@/components/foundation/SaveEntityButton";
 import { CompanyDirectoryMapView } from "@/components/company/CompanyDirectoryMapView";
 import { SectorCityAdvisorCompactStrip } from "@/components/sector/SectorCityAdvisorDrawer";
@@ -138,9 +139,39 @@ export function CompaniesDirectoryPage({ config }: { config: SectorConfig }) {
     ]
   );
 
+  const [liveCompanies, setLiveCompanies] = useState<CompanyProfile[]>([]);
+  const [isLoadingLive, setIsLoadingLive] = useState(true);
+  const [directoryError, setDirectoryError] = useState<string | null>(null);
+
+  // Asynchronously load companies from Firestore
+  useEffect(() => {
+    let isMounted = true;
+    async function loadCompanies() {
+      setIsLoadingLive(true);
+      setDirectoryError(null);
+      try {
+        const fetched = await listFirestoreCompanies();
+        if (isMounted) {
+          setLiveCompanies((fetched || []) as unknown as CompanyProfile[]);
+        }
+      } catch (err: any) {
+        if (isMounted) {
+          console.warn("[CompaniesDirectoryPage] Firestore listCompanies error:", err);
+          setDirectoryError(err?.message || "Failed to load live companies.");
+        }
+      } finally {
+        if (isMounted) setIsLoadingLive(false);
+      }
+    }
+    loadCompanies();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   const paginatedResult = useMemo(
-    () => getCompaniesPaginated(config, queryCriteria),
-    [config, queryCriteria]
+    () => getCompaniesPaginated(config, queryCriteria, liveCompanies),
+    [config, queryCriteria, liveCompanies]
   );
 
   const { items: companies, totalCount, totalPages, facets } = paginatedResult;

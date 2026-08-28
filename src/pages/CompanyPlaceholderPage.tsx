@@ -98,7 +98,7 @@ export function CompanyPlaceholderPage({
             </div>
           </Reveal>
 
-          {/* Demonstration Profile Details */}
+          {/* Canonical Profile Details */}
           <Reveal delay={100}>
             <div className="mt-10 grid gap-8 md:grid-cols-2">
               <div className="rounded-card-md border border-line bg-white p-8">

@@ -3,7 +3,6 @@ import { normalizeHostname, resolveDomain } from "./domainService";
 import { getCompanyById, getCompanyBySlug, generateBusinessId } from "./companyService";
 import { getSectorCityById } from "./sectorService";
 import { getCityBySlug } from "@/lib/registry";
-import { marineSector } from "@/lib/sectors/marine";
 
 /**
  * Stage 10.3 — Identity Resolution Service
@@ -44,7 +43,7 @@ export function resolveIdentity(
     if (domainEntity.entityType === "SECTOR_CITY") {
       const city =
         getSectorCityById(domainEntity.entityId) ||
-        getCityBySlug(marineSector, domainEntity.entityId);
+        getCityBySlug(undefined, domainEntity.entityId);
 
       if (!city) {
         return {
@@ -135,7 +134,7 @@ export function resolveIdentity(
     if (cityMatch) {
       const citySlug = cityMatch[1];
       const city =
-        getSectorCityById(citySlug) || getCityBySlug(marineSector, citySlug);
+        getSectorCityById(citySlug) || getCityBySlug(undefined, citySlug);
 
       if (city) {
         return {

@@ -136,10 +136,37 @@ export function resolveMarineWorldCompanyDigitalId(params: {
 
 /**
  * Authoritative Canonical Company URL Resolver.
- * Pattern: https://{companySlug}.{primarySectorCity}.marineworld.city/
- * Example: https://unabil.shipyard.marineworld.city/
+ * Returns the fully accessible, working URL for the active deployment environment (localhost / domain).
+ * Example: http://localhost:3000/companies/comp-yusuf-aras or https://marineworld.city/companies/comp-yusuf-aras
  */
 export function buildCanonicalCompanyUrl(
+  companySlugOrEntity?: string | Partial<CompanyEntity> | Partial<CompanyProfile> | null,
+  primarySectorCityId?: string
+): string {
+  let slug = "";
+  if (typeof companySlugOrEntity === "string") {
+    slug = companySlugOrEntity;
+  } else if (companySlugOrEntity) {
+    slug = companySlugOrEntity.slug || companySlugOrEntity.id || "";
+  }
+
+  const cleanSlug = (slug || "company")
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9-]/g, "") || "company";
+
+  if (typeof window !== "undefined" && window.location && window.location.origin) {
+    return `${window.location.origin}/companies/${cleanSlug}`;
+  }
+
+  return `https://marineworld.city/companies/${cleanSlug}`;
+}
+
+/**
+ * Institutional Federated Subdomain format.
+ * Pattern: https://{companySlug}.{primarySectorCity}.marineworld.city/
+ */
+export function buildFederatedCompanySubdomainUrl(
   companySlugOrEntity?: string | Partial<CompanyEntity> | Partial<CompanyProfile> | null,
   primarySectorCityId?: string
 ): string {

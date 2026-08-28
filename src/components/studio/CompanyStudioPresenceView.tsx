@@ -52,6 +52,11 @@ import type {
   FacilityMediaItem,
 } from "@/lib/types";
 import {
+  uploadFileToStorage,
+  deleteFileFromStorage,
+  validateStorageFile,
+} from "@/lib/services/storageService";
+import {
   getCompanyById,
   saveCompany,
   getPhysicalFacilities,
@@ -62,8 +67,7 @@ import {
   removePhysicalFacility,
   updateGeographicCoverage,
 } from "@/lib/services/companyService";
-import { marineSector } from "@/lib/sectors/marine";
-import { getCompanyBySlug } from "@/lib/registry";
+import { getCompanyRecordSync } from "@/lib/repositories/companyRepository";
 
 interface CompanyStudioPresenceViewProps {
   companyId: string;
@@ -166,9 +170,6 @@ const AVAILABLE_COUNTRIES = [
   "Finland",
   "Saudi Arabia",
   "Qatar",
-  "Canada",
-  "South Korea",
-  "Panama",
 ];
 
 const AVAILABLE_REGIONS = [
@@ -186,7 +187,7 @@ export const CompanyStudioPresenceView: React.FC<CompanyStudioPresenceViewProps>
   onSaved,
 }) => {
   const canonicalCompany =
-    getCompanyById(companyId) || (getCompanyBySlug(marineSector, companyId) as unknown as CompanyEntity);
+    getCompanyById(companyId) || (getCompanyRecordSync(companyId) as unknown as CompanyEntity);
 
   const [facilities, setFacilities] = useState<PhysicalFacility[]>([]);
   const [operatingCountries, setOperatingCountries] = useState<string[]>([]);
@@ -239,18 +240,12 @@ export const CompanyStudioPresenceView: React.FC<CompanyStudioPresenceViewProps>
       cityIds.add("shipyard");
     }
 
-    const availableCities = marineSector?.explorer?.cities || [];
-    return Array.from(cityIds).map((id) => {
-      const matched = availableCities.find(
-        (c) => c.id === id || c.slug === id || c.id.toLowerCase() === id.toLowerCase()
-      );
-      return {
-        id,
-        name: matched ? matched.domain || `${matched.slug.toUpperCase()}.CITY` : `${id.toUpperCase()}.CITY`,
-        category: matched?.category || "Maritime Hub",
-        code: matched?.code || "REG",
-      };
-    });
+    return Array.from(cityIds).map((id) => ({
+      id,
+      name: `${id.toUpperCase()}.CITY`,
+      category: "Maritime Hub",
+      code: "REG",
+    }));
   }, [companyId, canonicalCompany]);
 
   // Media adding sub-state inside editor
@@ -512,8 +507,8 @@ export const CompanyStudioPresenceView: React.FC<CompanyStudioPresenceViewProps>
   // MEDIA MANAGEMENT HANDLERS (DESKTOP UPLOAD + URL IMPORT + REORDER + COVER)
   // =========================================================================
 
-  // 1. Desktop Upload Handler (JPG, PNG, WEBP, Multiple selection)
-  const handleProcessDesktopFiles = (files: FileList | File[]) => {
+  // 1. Desktop Upload Handler (JPG, PNG, WEBP, Multiple selection via Firebase Storage)
+  const handleProcessDesktopFiles = async (files: FileList | File[]) => {
     setMediaFeedbackMessage(null);
     const validExtensions = ["image/jpeg", "image/png", "image/webp"];
     const fileArray = Array.from(files);
@@ -535,13 +530,18 @@ export const CompanyStudioPresenceView: React.FC<CompanyStudioPresenceViewProps>
     }
 
     setIsProcessingUpload(true);
-    let loadedCount = 0;
     const newItems: FacilityMediaItem[] = [];
 
-    fileArray.forEach((file, index) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const dataUrl = e.target?.result as string;
+    try {
+      for (let index = 0; index < fileArray.length; index++) {
+        const file = fileArray[index];
+        const res = await uploadFileToStorage(file, {
+          companyId,
+          categoryFolder: "facilities",
+          subFolder: editingFacilityId || "hq",
+          fileRole: newMediaCategory || "EXTERIOR",
+        });
+
         const cleanTitle = file.name
           .replace(/\.[^/.]+$/, "")
           .replace(/[-_]/g, " ")
@@ -551,9 +551,9 @@ export const CompanyStudioPresenceView: React.FC<CompanyStudioPresenceViewProps>
           id: `m-up-${Date.now()}-${index}-${Math.random().toString(36).substring(2, 6)}`,
           type: "image",
           source: "upload",
-          url: dataUrl,
-          image: dataUrl,
-          storagePath: `facilities/${companyId}/${file.name}`,
+          url: res.url,
+          image: res.url,
+          storagePath: res.storagePath,
           title: cleanTitle.charAt(0).toUpperCase() + cleanTitle.slice(1),
           caption: "",
           category: newMediaCategory || "EXTERIOR",
@@ -563,35 +563,31 @@ export const CompanyStudioPresenceView: React.FC<CompanyStudioPresenceViewProps>
         };
 
         newItems.push(newItem);
-        loadedCount++;
+      }
 
-        if (loadedCount === fileArray.length) {
-          setFormMedia((prev) => {
-            const hasExistingCover = prev.some((m) => m.isCover);
-            const combined = [...prev, ...newItems];
-            if (!hasExistingCover && combined.length > 0) {
-              combined[0].isCover = true;
-            }
-            return combined.map((m, idx) => ({ ...m, sortOrder: idx }));
-          });
-          setIsProcessingUpload(false);
-          setMediaFeedbackMessage({
-            type: "success",
-            text: `Successfully uploaded ${fileArray.length} facility photo${fileArray.length > 1 ? "s" : ""} from desktop.`,
-          });
-          setTimeout(() => setMediaFeedbackMessage(null), 3500);
+      setFormMedia((prev) => {
+        const hasExistingCover = prev.some((m) => m.isCover);
+        const combined = [...prev, ...newItems];
+        if (!hasExistingCover && combined.length > 0) {
+          combined[0].isCover = true;
         }
-      };
+        return combined.map((m, idx) => ({ ...m, sortOrder: idx }));
+      });
 
-      reader.onerror = () => {
-        loadedCount++;
-        if (loadedCount === fileArray.length) {
-          setIsProcessingUpload(false);
-        }
-      };
-
-      reader.readAsDataURL(file);
-    });
+      setMediaFeedbackMessage({
+        type: "success",
+        text: `Successfully uploaded ${fileArray.length} facility photo${fileArray.length > 1 ? "s" : ""} to Firebase Storage.`,
+      });
+      setTimeout(() => setMediaFeedbackMessage(null), 3500);
+    } catch (err: any) {
+      console.error("[CompanyStudioPresenceView] Upload error:", err);
+      setMediaFeedbackMessage({
+        type: "error",
+        text: `Upload failed: ${err?.message || "Unknown error"}`,
+      });
+    } finally {
+      setIsProcessingUpload(false);
+    }
   };
 
   // 2. URL Import Handler
@@ -686,10 +682,15 @@ export const CompanyStudioPresenceView: React.FC<CompanyStudioPresenceViewProps>
     });
   };
 
-  // 6. Remove Media Item
+  // 6. Remove Media Item (Clean up from Firebase Storage if applicable)
   const handleRemoveMedia = (mediaId: string) => {
     setFormMedia((prev) => {
       const target = prev.find((m) => m.id === mediaId);
+      if (target) {
+        if (target.storagePath || (target.url && target.url.includes("firebasestorage.app"))) {
+          deleteFileFromStorage(target.storagePath || target.url).catch(() => {});
+        }
+      }
       const filtered = prev.filter((m) => m.id !== mediaId);
       if (target?.isCover && filtered.length > 0) {
         filtered[0].isCover = true;
@@ -823,16 +824,14 @@ export const CompanyStudioPresenceView: React.FC<CompanyStudioPresenceViewProps>
           {/* Action & Readiness Pill */}
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 shrink-0">
             <div
-              className={`px-3.5 py-2 rounded-xl text-xs font-mono font-bold border flex items-center gap-2 ${
-                readiness.isReady
+              className={`px-3.5 py-2 rounded-xl text-xs font-mono font-bold border flex items-center gap-2 ${readiness.isReady
                   ? "bg-emerald-50 text-emerald-800 border-emerald-200"
                   : "bg-amber-50 text-amber-800 border-amber-200"
-              }`}
+                }`}
             >
               <div
-                className={`w-2 h-2 rounded-full ${
-                  readiness.isReady ? "bg-emerald-600 animate-pulse" : "bg-amber-600"
-                }`}
+                className={`w-2 h-2 rounded-full ${readiness.isReady ? "bg-emerald-600 animate-pulse" : "bg-amber-600"
+                  }`}
               />
               <span>{readiness.statusLabel}</span>
             </div>
@@ -1574,11 +1573,10 @@ export const CompanyStudioPresenceView: React.FC<CompanyStudioPresenceViewProps>
                   key={country}
                   type="button"
                   onClick={() => handleToggleCountry(country)}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-medium transition ${
-                    isSelected
+                  className={`px-2.5 py-1 rounded-lg text-xs font-medium transition ${isSelected
                       ? "bg-royal text-white font-bold"
                       : "bg-canvas hover:bg-mist border border-line text-stone hover:text-graphite"
-                  }`}
+                    }`}
                 >
                   {isSelected && <Check className="w-3 h-3 inline mr-1" />}
                   {country}
@@ -1602,11 +1600,10 @@ export const CompanyStudioPresenceView: React.FC<CompanyStudioPresenceViewProps>
                   key={reg.code}
                   type="button"
                   onClick={() => handleToggleRegion(reg.label)}
-                  className={`p-3.5 rounded-xl border text-left transition flex items-start justify-between gap-2 ${
-                    isSelected
+                  className={`p-3.5 rounded-xl border text-left transition flex items-start justify-between gap-2 ${isSelected
                       ? "bg-royal/5 border-royal text-graphite shadow-xs"
                       : "bg-canvas hover:bg-white border-line text-stone"
-                  }`}
+                    }`}
                 >
                   <div>
                     <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-royal block">
@@ -1617,11 +1614,10 @@ export const CompanyStudioPresenceView: React.FC<CompanyStudioPresenceViewProps>
                     </span>
                   </div>
                   <div
-                    className={`w-4 h-4 rounded flex items-center justify-center shrink-0 mt-0.5 border ${
-                      isSelected
+                    className={`w-4 h-4 rounded flex items-center justify-center shrink-0 mt-0.5 border ${isSelected
                         ? "bg-royal border-royal text-white"
                         : "border-line bg-white"
-                    }`}
+                      }`}
                   >
                     {isSelected && <Check className="w-3 h-3" />}
                   </div>
@@ -1704,44 +1700,40 @@ export const CompanyStudioPresenceView: React.FC<CompanyStudioPresenceViewProps>
               <button
                 type="button"
                 onClick={() => setActiveEditorTab("identity")}
-                className={`py-3 px-3 border-b-2 transition ${
-                  activeEditorTab === "identity"
+                className={`py-3 px-3 border-b-2 transition ${activeEditorTab === "identity"
                     ? "border-royal text-royal"
                     : "border-transparent text-stone hover:text-graphite"
-                }`}
+                  }`}
               >
                 1. IDENTITY & TYPE
               </button>
               <button
                 type="button"
                 onClick={() => setActiveEditorTab("location")}
-                className={`py-3 px-3 border-b-2 transition ${
-                  activeEditorTab === "location"
+                className={`py-3 px-3 border-b-2 transition ${activeEditorTab === "location"
                     ? "border-royal text-royal"
                     : "border-transparent text-stone hover:text-graphite"
-                }`}
+                  }`}
               >
                 2. LOCATION & ADDRESS
               </button>
               <button
                 type="button"
                 onClick={() => setActiveEditorTab("scope")}
-                className={`py-3 px-3 border-b-2 transition ${
-                  activeEditorTab === "scope"
+                className={`py-3 px-3 border-b-2 transition ${activeEditorTab === "scope"
                     ? "border-royal text-royal"
                     : "border-transparent text-stone hover:text-graphite"
-                }`}
+                  }`}
               >
                 3. SCOPE & CONTACTS
               </button>
               <button
                 type="button"
                 onClick={() => setActiveEditorTab("media")}
-                className={`py-3 px-3 border-b-2 transition flex items-center gap-1.5 ${
-                  activeEditorTab === "media"
+                className={`py-3 px-3 border-b-2 transition flex items-center gap-1.5 ${activeEditorTab === "media"
                     ? "border-royal text-royal"
                     : "border-transparent text-stone hover:text-graphite"
-                }`}
+                  }`}
               >
                 <Camera className="w-3.5 h-3.5" />
                 4. MEDIA GALLERY ({formMedia.length})
@@ -1975,11 +1967,10 @@ export const CompanyStudioPresenceView: React.FC<CompanyStudioPresenceViewProps>
                                 setFormSectorCityLinks([...formSectorCityLinks, city.id]);
                               }
                             }}
-                            className={`p-3 rounded-xl border text-left transition flex items-center justify-between ${
-                              isSelected
+                            className={`p-3 rounded-xl border text-left transition flex items-center justify-between ${isSelected
                                 ? "bg-royal/5 border-royal text-royal shadow-2xs"
                                 : "bg-canvas border-line hover:border-royal/40 text-graphite hover:bg-white"
-                            }`}
+                              }`}
                           >
                             <div className="min-w-0 pr-2">
                               <span className="text-xs font-bold font-mono block truncate">
@@ -1990,9 +1981,8 @@ export const CompanyStudioPresenceView: React.FC<CompanyStudioPresenceViewProps>
                               </span>
                             </div>
                             <div
-                              className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 transition ${
-                                isSelected ? "bg-royal border-royal text-white" : "border-line bg-white"
-                              }`}
+                              className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 transition ${isSelected ? "bg-royal border-royal text-white" : "border-line bg-white"
+                                }`}
                             >
                               {isSelected && <Check className="w-3 h-3" />}
                             </div>
@@ -2013,11 +2003,10 @@ export const CompanyStudioPresenceView: React.FC<CompanyStudioPresenceViewProps>
                       <button
                         type="button"
                         onClick={() => setActiveMediaInputMode("upload")}
-                        className={`px-3.5 py-2 rounded-lg text-xs font-mono font-bold transition flex items-center gap-2 ${
-                          activeMediaInputMode === "upload"
+                        className={`px-3.5 py-2 rounded-lg text-xs font-mono font-bold transition flex items-center gap-2 ${activeMediaInputMode === "upload"
                             ? "bg-royal text-white shadow-xs"
                             : "text-stone hover:text-graphite hover:bg-white"
-                        }`}
+                          }`}
                       >
                         <UploadCloud className="w-4 h-4" />
                         UPLOAD FROM DESKTOP
@@ -2026,11 +2015,10 @@ export const CompanyStudioPresenceView: React.FC<CompanyStudioPresenceViewProps>
                       <button
                         type="button"
                         onClick={() => setActiveMediaInputMode("url")}
-                        className={`px-3.5 py-2 rounded-lg text-xs font-mono font-bold transition flex items-center gap-2 ${
-                          activeMediaInputMode === "url"
+                        className={`px-3.5 py-2 rounded-lg text-xs font-mono font-bold transition flex items-center gap-2 ${activeMediaInputMode === "url"
                             ? "bg-royal text-white shadow-xs"
                             : "text-stone hover:text-graphite hover:bg-white"
-                        }`}
+                          }`}
                       >
                         <LinkIcon className="w-3.5 h-3.5" />
                         ADD IMAGE URL
@@ -2039,11 +2027,10 @@ export const CompanyStudioPresenceView: React.FC<CompanyStudioPresenceViewProps>
                       <button
                         type="button"
                         onClick={() => setActiveMediaInputMode("presets")}
-                        className={`px-3.5 py-2 rounded-lg text-xs font-mono font-bold transition flex items-center gap-2 ${
-                          activeMediaInputMode === "presets"
+                        className={`px-3.5 py-2 rounded-lg text-xs font-mono font-bold transition flex items-center gap-2 ${activeMediaInputMode === "presets"
                             ? "bg-royal text-white shadow-xs"
                             : "text-stone hover:text-graphite hover:bg-white"
-                        }`}
+                          }`}
                       >
                         <ImageIcon className="w-3.5 h-3.5" />
                         CURATED PRESETS
@@ -2058,11 +2045,10 @@ export const CompanyStudioPresenceView: React.FC<CompanyStudioPresenceViewProps>
                   {/* Feedback Banner */}
                   {mediaFeedbackMessage && (
                     <div
-                      className={`p-3 rounded-xl text-xs font-medium flex items-center gap-2 animate-in fade-in duration-200 ${
-                        mediaFeedbackMessage.type === "success"
+                      className={`p-3 rounded-xl text-xs font-medium flex items-center gap-2 animate-in fade-in duration-200 ${mediaFeedbackMessage.type === "success"
                           ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
                           : "bg-rose-50 text-rose-800 border border-rose-200"
-                      }`}
+                        }`}
                     >
                       {mediaFeedbackMessage.type === "success" ? (
                         <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
@@ -2134,11 +2120,10 @@ export const CompanyStudioPresenceView: React.FC<CompanyStudioPresenceViewProps>
                           if (e.dataTransfer.files) handleProcessDesktopFiles(e.dataTransfer.files);
                         }}
                         onClick={() => fileInputRef.current?.click()}
-                        className={`p-8 rounded-xl border-2 border-dashed transition-all duration-150 flex flex-col items-center justify-center text-center cursor-pointer group ${
-                          isDraggingFile
+                        className={`p-8 rounded-xl border-2 border-dashed transition-all duration-150 flex flex-col items-center justify-center text-center cursor-pointer group ${isDraggingFile
                             ? "border-royal bg-royal/5 scale-[0.99]"
                             : "border-line/80 hover:border-royal/50 bg-white hover:bg-soft/30"
-                        }`}
+                          }`}
                       >
                         {isProcessingUpload ? (
                           <div className="space-y-2 py-4">
@@ -2326,11 +2311,10 @@ export const CompanyStudioPresenceView: React.FC<CompanyStudioPresenceViewProps>
                           return (
                             <div
                               key={item.id || index}
-                              className={`p-3.5 rounded-2xl border transition-all duration-150 ${
-                                isCover
+                              className={`p-3.5 rounded-2xl border transition-all duration-150 ${isCover
                                   ? "border-royal/50 bg-royal/5 shadow-2xs"
                                   : "border-line bg-white hover:border-royal/30"
-                              }`}
+                                }`}
                             >
                               <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
                                 {/* Left: Media Thumbnail + Source Details */}

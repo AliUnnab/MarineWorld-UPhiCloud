@@ -29,7 +29,8 @@ import {
   setActiveOrganizationContext,
   resolveAccessContext,
 } from "@/lib/services/accessContextService";
-import { resolveCompanyStudioAccess } from "@/lib/services/studioService";
+import { resolveCompanyStudioAccess, resolveCompanyStudioAccessAsync } from "@/lib/services/studioService";
+import { findCompanyByEmailOrName, getCompanyRecord, findCompaniesByOwnerOrEmail } from "@/lib/repositories/companyRepository";
 
 interface LoginPageProps {
   onNavigate?: (path: string) => void;
@@ -41,8 +42,8 @@ export function LoginPage({ onNavigate, onLoginSuccess }: LoginPageProps) {
   const [activeOrgId, setActiveOrgId] = useState<string | null>(null);
 
   // Real company login form state
-  const [email, setEmail] = useState<string>("owner@argento-marine.com");
-  const [password, setPassword] = useState<string>("••••••••••••");
+  const [email, setEmail] = useState<string>("");
+  const [password, setPassword] = useState<string>("");
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [rememberMe, setRememberMe] = useState<boolean>(true);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
@@ -82,6 +83,32 @@ export function LoginPage({ onNavigate, onLoginSuccess }: LoginPageProps) {
       const auth = await signInWithEmail(trimmedEmail, password);
 
       if (auth && auth.uid) {
+        // Check if company has an incomplete or active onboarding from Firestore
+        const userCompanies = await findCompaniesByOwnerOrEmail(auth.uid, trimmedEmail);
+        const comp =
+          userCompanies[0] ||
+          (await findCompanyByEmailOrName(trimmedEmail)) ||
+          (getUserMemberships(auth.uid)[0]?.companyId
+            ? await getCompanyRecord(getUserMemberships(auth.uid)[0].companyId)
+            : null);
+
+        if (comp) {
+          if (comp.lifecycleStatus === "ACTIVE" || comp.status === "ACTIVE" || comp.onboardingCompleted) {
+            // Already active company: immediately route to Studio
+            setActiveOrganizationContext(auth.uid, comp.id);
+            setActiveOrgId(comp.id);
+            if (onLoginSuccess) {
+              onLoginSuccess();
+            }
+            navigateTo("/studio");
+            return;
+          } else {
+            // Incomplete registration: redirect directly to onboarding page to complete registration
+            navigateTo("/company/onboarding");
+            return;
+          }
+        }
+
         const activeCtx = getActiveOrganizationContext(auth.uid);
         setActiveOrgId(activeCtx?.companyId || activeCtx?.organizationId || null);
 
@@ -89,7 +116,7 @@ export function LoginPage({ onNavigate, onLoginSuccess }: LoginPageProps) {
           onLoginSuccess();
         }
 
-        const studioCheck = resolveCompanyStudioAccess(auth, activeCtx?.companyId || undefined);
+        const studioCheck = await resolveCompanyStudioAccessAsync(auth, activeCtx?.companyId || undefined);
         if (studioCheck.isAllowed) {
           navigateTo("/studio");
         }
@@ -241,6 +268,9 @@ export function LoginPage({ onNavigate, onLoginSuccess }: LoginPageProps) {
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  onFocus={(e) => {
+                    if (e.target.value === "owner@argento-marine.com") setEmail("");
+                  }}
                   placeholder="name@company.com"
                   required
                   className="w-full pl-10 pr-3.5 py-2.5 bg-slate-50 border border-line rounded-xl text-xs text-graphite font-medium focus:outline-none focus:ring-2 focus:ring-royal focus:bg-white transition"
@@ -271,7 +301,10 @@ export function LoginPage({ onNavigate, onLoginSuccess }: LoginPageProps) {
                   type={showPassword ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
+                  onFocus={(e) => {
+                    if (e.target.value === "••••••••••••") setPassword("");
+                  }}
+                  placeholder="Enter password"
                   required
                   className="w-full pl-10 pr-10 py-2.5 bg-slate-50 border border-line rounded-xl text-xs text-graphite font-medium focus:outline-none focus:ring-2 focus:ring-royal focus:bg-white transition"
                 />

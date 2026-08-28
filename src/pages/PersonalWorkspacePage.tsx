@@ -28,12 +28,19 @@ import {
   MessageSquare,
 } from "lucide-react";
 import { MyInquiriesWorkspaceModule } from "@/components/workspace/MyInquiriesWorkspaceModule";
-import { getUserInquiries, subscribeInquiries } from "@/lib/connectStore";
+import { getUserInquiries, subscribeToUserInquiries } from "@/services/inquiryService";
+import {
+  subscribeToUserSavedItems,
+  subscribeToUserCollections,
+  subscribeToUserActivities,
+} from "@/services/workspaceService";
 import { getCurrentAuthSession, signOutCurrentUser } from "@/lib/services/securityService";
 import {
   resolveAccessContext,
   isPersonalVisitor,
   isGuestVisitor,
+  getActiveOrganizationContext,
+  getUserMemberships,
 } from "@/lib/services/accessContextService";
 import {
   getSavedCompanies,
@@ -54,6 +61,7 @@ import {
   removeItemFromCollection,
   getCollectionWithResolvedItems,
   subscribeToPersonalWorkspace,
+  syncWorkspaceFromFirestore,
 } from "@/lib/services/personalWorkspaceService";
 import {
   executePublicCompanyAI,
@@ -93,6 +101,8 @@ export function PersonalWorkspacePage({
   >(initialTab);
 
   const [authSession, setAuthSession] = useState(() => getCurrentAuthSession());
+  const [isLoadingWorkspace, setIsLoadingWorkspace] = useState(true);
+  const [workspaceError, setWorkspaceError] = useState<string | null>(null);
   const [savedCompanies, setSavedCompanies] = useState<
     Array<{ reference: any; entity: CompanyProfile | CompanyEntity | null; isAvailable: boolean }>
   >([]);
@@ -375,51 +385,89 @@ export function PersonalWorkspacePage({
       setCollections([]);
       setActivities([]);
       setResolvedCollectionData(null);
+      setIsLoadingWorkspace(false);
       return;
     }
 
-    const [comps, prods, servs] = await Promise.all([
-      getSavedCompanies(current.uid),
-      getSavedProducts(current.uid),
-      getSavedServices(current.uid),
-    ]);
+    try {
+      // 1. Authoritative Firestore Sync
+      await syncWorkspaceFromFirestore(current.uid);
 
-    const userCols = getUserCollections(current.uid);
-    const inqs = getUserInquiries(current.uid);
-    setSavedCompanies(comps);
-    setSavedProducts(prods);
-    setSavedServices(servs);
-    setUserInquiries(inqs);
-    setCollections(userCols);
-    setActivities(getUserActivities(current.uid));
-    setTrustProfile(getUserTrustProfile(current.uid));
+      // 2. Resolve items & collections
+      const [comps, prods, servs, inqs] = await Promise.all([
+        getSavedCompanies(current.uid),
+        getSavedProducts(current.uid),
+        getSavedServices(current.uid),
+        getUserInquiries(current.uid).catch(() => []),
+      ]);
 
-    if (selectedCollectionId) {
-      const colData = await getCollectionWithResolvedItems(current.uid, selectedCollectionId);
-      setResolvedCollectionData(colData);
+      const userCols = getUserCollections(current.uid);
+      setSavedCompanies(comps);
+      setSavedProducts(prods);
+      setSavedServices(servs);
+      setUserInquiries(inqs);
+      setCollections(userCols);
+      setActivities(getUserActivities(current.uid));
+      setTrustProfile(getUserTrustProfile(current.uid));
+
+      if (selectedCollectionId) {
+        const colData = await getCollectionWithResolvedItems(current.uid, selectedCollectionId);
+        setResolvedCollectionData(colData);
+      }
+    } catch (err: any) {
+      console.warn("[PersonalWorkspace] Reload data fallback:", err);
+      setWorkspaceError("Some cloud data could not be synchronized.");
+    } finally {
+      setIsLoadingWorkspace(false);
     }
   };
 
   useEffect(() => {
+    const current = getCurrentAuthSession();
+    if (current.uid) {
+      const memberships = getUserMemberships(current.uid);
+      const activeCtx = getActiveOrganizationContext(current.uid);
+      const companyId = activeCtx?.companyId || (memberships.length > 0 ? memberships[0]?.companyId : null);
+      if (companyId) {
+        navigateTo("/studio");
+        return;
+      }
+    }
+
     reloadData();
     const unsubWorkspace = subscribeToPersonalWorkspace(() => {
       reloadData();
     });
-    const unsubInquiries = subscribeInquiries(() => {
-      if (authSession.uid) {
-        setUserInquiries(getUserInquiries(authSession.uid));
-      } else {
-        setUserInquiries(getUserInquiries("usr-owner-001"));
-      }
+
+    const targetUid = authSession.uid || "usr-owner-001";
+    const unsubInquiries = subscribeToUserInquiries(targetUid, (inqs) => {
+      setUserInquiries(inqs);
     });
+
+    const unsubSaved = subscribeToUserSavedItems(targetUid, () => {
+      reloadData();
+    });
+
+    const unsubCols = subscribeToUserCollections(targetUid, () => {
+      reloadData();
+    });
+
+    const unsubActs = subscribeToUserActivities(targetUid, () => {
+      reloadData();
+    });
+
     const unsubTrust = subscribeToTrustState(() => {
       if (authSession.uid) {
         setTrustProfile(getUserTrustProfile(authSession.uid));
       }
     });
+
     return () => {
       unsubWorkspace();
       unsubInquiries();
+      unsubSaved();
+      unsubCols();
+      unsubActs();
       unsubTrust();
     };
   }, [authSession.uid, selectedCollectionId]);

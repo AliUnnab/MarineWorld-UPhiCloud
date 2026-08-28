@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   CommercialInvoice,
   CommercialPayment,
@@ -28,6 +28,7 @@ import {
   getCompanyRecordSync,
   updateCompanyBillingConfig,
 } from "@/lib/repositories/companyRepository";
+import { subscribeToCompanyInvoices } from "@/services/billingService";
 import {
   Receipt,
   FileText,
@@ -145,8 +146,31 @@ export function CompanyStudioBillingView({
 
   // Data fetching (Strict Tenant Scoping)
   const canonicalSubscription = getCompanySubscription(companyId);
-  const companyPlan = getPlanByCode(canonicalSubscription?.planCode || "GROWTH");
+  const companyPlan = getPlanByCode(canonicalSubscription?.planCode || canonicalSubscription?.planId || "STARTER");
   const companyEntitlements = getCompanyEntitlements(companyId);
+
+  // Real-time Firestore synchronization for Invoices, Payments & Subscriptions
+  useEffect(() => {
+    if (!companyId) return;
+
+    // Real-time invoice listener
+    const unsubInvoices = subscribeToCompanyInvoices(companyId, () => {
+      setRefreshTrigger((prev) => prev + 1);
+    });
+
+    const handleBillingUpdate = () => {
+      setRefreshTrigger((prev) => prev + 1);
+    };
+
+    window.addEventListener("marineworld_billing_updated", handleBillingUpdate);
+    window.addEventListener("marineworld_subscription_updated", handleBillingUpdate);
+
+    return () => {
+      unsubInvoices();
+      window.removeEventListener("marineworld_billing_updated", handleBillingUpdate);
+      window.removeEventListener("marineworld_subscription_updated", handleBillingUpdate);
+    };
+  }, [companyId]);
 
   // All commercial agreements for company
   const allAgreements = useMemo(() => {
@@ -612,7 +636,8 @@ export function CompanyStudioBillingView({
               <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px]">
                 <span className="text-slate-400">Compliance:</span>
                 <span className="font-semibold text-emerald-700 flex items-center gap-1">
-                  <CheckCircle2 className="w-3 h-3" /> Fully Verified
+                  <CheckCircle2 className="w-3 h-3 shrink-0" />
+                  <span>Fully Verified</span>
                 </span>
               </div>
             </div>
@@ -904,25 +929,39 @@ export function CompanyStudioBillingView({
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
               <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-1">
                 <span className="text-[10px] text-slate-400 uppercase font-bold block">Annual Commitment</span>
-                <span className="font-mono font-bold text-slate-900 text-sm">$10,788 USD</span>
-                <span className="text-[11px] text-slate-500 block">Billed annually ($899/mo)</span>
+                <span className="font-mono font-bold text-slate-900 text-sm">
+                  ${((companyPlan.price || 299) * 12).toLocaleString()} {companyPlan.currency || "USD"}
+                </span>
+                <span className="text-[11px] text-slate-500 block">
+                  Billed annually (${companyPlan.price || 299}/mo)
+                </span>
               </div>
 
               <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-1">
                 <span className="text-[10px] text-slate-400 uppercase font-bold block">Next Renewal</span>
-                <span className="font-mono font-bold text-slate-900 text-sm">18 Aug 2027</span>
+                <span className="font-mono font-bold text-slate-900 text-sm">
+                  {canonicalSubscription?.currentPeriodEnd
+                    ? new Date(canonicalSubscription.currentPeriodEnd).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
+                    : "18 Aug 2027"}
+                </span>
                 <span className="text-[11px] text-slate-500 block">Annual auto-renewal</span>
               </div>
 
               <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-1">
                 <span className="text-[10px] text-slate-400 uppercase font-bold block">Workspace Seats</span>
-                <span className="font-bold text-slate-900 text-sm">15 Active Seats</span>
+                <span className="font-bold text-slate-900 text-sm">
+                  {companyPlan.limits?.maxMembers || 5} Active Seats
+                </span>
                 <span className="text-[11px] text-slate-500 block">Unlimited viewers</span>
               </div>
 
               <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-1">
                 <span className="text-[10px] text-slate-400 uppercase font-bold block">Billing Engine Rail</span>
-                <span className="font-bold text-slate-900 text-sm">Stripe Recurring</span>
+                <span className="font-bold text-slate-900 text-sm">
+                  {canonicalSubscription?.paymentMethod === "GOOGLE_CLOUD_MARKETPLACE"
+                    ? "Google Cloud Marketplace"
+                    : "Stripe Recurring"}
+                </span>
                 <span className="text-[11px] text-slate-500 block">Direct PCI Vault</span>
               </div>
             </div>
@@ -930,15 +969,19 @@ export function CompanyStudioBillingView({
             {/* PAYMENT METHOD STRIP & ACTIONS */}
             <div className="p-5 rounded-2xl bg-slate-50/70 border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div className="flex items-center gap-3.5">
-                <div className="w-10 h-8 rounded-lg bg-slate-900 text-white font-mono font-bold text-xs flex items-center justify-center">
-                  VISA
+                <div className="w-10 h-8 rounded-lg bg-slate-900 text-white font-mono font-bold text-xs flex items-center justify-center uppercase">
+                  {defaultPaymentMethod?.brand || "CARD"}
                 </div>
                 <div>
                   <div className="font-mono font-bold text-slate-900 text-xs">
-                    Corporate Visa ending in •••• 4242
+                    {defaultPaymentMethod
+                      ? `${defaultPaymentMethod.brand.toUpperCase()} ending in •••• ${defaultPaymentMethod.last4}`
+                      : "Corporate Payment Card on File"}
                   </div>
                   <div className="text-[11px] text-slate-500">
-                    Auto-debited on annual anniversary renewal &bull; Expires 08/2029
+                    {defaultPaymentMethod
+                      ? `Auto-debited on anniversary renewal • Expires ${defaultPaymentMethod.expMonth}/${defaultPaymentMethod.expYear}`
+                      : "Auto-debited on annual anniversary renewal • Vaulted & Encrypted"}
                   </div>
                 </div>
               </div>

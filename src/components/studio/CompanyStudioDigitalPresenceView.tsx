@@ -18,9 +18,9 @@ import { getCompanyById } from "@/lib/services/companyService";
 import {
   resolveMarineWorldCompanyDigitalId,
   buildCanonicalCompanyUrl,
+  buildFederatedCompanySubdomainUrl,
 } from "@/lib/services/companyIdentityService";
-import { marineSector } from "@/lib/sectors/marine";
-import { getCompanyBySlug } from "@/lib/registry";
+import { getCompanyRecordSync } from "@/lib/repositories/companyRepository";
 import { ShareProtocolModal } from "@/components/company/ShareProtocolModal";
 
 interface CompanyStudioDigitalPresenceViewProps {
@@ -32,13 +32,17 @@ export const CompanyStudioDigitalPresenceView: React.FC<CompanyStudioDigitalPres
   companyId,
   onOpenPreview,
 }) => {
-  const canonicalCompany = getCompanyById(companyId) || (getCompanyBySlug(marineSector, companyId) as unknown as CompanyEntity);
+  const canonicalCompany = getCompanyById(companyId) || (getCompanyRecordSync(companyId) as unknown as CompanyEntity);
   const [copied, setCopied] = useState(false);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
 
-  const slug = canonicalCompany?.slug || companyId;
+  const slug = canonicalCompany?.slug || canonicalCompany?.id || companyId;
   const canonicalUrl = buildCanonicalCompanyUrl(
-    canonicalCompany,
+    canonicalCompany || slug,
+    canonicalCompany?.primarySectorCityId || canonicalCompany?.sectorCityIds?.[0]
+  );
+  const federatedSubdomain = buildFederatedCompanySubdomainUrl(
+    canonicalCompany || slug,
     canonicalCompany?.primarySectorCityId || canonicalCompany?.sectorCityIds?.[0]
   );
   const displayName = canonicalCompany?.displayName || canonicalCompany?.legalName || slug;
@@ -59,7 +63,7 @@ export const CompanyStudioDigitalPresenceView: React.FC<CompanyStudioDigitalPres
   };
 
   const handleOpenExternal = () => {
-    window.location.href = `/companies/${slug}`;
+    window.open(canonicalUrl, "_blank");
   };
 
   return (
@@ -180,11 +184,18 @@ export const CompanyStudioDigitalPresenceView: React.FC<CompanyStudioDigitalPres
         </div>
 
         {/* Digital Identity Identifiers */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
           <div className="p-3.5 rounded-xl bg-canvas border border-line space-y-1">
             <div className="text-[10px] font-mono text-stone uppercase">Digital Identity ID</div>
             <div className="font-mono font-bold text-royal truncate">
               {digitalIdInfo.mwCompanyDigitalId}
+            </div>
+          </div>
+
+          <div className="p-3.5 rounded-xl bg-canvas border border-line space-y-1">
+            <div className="text-[10px] font-mono text-stone uppercase">Federated Domain Node</div>
+            <div className="font-mono font-bold text-royal truncate">
+              {federatedSubdomain.replace(/^https?:\/\//, "").replace(/\/$/, "")}
             </div>
           </div>
 

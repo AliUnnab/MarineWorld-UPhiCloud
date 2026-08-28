@@ -1,13 +1,14 @@
 import { useState, useMemo, useEffect } from "react";
 import type { CompanyProfile, SectorCity, IndustryDomainEntity, SectorConfig, ServiceEntity } from "@/lib/types";
 import { getCompanyServices, getCompanyServiceBySlug, getServiceBySlug } from "@/lib/registry";
+import { getServicesByCompany, subscribeToCompanyServices } from "@/services/serviceService";
 import { injectJsonLd, buildServiceSchema } from "@/lib/services/schemaOrgService";
 import { Icon } from "@/components/digione/icons";
 import { DigiBadge, DigiButton } from "@/components/digione/primitives";
 import { ServiceAIAdvisor } from "./ServiceAIAdvisor";
 import { SaveEntityButton } from "@/components/foundation/SaveEntityButton";
 import { AddToCollectionButton } from "@/components/foundation/AddToCollectionButton";
-import { Copy, Check, Share2, ExternalLink } from "lucide-react";
+import { Copy, Check, Share2, ExternalLink, Loader2, AlertCircle } from "lucide-react";
 import { ShareProtocolModal } from "./ShareProtocolModal";
 
 /* ------------------------------------------------------------
@@ -139,15 +140,47 @@ export function CompanyServicesModule({
     }
   };
 
-  const services = useMemo(() => getCompanyServices(company), [company]);
+  // Fallback initial services from company model
+  const fallbackServices = useMemo(() => getCompanyServices(company), [company]);
+  const [liveServices, setLiveServices] = useState<ServiceEntity[]>(fallbackServices);
+  const [isLoadingLive, setIsLoadingLive] = useState(true);
+  const [liveError, setLiveError] = useState<string | null>(null);
+
+  // Subscribe to real-time Firestore services for this company
+  useEffect(() => {
+    if (!company?.id) {
+      setIsLoadingLive(false);
+      return;
+    }
+
+    setIsLoadingLive(true);
+    setLiveError(null);
+
+    const unsubscribe = subscribeToCompanyServices(company.id, (fetchedServices) => {
+      if (fetchedServices && fetchedServices.length > 0) {
+        setLiveServices(fetchedServices);
+      } else {
+        setLiveServices(fallbackServices);
+      }
+      setIsLoadingLive(false);
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [company?.id, fallbackServices]);
+
+  const services = liveServices.length > 0 ? liveServices : fallbackServices;
 
   // Resolve raw service by slug across company or global registry
   const rawService = useMemo(() => {
     if (!activeServiceSlug) return undefined;
+    const inLive = liveServices.find((s) => s.slug === activeServiceSlug || s.id === activeServiceSlug);
+    if (inLive) return inLive;
     const inCompany = getCompanyServiceBySlug(company, activeServiceSlug);
     if (inCompany) return inCompany;
     return getServiceBySlug(activeServiceSlug);
-  }, [company, activeServiceSlug]);
+  }, [liveServices, company, activeServiceSlug]);
 
   const selectedService = useMemo(() => {
     if (rawService && company?.id && (rawService.companyId === company.id || !rawService.companyId)) {

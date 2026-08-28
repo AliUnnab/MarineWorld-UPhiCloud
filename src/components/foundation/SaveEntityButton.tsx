@@ -54,6 +54,8 @@ export function SaveEntityButton({
   };
 
   const [saved, setSaved] = useState(() => checkIsSaved(authSession.uid));
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
     const session = getCurrentAuthSession();
@@ -88,30 +90,39 @@ export function SaveEntityButton({
       return;
     }
 
-    if (saved) {
-      if (type === "company") {
-        await removeSavedCompanyReference(authSession.uid, id);
-      } else if (type === "product") {
-        await removeSavedProductReference(authSession.uid, id);
-      } else if (type === "service") {
-        await removeSavedServiceReference(authSession.uid, id);
-      } else if (type === "city") {
-        await removeSavedCityReference(authSession.uid, id);
+    setIsSaving(true);
+    setSaveError(null);
+    try {
+      if (saved) {
+        if (type === "company") {
+          await removeSavedCompanyReference(authSession.uid, id);
+        } else if (type === "product") {
+          await removeSavedProductReference(authSession.uid, id);
+        } else if (type === "service") {
+          await removeSavedServiceReference(authSession.uid, id);
+        } else if (type === "city") {
+          await removeSavedCityReference(authSession.uid, id);
+        }
+        setSaved(false);
+      } else {
+        if (type === "company") {
+          await saveCompanyReference(authSession.uid, id, businessId);
+        } else if (type === "product") {
+          const cId = companyId || id;
+          await saveProductReference(authSession.uid, id, cId, businessId);
+        } else if (type === "service") {
+          const cId = companyId || id;
+          await saveServiceReference(authSession.uid, id, cId, businessId);
+        } else if (type === "city") {
+          await saveCityReference(authSession.uid, id);
+        }
+        setSaved(true);
       }
-      setSaved(false);
-    } else {
-      if (type === "company") {
-        await saveCompanyReference(authSession.uid, id, businessId);
-      } else if (type === "product") {
-        const cId = companyId || id;
-        await saveProductReference(authSession.uid, id, cId, businessId);
-      } else if (type === "service") {
-        const cId = companyId || id;
-        await saveServiceReference(authSession.uid, id, cId, businessId);
-      } else if (type === "city") {
-        await saveCityReference(authSession.uid, id);
-      }
-      setSaved(true);
+    } catch (err: any) {
+      console.warn("[SaveEntityButton] Save toggle error:", err);
+      setSaveError(err?.message || "Failed to save item");
+    } finally {
+      setIsSaving(false);
     }
   };
 

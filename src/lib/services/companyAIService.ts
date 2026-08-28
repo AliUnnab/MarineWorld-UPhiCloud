@@ -4,11 +4,10 @@ import type {
   PhysicalFacility,
   DocumentEntity,
 } from "@/lib/types";
-import { getCompanyById, getPhysicalFacilities } from "@/lib/services/companyService";
+import { getCompanyById, getCompanyBySlug, getPhysicalFacilities } from "@/lib/services/companyService";
 import { getCompanyOfferings } from "@/lib/services/offeringEntityService";
 import { getKnowledgeSources } from "@/lib/services/knowledgeLifecycleService";
-import { marineSector } from "@/lib/sectors/marine";
-import { getCompanyBySlug } from "@/lib/registry";
+import { generateAIContent } from "@/lib/gemini";
 
 export type CompanyAICommunicationStyle =
   | "Professional"
@@ -159,23 +158,28 @@ export const ALL_CAPABILITIES: Array<{
   },
 ];
 
+import { db } from "@/lib/firebase";
+import { doc, getDoc, setDoc } from "firebase/firestore";
+
 /**
  * Retrieve persisted AI configuration for a company
  */
 export function getCompanyAIConfig(companyId: string): CompanyAIConfig {
+  if (inMemoryConfigs.has(companyId)) {
+    return inMemoryConfigs.get(companyId)!;
+  }
+
   if (typeof window !== "undefined") {
     try {
       const raw = localStorage.getItem(`${STORAGE_KEY_PREFIX}${companyId}`);
       if (raw) {
-        return JSON.parse(raw);
+        const parsed = JSON.parse(raw);
+        inMemoryConfigs.set(companyId, parsed);
+        return parsed;
       }
     } catch {
       // ignore
     }
-  }
-
-  if (inMemoryConfigs.has(companyId)) {
-    return inMemoryConfigs.get(companyId)!;
   }
 
   // Derive initial config
@@ -191,6 +195,24 @@ export function getCompanyAIConfig(companyId: string): CompanyAIConfig {
   };
 
   inMemoryConfigs.set(companyId, initial);
+
+  // Background warm from Firestore
+  if (companyId) {
+    const docRef = doc(db, "companies", companyId, "ai", "config");
+    getDoc(docRef).then((snap) => {
+      if (snap.exists()) {
+        const data = snap.data() as CompanyAIConfig;
+        inMemoryConfigs.set(companyId, data);
+        if (typeof window !== "undefined") {
+          localStorage.setItem(`${STORAGE_KEY_PREFIX}${companyId}`, JSON.stringify(data));
+          window.dispatchEvent(
+            new CustomEvent("marineworld_company_ai_updated", { detail: { companyId, config: data } })
+          );
+        }
+      }
+    }).catch(() => {});
+  }
+
   return initial;
 }
 
@@ -222,6 +244,29 @@ export function saveCompanyAIConfig(
   }
 
   inMemoryConfigs.set(companyId, updated);
+
+  // Direct Firestore persistence
+  try {
+    const docRef = doc(db, "companies", companyId, "ai", "config");
+    setDoc(docRef, updated, { merge: true }).catch((e) => {
+      console.warn("[CompanyAIService] Firestore config write error:", e);
+    });
+
+    const rootDocRef = doc(db, "companies", companyId);
+    setDoc(rootDocRef, { aiConfig: updated, updatedAt: updated.lastUpdated }, { merge: true }).catch((e) => {
+      console.warn("[CompanyAIService] Firestore root aiConfig write error:", e);
+    });
+
+    import("@/services/businessTwinService").then(({ saveCompanyBusinessTwin }) => {
+      saveCompanyBusinessTwin(companyId, {
+        capabilities: updated.capabilities as any,
+        overallCompleteness: updated.companyAiStatus === "READY" ? 100 : 50,
+      });
+    }).catch(() => {});
+  } catch (err) {
+    console.warn("[CompanyAIService] Firestore saveCompanyBusinessTwin fallback:", err);
+  }
+
   return updated;
 }
 
@@ -229,7 +274,7 @@ export function saveCompanyAIConfig(
  * Compute dynamic AI Readiness from real persisted modules
  */
 export function evaluateCompanyAIReadiness(companyId: string): CompanyAIReadinessBreakdown {
-  const company = getCompanyById(companyId) || (getCompanyBySlug(marineSector, companyId) as unknown as CompanyEntity);
+  const company = getCompanyById(companyId) || (getCompanyBySlug(companyId) as unknown as CompanyEntity);
   const facilities = getPhysicalFacilities(companyId);
   const offerings = getCompanyOfferings(companyId);
   const knowledgeSources = getKnowledgeSources(companyId, { status: "ACTIVE" });
@@ -317,13 +362,63 @@ export interface SimulationResult {
 }
 
 /**
- * Simulate deterministic Company AI query with intelligent routing and commercial handoff
+ * Generate real grounded Company AI query with Gemini API and intelligent commercial handoff
  */
+export async function generateCompanyAIResponse(
+  companyId: string,
+  query: string
+): Promise<SimulationResult> {
+  const syncRes = simulateCompanyAIResponse(companyId, query);
+  try {
+    const company = getCompanyById(companyId) || (getCompanyBySlug(companyId) as unknown as CompanyEntity);
+    const companyName = company?.displayName || company?.brandName || (company as any)?.name || "Company";
+    const offerings = getCompanyOfferings(companyId);
+    const facilities = getPhysicalFacilities(companyId);
+    
+    const offeringSummary = offerings.map((o) => `${o.name} (${o.type}): ${o.shortDescription || ""}`).join("\n");
+    const facilitySummary = facilities.map((f) => `${f.facilityName} (${f.facilityType}) in ${f.city}, ${f.country}`).join("\n");
+
+    const prompt = `You are the verified AI Digital Twin representative for "${companyName}" on the MarineWorld.City platform.
+Representative Role: ${syncRes.representativeName} (${syncRes.representativeScope})
+
+GROUNDED COMPANY CONTEXT:
+- Company Name: ${companyName}
+- Headquarters: ${company?.city || "Rotterdam"}, ${company?.country || "Netherlands"}
+- Verified Offerings:
+${offeringSummary || "None listed"}
+- Verified Facilities:
+${facilitySummary || "None listed"}
+- Grounding Facts:
+${syncRes.groundedFacts.join("\n")}
+- Standard Response Baseline: ${syncRes.response}
+
+USER INQUIRY:
+"${query}"
+
+INSTRUCTIONS:
+1. Provide an authoritative, grounded, professional, and helpful response representing ${companyName}.
+2. Adhere strictly to the facts above and maritime domain standards.
+3. Keep the response concise, clear, and direct (1 to 2 paragraphs).
+4. If the user asks about purchasing, specifications, or RFQs, guide them to request a formal quotation.`;
+
+    const aiText = await generateAIContent(prompt, `You are representing ${companyName} on the MarineWorld digital network. Answer strictly based on grounded facts.`);
+    if (aiText && aiText.trim().length > 10) {
+      return {
+        ...syncRes,
+        response: aiText.trim(),
+      };
+    }
+  } catch (e) {
+    console.warn("[CompanyAIService] Live Gemini generation fallback to structured sync result:", e);
+  }
+  return syncRes;
+}
+
 export function simulateCompanyAIResponse(
   companyId: string,
   query: string
 ): SimulationResult {
-  const company = getCompanyById(companyId) || (getCompanyBySlug(marineSector, companyId) as unknown as CompanyEntity);
+  const company = getCompanyById(companyId) || (getCompanyBySlug(companyId) as unknown as CompanyEntity);
   const companyName = company?.displayName || company?.brandName || (company as any)?.name || "Argento Maritime Engineering";
   const facilities = getPhysicalFacilities(companyId);
   const offerings = getCompanyOfferings(companyId);

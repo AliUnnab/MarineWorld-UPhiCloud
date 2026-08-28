@@ -42,6 +42,17 @@ import {
   type ExtractedStructuredFact,
   type IngestionSourcePayload,
 } from "@/lib/services/knowledgeIngestionService";
+import {
+  openGoogleDrivePicker,
+  type GoogleDriveSelectedFile,
+} from "@/lib/services/googleDriveService";
+import { saveCompanyDocument } from "@/services/knowledgeService";
+import {
+  uploadFileToStorage,
+  deleteFileFromStorage,
+  validateStorageFile,
+} from "@/lib/services/storageService";
+
 
 interface AddKnowledgeSourceModalProps {
   isOpen: boolean;
@@ -71,6 +82,8 @@ interface QueuedFile {
   type: string;
   progress: number;
   status: "QUEUED" | "UPLOADING" | "UPLOADED";
+  url?: string;
+  storagePath?: string;
 }
 
 const INGESTION_PIPELINE_STEPS = [
@@ -106,6 +119,7 @@ export const AddKnowledgeSourceModal: React.FC<AddKnowledgeSourceModalProps> = (
     name: string;
     type: "FILE" | "FOLDER";
     path: string;
+    size?: string;
   } | null>(null);
 
   // URL state
@@ -138,6 +152,11 @@ export const AddKnowledgeSourceModal: React.FC<AddKnowledgeSourceModalProps> = (
   const [editingFactId, setEditingFactId] = useState<string | null>(null);
   const [tempFactValue, setTempFactValue] = useState("");
 
+  // Google Drive Live Picker State
+  const [drivePickedFiles, setDrivePickedFiles] = useState<GoogleDriveSelectedFile[]>([]);
+  const [isOpeningDrivePicker, setIsOpeningDrivePicker] = useState(false);
+  const [driveError, setDriveError] = useState<string | null>(null);
+
   // Reset modal state on open/close
   useEffect(() => {
     if (isOpen) {
@@ -166,27 +185,73 @@ export const AddKnowledgeSourceModal: React.FC<AddKnowledgeSourceModalProps> = (
       setEditingFactId(null);
       setShowMoreOptions(false);
       setShowCustomOfferingSelect(false);
+      setDrivePickedFiles([]);
+      setIsOpeningDrivePicker(false);
+      setDriveError(null);
     }
   }, [isOpen, initialMethod]);
 
   if (!isOpen) return null;
 
-  // Handlers for Desktop Upload
-  const handleFileSelection = (files: FileList | null) => {
+  // Handlers for Desktop Upload (Direct Firebase Storage upload with live progress)
+  const handleFileSelection = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
-    const newItems: QueuedFile[] = Array.from(files).map((f, i) => ({
+    const fileArray = Array.from(files);
+
+    const initialItems: QueuedFile[] = fileArray.map((f, i) => ({
       id: `file-${Date.now()}-${i}`,
       name: f.name,
       size: f.size,
       type: f.name.split(".").pop()?.toUpperCase() || "FILE",
-      progress: 100,
-      status: "UPLOADED",
+      progress: 0,
+      status: "UPLOADING",
     }));
-    setFileQueue((prev) => [...prev, ...newItems]);
+    setFileQueue((prev) => [...prev, ...initialItems]);
+
+    for (let i = 0; i < fileArray.length; i++) {
+      const file = fileArray[i];
+      const targetId = initialItems[i].id;
+
+      try {
+        const res = await uploadFileToStorage(file, {
+          companyId,
+          categoryFolder: "documents",
+          onProgress: (percent) => {
+            setFileQueue((prev) =>
+              prev.map((item) =>
+                item.id === targetId ? { ...item, progress: percent } : item
+              )
+            );
+          },
+        });
+
+        setFileQueue((prev) =>
+          prev.map((item) =>
+            item.id === targetId
+              ? {
+                  ...item,
+                  progress: 100,
+                  status: "UPLOADED",
+                  url: res.url,
+                  storagePath: res.storagePath,
+                }
+              : item
+          )
+        );
+      } catch (err: any) {
+        console.error("[AddKnowledgeSourceModal] Document upload error:", err);
+      }
+    }
   };
 
   const handleRemoveFile = (id: string) => {
-    setFileQueue((prev) => prev.filter((f) => f.id !== id));
+    setFileQueue((prev) => {
+      const target = prev.find((f) => f.id === id);
+      if (target?.url && target.url.includes("firebasestorage.app")) {
+        deleteFileFromStorage(target.storagePath || target.url).catch(() => {});
+      }
+      return prev.filter((f) => f.id !== id);
+    });
   };
 
   // Trigger AI Ingestion Pipeline
@@ -214,37 +279,29 @@ export const AddKnowledgeSourceModal: React.FC<AddKnowledgeSourceModalProps> = (
     }, 350);
   };
 
-  // Google Drive Mock Items
-  const DRIVE_MOCK_ITEMS = [
-    {
-      id: "drv-01",
-      name: "DNV_Class_Approval_Subsea_Robotics_2026.pdf",
-      type: "FILE" as const,
-      path: "/MarineWorld-Corporate-Knowledge/Certifications/DNV_Class_Approval_Subsea_Robotics_2026.pdf",
-      size: "2.4 MB",
-    },
-    {
-      id: "drv-02",
-      name: "Autonomous_ROV_Technical_Datasheet_v4.pdf",
-      type: "FILE" as const,
-      path: "/MarineWorld-Corporate-Knowledge/Product-Specs/Autonomous_ROV_Technical_Datasheet_v4.pdf",
-      size: "4.1 MB",
-    },
-    {
-      id: "drv-03",
-      name: "Commercial_Tariff_Schedule_2026.xlsx",
-      type: "FILE" as const,
-      path: "/MarineWorld-Corporate-Knowledge/Commercial/Commercial_Tariff_Schedule_2026.xlsx",
-      size: "820 KB",
-    },
-    {
-      id: "drv-f-01",
-      name: "Subsea Hydrographic Survey Protocols (Folder)",
-      type: "FOLDER" as const,
-      path: "/MarineWorld-Corporate-Knowledge/Procedures/Subsea Hydrographic Survey Protocols/",
-      size: "3 files",
-    },
-  ];
+  const handleLaunchGoogleDrivePicker = async () => {
+    setIsOpeningDrivePicker(true);
+    setDriveError(null);
+    try {
+      const files = await openGoogleDrivePicker({ allowFolders: true, multiSelect: false });
+      if (files && files.length > 0) {
+        const picked = files[0];
+        setDrivePickedFiles(files);
+        setSelectedDriveItem({
+          id: picked.id,
+          name: picked.name,
+          type: picked.isFolder ? "FOLDER" : "FILE",
+          path: picked.url || `Google Drive / ${picked.name}`,
+          size: picked.sizeBytes ? `${Math.round(picked.sizeBytes / 1024)} KB` : "Google Doc",
+        });
+      }
+    } catch (err: any) {
+      console.error("[AddKnowledgeSourceModal] Google Picker Error:", err);
+      setDriveError(err?.message || "Could not open Google Drive Picker. Please verify permissions.");
+    } finally {
+      setIsOpeningDrivePicker(false);
+    }
+  };
 
   // URL Fetch Simulation
   const handleFetchUrl = () => {
@@ -293,7 +350,7 @@ export const AddKnowledgeSourceModal: React.FC<AddKnowledgeSourceModalProps> = (
   };
 
   // Final Grounding Action
-  const handleConfirmAndGround = (groundImmediately: boolean = true) => {
+  const handleConfirmAndGround = async (groundImmediately: boolean = true) => {
     if (!extractionResult) return;
 
     const { document, message } = finalizeKnowledgeGrounding({
@@ -311,9 +368,16 @@ export const AddKnowledgeSourceModal: React.FC<AddKnowledgeSourceModalProps> = (
       groundImmediately,
     });
 
+    try {
+      await saveCompanyDocument(companyId, document);
+    } catch (err) {
+      console.warn("[AddKnowledgeSourceModal] Firestore sync error:", err);
+    }
+
     onGroundingComplete(document, message);
     onClose();
   };
+
 
   return (
     <div
@@ -608,10 +672,10 @@ export const AddKnowledgeSourceModal: React.FC<AddKnowledgeSourceModalProps> = (
               <div className="flex items-center justify-between">
                 <div>
                   <h4 className="text-xs font-bold text-graphite uppercase tracking-wider">
-                    Google Drive Repository
+                    Google Drive Live Connection
                   </h4>
                   <p className="text-xs text-stone mt-0.5">
-                    Select a file from your connected company folder.
+                    Connect and pick documentation directly from your Google Drive using Google Picker.
                   </p>
                 </div>
                 <button
@@ -623,56 +687,69 @@ export const AddKnowledgeSourceModal: React.FC<AddKnowledgeSourceModalProps> = (
                 </button>
               </div>
 
-              <div className="p-3 rounded-xl bg-amber-50/50 border border-amber-200/80 flex items-center gap-2 text-xs text-amber-900">
-                <Folder className="w-4 h-4 text-amber-700 shrink-0" />
-                <span className="font-mono text-[11px]">
-                  Folder: <strong>/MarineWorld-Corporate-Knowledge</strong>
-                </span>
+              {driveError && (
+                <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 flex items-center gap-2 text-xs text-rose-800">
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                  <span>{driveError}</span>
+                </div>
+              )}
+
+              <div className="p-4 rounded-xl border border-dashed border-line bg-canvas flex flex-col items-center justify-center text-center space-y-3 py-6">
+                <div className="w-12 h-12 rounded-2xl bg-amber-500/10 text-amber-600 flex items-center justify-center">
+                  <Folder className="w-6 h-6" />
+                </div>
+                <div>
+                  <h5 className="text-xs font-bold text-graphite">
+                    {selectedDriveItem ? selectedDriveItem.name : "Select Google Drive Document"}
+                  </h5>
+                  <p className="text-[11px] text-stone mt-0.5 max-w-sm">
+                    {selectedDriveItem
+                      ? `${selectedDriveItem.path} (${selectedDriveItem.size})`
+                      : "Authorized OAuth 2.0 connection powered by Google Picker API."}
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleLaunchGoogleDrivePicker}
+                  disabled={isOpeningDrivePicker}
+                  className="px-4 py-2 bg-white hover:bg-slate-50 border border-line text-graphite rounded-xl text-xs font-bold flex items-center gap-2 shadow-2xs transition disabled:opacity-60"
+                >
+                  <Folder className="w-4 h-4 text-amber-600" />
+                  <span>
+                    {isOpeningDrivePicker
+                      ? "Opening Google Picker..."
+                      : selectedDriveItem
+                      ? "Change Selected Drive File"
+                      : "Browse Google Drive..."}
+                  </span>
+                </button>
               </div>
 
-              <div className="space-y-2">
-                {DRIVE_MOCK_ITEMS.map((item) => {
-                  const isSelected = selectedDriveItem?.id === item.id;
-                  const isFolder = item.type === "FOLDER";
-                  return (
-                    <div
-                      key={item.id}
-                      onClick={() => setSelectedDriveItem(item)}
-                      className={`p-3 rounded-xl border cursor-pointer flex items-center justify-between gap-3 transition ${
-                        isSelected
-                          ? "bg-royal/5 border-royal shadow-2xs"
-                          : "bg-canvas border-line hover:bg-mist"
-                      }`}
-                    >
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        {isFolder ? (
-                          <Folder className="w-4 h-4 text-amber-600 shrink-0" />
-                        ) : (
-                          <FileText className="w-4 h-4 text-royal shrink-0" />
-                        )}
-                        <div className="min-w-0">
-                          <div className="text-xs font-bold text-graphite truncate font-mono">
-                            {item.name}
-                          </div>
-                          <div className="text-[10px] text-stone font-mono truncate">
-                            {item.path}
-                          </div>
-                        </div>
+              {selectedDriveItem && (
+                <div className="p-3 rounded-xl bg-royal/5 border border-royal flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <FileText className="w-4 h-4 text-royal shrink-0" />
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold text-graphite truncate font-mono">
+                        {selectedDriveItem.name}
                       </div>
-
-                      <div className="flex items-center gap-2 shrink-0">
-                        <span className="text-[10.5px] font-mono text-stone">{item.size}</span>
-                        {isSelected && <Check className="w-4 h-4 text-royal" />}
+                      <div className="text-[10px] text-stone font-mono truncate">
+                        {selectedDriveItem.path}
                       </div>
                     </div>
-                  );
-                })}
-              </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-[10.5px] font-mono text-stone">{selectedDriveItem.size}</span>
+                    <Check className="w-4 h-4 text-royal" />
+                  </div>
+                </div>
+              )}
 
               <div className="pt-2 flex justify-end gap-2">
                 <button
                   type="button"
-                  disabled={!selectedDriveItem}
                   onClick={() => {
                     if (!selectedDriveItem) return;
                     startIngestionPipeline({
@@ -682,14 +759,10 @@ export const AddKnowledgeSourceModal: React.FC<AddKnowledgeSourceModalProps> = (
                       googleDriveIsFolder: selectedDriveItem.type === "FOLDER",
                     });
                   }}
-                  className={`px-5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition ${
-                    selectedDriveItem
-                      ? "bg-royal hover:bg-royal/90 text-white shadow-sm"
-                      : "bg-mist text-stone cursor-not-allowed border border-line"
-                  }`}
+                  className="px-5 py-2.5 bg-royal hover:bg-royal/90 disabled:opacity-40 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition"
                 >
                   <Cpu className="w-3.5 h-3.5" />
-                  <span>Analyze Selected Drive File</span>
+                  <span>Analyze Selected Drive File with AI</span>
                 </button>
               </div>
             </div>

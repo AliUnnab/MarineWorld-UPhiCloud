@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
-import type { SectorConfig } from "@/lib/types";
+import type { SectorConfig, SectorCity, IndustryDomainEntity } from "@/lib/types";
 import { PageShell } from "@/components/foundation/PageShell";
 import { FilterBar } from "@/components/foundation/FilterBar";
 import { CanonicalSectorCityCard } from "@/components/foundation/CanonicalCityCard";
@@ -10,6 +10,11 @@ import {
 } from "@/components/digione/primitives";
 import { getCities, getMarineDomains, getIndustryDomainBySlug, getCompaniesInCity } from "@/lib/registry";
 import { LEGACY_DOMAIN_MAP } from "@/lib/sectors/marine-domains";
+import {
+  listSectorCities,
+  listIndustryDomains,
+  subscribeToSectorCities,
+} from "@/services/sectorService";
 import {
   Search,
   Layers,
@@ -26,8 +31,41 @@ import {
 } from "lucide-react";
 
 export function SectorCitiesPage({ config }: { config: SectorConfig }) {
-  const cities = useMemo(() => getCities(config), [config]);
-  const domains = useMemo(() => getMarineDomains(), []);
+  const [liveCities, setLiveCities] = useState<SectorCity[]>([]);
+  const [liveDomains, setLiveDomains] = useState<IndustryDomainEntity[]>([]);
+  const [isLoadingCities, setIsLoadingCities] = useState(true);
+  const [cityError, setCityError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setIsLoadingCities(true);
+    listSectorCities()
+      .then((c) => {
+        setLiveCities(c || []);
+      })
+      .catch((err) => {
+        console.warn("[SectorCitiesPage] Firestore load error:", err);
+        setCityError("Failed to fetch cities from cloud.");
+      })
+      .finally(() => {
+        setIsLoadingCities(false);
+      });
+
+    listIndustryDomains()
+      .then((d) => {
+        setLiveDomains((d || []) as unknown as IndustryDomainEntity[]);
+      })
+      .catch(() => {});
+
+    const unsub = subscribeToSectorCities((c) => {
+      if (c && c.length > 0) setLiveCities(c);
+      setIsLoadingCities(false);
+    });
+
+    return () => unsub();
+  }, []);
+
+  const cities = liveCities;
+  const domains = liveDomains;
 
   const categories = useMemo(() => {
     return ["All", ...Array.from(new Set(cities.map((c) => c.category)))];

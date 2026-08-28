@@ -90,7 +90,7 @@ export function SectorAI({ config }: { config: SectorConfig }) {
                         <span className="relative h-2 w-2 rounded-full bg-electric" />
                       </span>
                       <span className="font-sans text-[11px] font-semibold uppercase tracking-wider text-white">
-                        TWIN SURFACE · DEMO INTERACTION
+                        SOVEREIGN TWIN SURFACE · LIVE INTERACTION
                       </span>
                     </div>
                     <span className="font-sans text-[11px] font-semibold text-white/40">MARINEWORLD.AI</span>

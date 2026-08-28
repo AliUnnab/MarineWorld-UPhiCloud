@@ -99,6 +99,19 @@ export async function findSubscriptionById(
   return subscriptionStore.get(key) || null;
 }
 
+export function findActiveSubscriptionByCompanyIdSync(
+  companyId: string
+): Subscription | undefined {
+  if (!companyId) return undefined;
+  const normId = companyId.toLowerCase();
+  for (const [k, sub] of subscriptionStore.entries()) {
+    if (k.startsWith(`${normId}:`) && sub.status === "ACTIVE") {
+      return sub;
+    }
+  }
+  return undefined;
+}
+
 export async function findActiveSubscriptionByCompanyId(
   companyId: string
 ): Promise<Subscription | null> {

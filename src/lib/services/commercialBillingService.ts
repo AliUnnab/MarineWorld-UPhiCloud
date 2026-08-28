@@ -19,6 +19,7 @@ import {
   CommercialAgreement,
 } from "./commercialPropertyService";
 import { recordCanonicalAuditEvent } from "./auditService";
+import { savePaymentMethodRecord } from "@/lib/repositories/commercialBillingRepository";
 
 export type BillingMethod = "STRIPE" | "GOOGLE_CLOUD_MARKETPLACE";
 
@@ -140,7 +141,6 @@ export interface CommercialInvoice {
   pdfUrl?: string;
   createdAt: string;
   updatedAt: string;
-  isSimulated?: boolean;
 
   // Legacy compatibility references
   privateOfferReference?: string;
@@ -172,7 +172,6 @@ export interface CommercialPayment {
   createdAt: string;
   reference?: string;
   notes?: string;
-  isSimulated?: boolean;
 
   // Stripe Production Bindings
   stripeCustomerId?: string;
@@ -206,7 +205,6 @@ export interface UnifiedBillingHistoryItem {
   agreementId?: string;
   pdfUrl?: string;
   hostedUrl?: string;
-  isSimulated?: boolean;
 }
 
 export interface StripeWebhookPayload {
@@ -489,7 +487,6 @@ export function reconcileBilling(companyId: string): {
         pdfUrl: `https://pay.stripe.com/invoice/in_stripe_pl_${companyId}_2026/pdf`,
         createdAt: issueDate,
         updatedAt: paidAt,
-        isSimulated: true,
         notes: `MarineWorld ${plan.name} Platform Subscription — Annual Corporate Contract (${plan.limits?.maxMembers || 15} Seats, Parametric Business Twin, AI Maritime Intelligence & Dedicated Advisor)`,
       };
       commercialInvoicesStore.set(existingInv.invoiceId, existingInv);
@@ -553,7 +550,6 @@ export function reconcileBilling(companyId: string): {
         createdAt: paidAt,
         reference: `Stripe Auto-Charge Card •••• 4242 (Subscription: ${subId})`,
         notes: "Platform Software Subscription Annual Corporate Billing Settled",
-        isSimulated: true,
       };
       commercialPaymentsStore.set(existingPay.paymentId, existingPay);
     } else {
@@ -746,7 +742,6 @@ export function getCompanyUnifiedBillingHistory(companyId: string): UnifiedBilli
       agreementId: inv.agreementId,
       pdfUrl: inv.pdfUrl || inv.invoicePdfUrl,
       hostedUrl: inv.hostedInvoiceUrl,
-      isSimulated: inv.isSimulated,
     });
   });
 
@@ -770,7 +765,6 @@ export function getCompanyUnifiedBillingHistory(companyId: string): UnifiedBilli
       invoiceId: pmt.invoiceId,
       paymentId: pmt.paymentId,
       agreementId: pmt.agreementId,
-      isSimulated: pmt.isSimulated,
     });
   });
 
@@ -871,7 +865,7 @@ export function processStripeWebhookEvent(event: StripeWebhookPayload): {
 
 // Seed initial projections for active/seed agreements
 function seedInitialBillingRecords(): void {
-  if (stripeBillingStore.size > 0 || googleCloudBillingStore.size > 0) return;
+  return;
 
   // 1. Seed Google Cloud Marketplace SaaS Private Offer for Argento Marine (SUPPLYCHAIN::MED::LM-01)
   const gcpArgento: GoogleCloudBillingRecord = {
@@ -1113,7 +1107,6 @@ function seedInitialBillingRecords(): void {
     createdAt: "2026-08-19T00:05:00.000Z",
     reference: "Stripe Auto-Charge Card •••• 4242 (Subscription: sub-argento-01)",
     notes: "Platform Subscription Annual Corporate Billing Settled",
-    isSimulated: true,
   };
   commercialPaymentsStore.set(platformSubPayArgento.paymentId, platformSubPayArgento);
 
@@ -1522,6 +1515,9 @@ export function confirmSetupIntent(params: {
   };
 
   stripePaymentMethodsStore.set(paymentMethod.id, paymentMethod);
+  savePaymentMethodRecord(paymentMethod).catch((e) =>
+    console.warn("[CommercialBilling] Firestore savePaymentMethodRecord background error:", e)
+  );
 
   // Record audit billing event
   recordBillingEvent({

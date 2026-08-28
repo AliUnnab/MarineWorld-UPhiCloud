@@ -25,8 +25,7 @@ import type { CompanyEntity, StudioNavigationModule } from "@/lib/types";
 import { getCompanyById, saveCompany, getCompanyNodes } from "@/lib/services/companyService";
 import { buildCanonicalCompanyUrl, getShortCanonicalCompanyUrl } from "@/lib/services/companyIdentityService";
 import type { CompanyReadinessResult } from "./CompanyStudioReadinessBar";
-import { marineSector } from "@/lib/sectors/marine";
-import { getCompanyBySlug } from "@/lib/registry";
+import { getCompanyRecordSync } from "@/lib/repositories/companyRepository";
 import { countActiveOfferings, getCompanyOfferings } from "@/lib/services/offeringEntityService";
 import { ShareProtocolModal } from "@/components/company/ShareProtocolModal";
 import { recordPublishAudit } from "@/lib/services/auditService";
@@ -48,7 +47,7 @@ export const CompanyStudioPublishView: React.FC<CompanyStudioPublishViewProps> =
 }) => {
   const canonicalCompany =
     getCompanyById(companyId) ||
-    (getCompanyBySlug(marineSector, companyId) as unknown as CompanyEntity);
+    (getCompanyRecordSync(companyId) as unknown as CompanyEntity);
   const [isPublishing, setIsPublishing] = useState(false);
   const [publishSuccess, setPublishSuccess] = useState(false);
   const [copiedUrl, setCopiedUrl] = useState(false);

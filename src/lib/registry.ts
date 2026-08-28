@@ -12,9 +12,9 @@ import { marineDomains, LEGACY_DOMAIN_MAP } from "@/lib/sectors/marine-domains";
 import { getCompanyRecordSync, findAllCompaniesSync } from "@/lib/repositories/companyRepository";
 import { resolveMarineWorldCompanyDigitalId } from "@/lib/services/companyIdentityService";
 import { buildCanonicalOfferingUrl, initializeCanonicalOfferingDefaults } from "@/lib/services/offeringEntityService";
-import { generateScaleMaritimeCompanies } from "@/lib/services/scaleCompanyGenerator";
 import { getCityAnchor, isCompanyAnchor, type CityAnchorCredential } from "@/lib/services/propertyService";
 export { buildCanonicalOfferingUrl, initializeCanonicalOfferingDefaults, getCityAnchor, isCompanyAnchor, type CityAnchorCredential };
+
 
 /**
  * SectorRegistry — canonical registry of sector configurations.
@@ -131,13 +131,16 @@ export function compareCompaniesForRegistryRanking(
   return (a.displayName || a.name || "").localeCompare(b.displayName || b.name || "");
 }
 
-export function getCities(config: SectorConfig): SectorCity[] {
-  return config.explorer.cities;
+export function getCities(config?: SectorConfig): SectorCity[] {
+  if (config?.explorer?.cities) return config.explorer.cities;
+  const cfg = getSectorConfig("marine-maritime");
+  return cfg.explorer.cities;
 }
 
-export function getCompanies(config: SectorConfig): CompanyProfile[] {
-  return generateScaleMaritimeCompanies(config);
+export function getCompanies(_config?: SectorConfig): CompanyProfile[] {
+  return findAllCompaniesSync() as unknown as CompanyProfile[];
 }
+
 
 export interface CompanyFilterCriteria {
   searchQuery?: string;
@@ -172,9 +175,10 @@ export interface CompanyPaginatedResult {
 
 export function getCompaniesPaginated(
   config: SectorConfig,
-  criteria: CompanyFilterCriteria = {}
+  criteria: CompanyFilterCriteria = {},
+  customCompanies?: CompanyProfile[]
 ): CompanyPaginatedResult {
-  const all = getCompanies(config);
+  const all = customCompanies !== undefined ? customCompanies : getCompanies(config);
   const {
     searchQuery = "",
     domain = "All",
@@ -524,77 +528,74 @@ export function getCompaniesInCity(config: SectorConfig, cityIdOrSlug: string): 
   return matched.sort(compareCompaniesForRegistryRanking);
 }
 
-export function getCompanyBySlug(config: SectorConfig, companySlug?: string): CompanyProfile | undefined {
-  if (!companySlug || typeof companySlug !== "string") {
-    // Return first company as safe default if no slug provided
-    return config?.network?.companies?.[0];
+export function getCompanyBySlug(configOrSlug?: SectorConfig | string, companySlug?: string): CompanyProfile | undefined {
+  const all = findAllCompaniesSync();
+  const slugToFind = typeof configOrSlug === "string" ? configOrSlug : companySlug;
+  if (!slugToFind || typeof slugToFind !== "string") {
+    return all[0] as unknown as CompanyProfile;
   }
-  const norm = companySlug.toLowerCase();
-  const allScale = generateScaleMaritimeCompanies(config);
-  const base = allScale.find((c) => {
-    if (!c) return false;
-    return (
-      (c.slug && c.slug.toLowerCase() === norm) ||
-      (c.id && c.id.toLowerCase() === norm) ||
-      (c.name && c.name.toLowerCase().replace(/[^a-z0-9]/g, "-") === norm)
-    );
-  });
+  const norm = slugToFind.toLowerCase();
+  const dynamicRecord =
+    getCompanyRecordSync(norm) ||
+    all.find((c) => {
+      if (!c) return false;
+      const comp = c as any;
+      return (
+        (comp.slug && comp.slug.toLowerCase() === norm) ||
+        (comp.id && comp.id.toLowerCase() === norm) ||
+        (comp.name && comp.name.toLowerCase().replace(/[^a-z0-9]/g, "-") === norm) ||
+        (comp.displayName && comp.displayName.toLowerCase().replace(/[^a-z0-9]/g, "-") === norm)
+      );
+    });
 
-  const dynamicRecord = getCompanyRecordSync(norm) || (base ? getCompanyRecordSync(base.id) : undefined);
-  if (!dynamicRecord && !base) return undefined;
-  if (!dynamicRecord) return base;
+  if (!dynamicRecord) return undefined;
 
   const isVerified = (dynamicRecord.verificationStatus as string)?.toUpperCase() === "VERIFIED";
-  const finalCity = (dynamicRecord as any).headquartersCity || dynamicRecord.city || base?.city || "Rotterdam";
-  const finalCountry = dynamicRecord.country || base?.country || "Netherlands";
+  const finalCity = (dynamicRecord as any).headquartersCity || (dynamicRecord as any).city || "Rotterdam";
+  const finalCountry = dynamicRecord.country || "Netherlands";
 
   const companyId6Digit =
     (dynamicRecord as any).companyId6Digit ||
-    (base as any)?.companyId6Digit ||
     (dynamicRecord.businessId?.match(/\d{6}/)?.[0]) ||
     "100001";
 
   const primarySectorCategory =
     (dynamicRecord as any).primarySectorCategory ||
-    dynamicRecord.industry ||
-    (base as any)?.primarySectorCategory ||
-    base?.industry ||
+    (dynamicRecord as any).industry ||
     "Marine Services";
 
   const secondarySectorCategories =
     (dynamicRecord as any).secondarySectorCategories ||
-    (base as any)?.secondarySectorCategories ||
     ["Marine Equipment", "Logistics"];
 
   const regionalEditions =
     (dynamicRecord as any).regionalEditions ||
-    (base as any)?.regionalEditions ||
-    [(dynamicRecord as any).region || base?.region || "MEDITERRANEAN"];
+    [(dynamicRecord as any).region || "MEDITERRANEAN"];
 
   const sectorCityIds =
     dynamicRecord.sectorCityIds ||
     (dynamicRecord as any).cityIds ||
-    base?.cityIds ||
     ["supplychain"];
 
   const digitalIdInfo = resolveMarineWorldCompanyDigitalId({
-    companyIdOrSlug: dynamicRecord.id || base?.id || norm,
-    mwCompanyDigitalId: (dynamicRecord as any).mwCompanyDigitalId || (base as any)?.mwCompanyDigitalId,
-    businessId: dynamicRecord.businessId || (base as any)?.businessId,
-    companyId6Digit: (dynamicRecord as any).companyId6Digit || (base as any)?.companyId6Digit,
-    primaryRegistryCode: (dynamicRecord as any).primaryRegistryCode || (base as any)?.primaryRegistryCode,
+    companyIdOrSlug: dynamicRecord.id || norm,
+    mwCompanyDigitalId: (dynamicRecord as any).mwCompanyDigitalId,
+    businessId: dynamicRecord.businessId,
+    companyId6Digit: (dynamicRecord as any).companyId6Digit || companyId6Digit,
+    primaryRegistryCode: (dynamicRecord as any).primaryRegistryCode,
     primarySectorCityId: (dynamicRecord as any).primarySectorCityId || sectorCityIds[0],
   });
 
+  const dynAny = dynamicRecord as any;
+
   return {
-    id: dynamicRecord.id || base?.id || norm,
-    slug: dynamicRecord.slug || base?.slug || norm,
-    name: dynamicRecord.displayName || dynamicRecord.legalName || base?.name || "Company",
-    displayName: dynamicRecord.displayName || base?.displayName || base?.name || "Company",
-    initials:
-      base?.initials ||
-      resolveCompanyInitials(dynamicRecord.displayName || dynamicRecord.legalName || base?.name || "MW"),
-    recordType: base?.recordType || "PUBLIC_REGISTRY",
+    id: dynamicRecord.id || norm,
+    slug: dynamicRecord.slug || norm,
+    name: dynAny.displayName || dynAny.legalName || dynAny.name || "Company",
+    displayName: dynAny.displayName || dynAny.name || "Company",
+    initials: resolveCompanyInitials(dynAny.displayName || dynAny.legalName || dynAny.name || "MW"),
+    recordType: "PUBLIC_REGISTRY",
+
     industry: primarySectorCategory,
     primarySectorCategory: primarySectorCategory,
     secondarySectorCategories: secondarySectorCategories,
@@ -606,50 +607,49 @@ export function getCompanyBySlug(config: SectorConfig, companySlug?: string): Co
     location: formatDetailedLocation(finalCity, finalCountry),
     country: finalCountry,
     region: regionalEditions[0] || "MEDITERRANEAN",
-    website: dynamicRecord.websiteUrl || dynamicRecord.website || base?.website,
-    status: base?.status || "LIVE",
+    website: dynamicRecord.websiteUrl || dynamicRecord.website,
+    status: (dynamicRecord.status as any) || "LIVE",
     verificationStatus: isVerified ? "verified" : "review",
-    capabilities: (dynamicRecord as any).capabilities || base?.capabilities || ["Maritime Operations"],
-    products: dynamicRecord.products || base?.products,
-    services: dynamicRecord.services || base?.services,
-    offerings: (dynamicRecord.offerings || base?.offerings)?.map((off) =>
+    capabilities: (dynamicRecord as any).capabilities || ["Maritime Operations"],
+    products: dynamicRecord.products,
+    services: dynamicRecord.services,
+    offerings: (dynamicRecord.offerings || [])?.map((off) =>
       initializeCanonicalOfferingDefaults(off, {
-        id: dynamicRecord.id || base?.id || norm,
-        slug: dynamicRecord.slug || base?.slug || norm,
+        id: dynamicRecord.id || norm,
+        slug: dynamicRecord.slug || norm,
         sectorCityIds,
         cityIds: sectorCityIds,
       } as any)
     ),
-    aiStatus: base?.aiStatus || "ready",
-    businessTwinStatus: base?.businessTwinStatus || "AVAILABLE",
-    shortDescription: dynamicRecord.shortDescription || base?.shortDescription,
-    description: (dynamicRecord as any).corporateDescription || dynamicRecord.description || base?.description,
-    corporateDescription: (dynamicRecord as any).corporateDescription || dynamicRecord.description || base?.description,
-    coverImage: (dynamicRecord as any).coverImage || (dynamicRecord as any).heroImageUrl || base?.coverImage,
-    flagshipStatement: (dynamicRecord as any).flagshipStatement || (dynamicRecord as any).coverImageCaption || base?.flagshipStatement,
-    coverImageCaption: (dynamicRecord as any).coverImageCaption || (dynamicRecord as any).flagshipStatement || base?.coverImageCaption,
-    logoUrl: (dynamicRecord as any).logoUrl || (dynamicRecord as any).logo || base?.logoUrl || base?.logo,
-    productsList: dynamicRecord.productsList || base?.productsList,
-    servicesList: dynamicRecord.servicesList || base?.servicesList,
-    legalName: dynamicRecord.legalName || base?.legalName,
-    tradingName: dynamicRecord.brandName || (dynamicRecord as any).tradingName || base?.tradingName,
+    aiStatus: (dynamicRecord as any).aiStatus || "ready",
+    businessTwinStatus: (dynamicRecord as any).businessTwinStatus || "AVAILABLE",
+    shortDescription: dynamicRecord.shortDescription,
+    description: (dynamicRecord as any).corporateDescription || dynamicRecord.description,
+    corporateDescription: (dynamicRecord as any).corporateDescription || dynamicRecord.description,
+    coverImage: (dynamicRecord as any).coverImage || (dynamicRecord as any).heroImageUrl,
+    flagshipStatement: (dynamicRecord as any).flagshipStatement || (dynamicRecord as any).coverImageCaption,
+    coverImageCaption: (dynamicRecord as any).coverImageCaption || (dynamicRecord as any).flagshipStatement,
+    logoUrl: (dynamicRecord as any).logoUrl || (dynamicRecord as any).logo,
+    productsList: dynamicRecord.productsList,
+    servicesList: dynamicRecord.servicesList,
+    legalName: dynamicRecord.legalName,
+    tradingName: dynamicRecord.brandName || (dynamicRecord as any).tradingName,
     businessId: digitalIdInfo.mwCompanyDigitalId,
     mwCompanyDigitalId: digitalIdInfo.mwCompanyDigitalId,
     primaryRegistryCode: digitalIdInfo.primaryRegistryCode,
     primaryRegistryNode: digitalIdInfo.primaryRegistryNode,
     companyId6Digit: digitalIdInfo.companyId6Digit,
-    organizationType: dynamicRecord.organizationType || base?.organizationType,
-    registrationNumber: (dynamicRecord as any).registrationNumber || base?.registrationNumber,
-    foundedYear: (dynamicRecord as any).foundedYear ? String((dynamicRecord as any).foundedYear) : base?.foundedYear,
-    presenceTier: (dynamicRecord as any).presenceTier || (base as any)?.presenceTier || "STANDARD",
-    isFlagship: (dynamicRecord as any).isFlagship ?? (base as any)?.isFlagship ?? ((dynamicRecord as any).presenceTier === "FLAGSHIP" || (base as any)?.presenceTier === "FLAGSHIP"),
-    flagshipSectorCityId: (dynamicRecord as any).flagshipSectorCityId || (base as any)?.flagshipSectorCityId,
-    flagshipRegisteredAt: (dynamicRecord as any).flagshipRegisteredAt || (base as any)?.flagshipRegisteredAt,
-    isAnchor: (dynamicRecord as any).isAnchor ?? (base as any)?.isAnchor ?? ((dynamicRecord as any).tier === "LANDMARK" || (base as any)?.tier === "LANDMARK"),
-    anchorSectorCityId: (dynamicRecord as any).anchorSectorCityId || (base as any)?.anchorSectorCityId,
-    anchorRegisteredAt: (dynamicRecord as any).anchorRegisteredAt || (base as any)?.anchorRegisteredAt,
-    officialEmail: dynamicRecord.officialEmail || dynamicRecord.email || base?.officialEmail,
-    officialPhone: dynamicRecord.officialPhone || dynamicRecord.phone || base?.officialPhone,
+    organizationType: dynamicRecord.organizationType,
+    registrationNumber: (dynamicRecord as any).registrationNumber,
+    foundedYear: (dynamicRecord as any).foundedYear ? String((dynamicRecord as any).foundedYear) : undefined,
+    presenceTier: (dynamicRecord as any).presenceTier || "STANDARD",
+    isFlagship: (dynamicRecord as any).isFlagship ?? ((dynamicRecord as any).presenceTier === "FLAGSHIP"),
+    flagshipSectorCityId: (dynamicRecord as any).flagshipSectorCityId,
+    flagshipRegisteredAt: (dynamicRecord as any).flagshipRegisteredAt,
+    isAnchor: (dynamicRecord as any).isAnchor ?? ((dynamicRecord as any).tier === "LANDMARK"),
+    anchorSectorCityId: (dynamicRecord as any).anchorSectorCityId,
+    anchorRegisteredAt: (dynamicRecord as any).anchorRegisteredAt,
+    officialEmail: dynamicRecord.officialEmail || dynamicRecord.email,
   };
 }
 
@@ -889,3 +889,41 @@ export function getServiceBySlug(
   }
   return undefined;
 }
+
+/* ------------------------------------------------------------
+   Async Firestore-backed Accessors for Cloud Sync
+   ------------------------------------------------------------ */
+
+export async function listSectorCitiesAsync(): Promise<SectorCity[]> {
+  try {
+    const { listSectorCities } = await import("@/services/sectorService");
+    const live = await listSectorCities();
+    if (live && live.length > 0) return live;
+  } catch (err) {
+    console.warn("[Registry] Firestore listSectorCitiesAsync fallback:", err);
+  }
+  return getCities(marineSector);
+}
+
+export async function listIndustryDomainsAsync(): Promise<IndustryDomainEntity[]> {
+  try {
+    const { listIndustryDomains } = await import("@/services/sectorService");
+    const live = await listIndustryDomains();
+    if (live && live.length > 0) return live as unknown as IndustryDomainEntity[];
+  } catch (err) {
+    console.warn("[Registry] Firestore listIndustryDomainsAsync fallback:", err);
+  }
+  return getMarineDomains();
+}
+
+export async function getCityBySlugAsync(slug: string): Promise<SectorCity | undefined> {
+  try {
+    const { getSectorCityById } = await import("@/services/sectorService");
+    const live = await getSectorCityById(slug);
+    if (live) return live;
+  } catch (err) {
+    console.warn("[Registry] Firestore getCityBySlugAsync fallback:", err);
+  }
+  return getCityBySlug(marineSector, slug);
+}
+

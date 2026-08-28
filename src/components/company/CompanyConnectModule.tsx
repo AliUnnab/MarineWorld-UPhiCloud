@@ -2,7 +2,7 @@ import { useState, useMemo, type FormEvent } from "react";
 import type { CompanyProfile, SectorCity, IndustryDomainEntity, SectorConfig, InquiryEntity } from "@/lib/types";
 import { getCompanyProductBySlug, getCompanyServiceBySlug } from "@/lib/registry";
 import { getCurrentAuthSession } from "@/lib/services/securityService";
-import { createInquiry } from "@/lib/connectStore";
+import { createInquiry } from "@/services/inquiryService";
 import { resolveMarineWorldCompanyDigitalId } from "@/lib/services/companyIdentityService";
 import { checkFormAbuse, sanitizeInputString, isValidEmailAddress } from "@/lib/security/abuseProtection";
 import {
@@ -156,7 +156,9 @@ export function CompanyConnectModule({
     setIsSubmitting(true);
 
     try {
-      const newInq = createInquiry({
+      const inqId = `inq-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+      const newInq = await createInquiry({
+        id: inqId,
         companyId: company.id,
         companySlug: company.slug || company.id,
         companyName: company.name,

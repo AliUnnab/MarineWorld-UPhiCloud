@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
-import type { SectorConfig, CompanyProfile } from "@/lib/types";
+import type { SectorConfig, CompanyProfile, SectorCity } from "@/lib/types";
 import { SectorCityTopChrome } from "@/components/foundation/SectorCityTopChrome";
 import { GlobalFooter } from "@/components/foundation/GlobalFooter";
 import { PageMetadata } from "@/components/foundation/PageMetadata";
@@ -13,6 +13,8 @@ import {
   getCompaniesInCity,
   formatCompactLocation,
 } from "@/lib/registry";
+import { getSectorCityById } from "@/services/sectorService";
+import { listCompanies } from "@/services/companyService";
 import {
   CANONICAL_CITY_REGIONS,
   resolveRegionEdition,
@@ -110,9 +112,33 @@ export function SectorCityEntranceV2({
   regionSlug?: string;
   previewCreativeOverride?: SectorCityEntrancePreviewOverride;
 }) {
-  const city = getCityBySlug(config, citySlug) ?? config.explorer.cities[0];
-  const parentDomain = getIndustryDomainById(city.industryDomainId);
-  const parentDomainName = parentDomain?.name ?? city.category;
+  const [city, setCity] = useState<SectorCity | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [liveCompanies, setLiveCompanies] = useState<any[]>([]);
+
+  useEffect(() => {
+    setIsLoading(true);
+    getSectorCityById(citySlug)
+      .then((c) => {
+        setCity(c || null);
+      })
+      .catch((err) => {
+        console.warn("[SectorCityEntranceV2] Error loading city:", err);
+        setCity(null);
+      })
+      .finally(() => {
+        setIsLoading(false);
+      });
+
+    listCompanies()
+      .then((comps) => {
+        if (comps && comps.length > 0) setLiveCompanies(comps);
+      })
+      .catch(() => {});
+  }, [citySlug]);
+
+  const parentDomain = city ? getIndustryDomainById(city.industryDomainId) : undefined;
+  const parentDomainName = parentDomain?.name ?? city?.category ?? "Sector";
 
   const availableRegions = CANONICAL_CITY_REGIONS;
   const [selectedRegionSlug, setSelectedRegionSlug] = useState<string>(
@@ -133,11 +159,12 @@ export function SectorCityEntranceV2({
   }, [regionSlug, availableRegions, selectedRegionSlug]);
 
   const activeRegionEdition = useMemo(
-    () => resolveRegionEdition(city.id, selectedRegionSlug),
-    [city.id, selectedRegionSlug]
+    () => resolveRegionEdition(city ? city.id : "shipyard", selectedRegionSlug),
+    [city, selectedRegionSlug]
   );
 
   const propertyData = useMemo(() => {
+    if (!city) return null;
     const data = getPublicPropertyProjections(
       config,
       city.id,
@@ -361,6 +388,36 @@ export function SectorCityEntranceV2({
       );
     });
   }, [allCityCompanies, modalSearchQuery]);
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-canvas flex flex-col items-center justify-center p-6 text-center font-sans">
+        <Globe className="w-10 h-10 text-royal animate-pulse mb-3" />
+        <h2 className="text-lg font-bold text-graphite">Sektör Şehri Yükleniyor...</h2>
+        <p className="text-xs text-stone mt-1">Dijital düğüm verileri Firestore üzerinden doğrulanıyor.</p>
+      </div>
+    );
+  }
+
+  if (!city) {
+    return (
+      <div className="min-h-screen bg-canvas flex flex-col items-center justify-center p-6 text-center font-sans">
+        <div className="w-16 h-16 rounded-full bg-soft text-royal flex items-center justify-center mb-4">
+          <Globe className="w-8 h-8" />
+        </div>
+        <h1 className="text-2xl font-extrabold text-graphite tracking-tight">Sektör Şehri Bulunamadı</h1>
+        <p className="text-sm text-stone max-w-md mt-2">
+          Talep edilen &apos;{citySlug}&apos; sektör şehri henüz aktif edilmemiş veya veritabanında kayıtlı değil.
+        </p>
+        <a
+          href="/cities"
+          className="mt-6 px-6 py-2.5 rounded-card-sm bg-slate-900 text-white text-xs font-bold uppercase tracking-wider hover:bg-slate-800 transition-colors"
+        >
+          Tüm Sektör Şehirlerine Dön &rarr;
+        </a>
+      </div>
+    );
+  }
 
   const displayFlagships = [...activeFlagships];
   while (displayFlagships.length < 4 && !searchQuery) {

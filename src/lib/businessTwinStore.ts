@@ -9,120 +9,15 @@ import { getCompanyProducts, getCompanyServices } from "@/lib/registry";
 import { recordPlatformEvent } from "@/lib/metricsStore";
 import { getCurrentAuthSession, hasCompanyRole, isAuthenticated } from "@/lib/services/securityService";
 
-// In-memory store for company nodes and twin overrides
+// In-memory runtime cache for company nodes and twin overrides synced with Firestore
 const COMPANY_NODES_STORE: Record<string, CompanyNode[]> = {};
 const TWIN_OVERRIDES_STORE: Record<string, Partial<BusinessTwinModel>> = {};
 const LISTENERS: Array<() => void> = [];
 
-// Seed initial canonical organizational nodes
 function seedCompanyNodes() {
-  if (Object.keys(COMPANY_NODES_STORE).length > 0) return;
-
-  // 1. Crest Group Materials
-  COMPANY_NODES_STORE["crest-group-materials"] = [
-    {
-      id: "node-cg-hq",
-      companyId: "crest-group-materials",
-      name: "Crest Global Composite Headquarters",
-      city: "Southampton",
-      country: "United Kingdom",
-      address: "Oceanographic Technology Park, Quay Road, Southampton SO14 3ZH",
-      operationType: "HEADQUARTERS",
-      description: "Primary engineering, administrative, and R&D headquarters for advanced marine composite systems.",
-      subdomain: "hq.crestgroup.marineworld.city",
-      contactEmail: "hq@crestgroup.com",
-      contactPhone: "+44 23 8090 1200",
-      status: "VERIFIED",
-      isHeadquarters: true,
-    },
-    {
-      id: "node-cg-rt",
-      companyId: "crest-group-materials",
-      name: "Crest Marine Logistics & Distribution Hub",
-      city: "Rotterdam",
-      country: "Netherlands",
-      address: "Waalthaven Pier 4, 3089 JK Rotterdam",
-      operationType: "LOGISTICS_CENTER",
-      description: "European distribution node for fast delivery of structural composite panels and resins.",
-      subdomain: "rotterdam.crestgroup.marineworld.city",
-      contactEmail: "rotterdam@crestgroup.com",
-      status: "VERIFIED",
-    },
-    {
-      id: "node-cg-hb",
-      companyId: "crest-group-materials",
-      name: "Crest Composites Advanced Manufacturing Facility",
-      city: "Hamburg",
-      country: "Germany",
-      address: "Kuhwerder Hafen 12, 20457 Hamburg",
-      operationType: "PRODUCTION_FACILITY",
-      description: "High-precision autoclaves and resin-infusion manufacturing lines for naval structural parts.",
-      subdomain: "hamburg.crestgroup.marineworld.city",
-      status: "VERIFIED",
-    },
-    {
-      id: "node-cg-sg",
-      companyId: "crest-group-materials",
-      name: "Crest Subsea Support & Technical Center",
-      city: "Singapore",
-      country: "Singapore",
-      address: "Loyang Offshore Supply Base, Singapore 508988",
-      operationType: "LOCAL_SUPPORT_HUB",
-      description: "Asia-Pacific technical advisory and rapid-response technical field unit.",
-      status: "ACTIVE",
-    },
-  ];
-
-  // 2. Vanguard Marine Engineering
-  COMPANY_NODES_STORE["vanguard-marine-engineering"] = [
-    {
-      id: "node-vm-hq",
-      companyId: "vanguard-marine-engineering",
-      name: "Vanguard Marine Propulsion Center",
-      city: "Southampton",
-      country: "United Kingdom",
-      address: "Solent Naval Yard, Southampton SO15 0HJ",
-      operationType: "HEADQUARTERS",
-      description: "Main naval architecture design, propulsion overhaul, and engineering center.",
-      subdomain: "hq.vanguard.marineworld.city",
-      contactEmail: "engineering@vanguardmarine.com",
-      status: "VERIFIED",
-      isHeadquarters: true,
-    },
-    {
-      id: "node-vm-pm",
-      companyId: "vanguard-marine-engineering",
-      name: "Vanguard Repair & Overhaul Facility",
-      city: "Portsmouth",
-      country: "United Kingdom",
-      address: "Camper & Nicholsons Yard, Portsmouth PO1 3HH",
-      operationType: "PRODUCTION_FACILITY",
-      description: "Heavy mechanical shipyard repair and propulsion shaft alignment workshop.",
-      status: "ACTIVE",
-    },
-  ];
-
-  // 3. Oceanic Subsea Systems
-  COMPANY_NODES_STORE["oceanic-subsea-systems"] = [
-    {
-      id: "node-oss-hq",
-      companyId: "oceanic-subsea-systems",
-      name: "Oceanic Subsea Systems Headquarters",
-      city: "Southampton",
-      country: "United Kingdom",
-      address: "National Oceanography Centre, Southampton SO14 3ZH",
-      operationType: "HEADQUARTERS",
-      description: "Subsea acoustic sensors, ROV instrumentation, and marine telemetry R&D center.",
-      subdomain: "hq.oceanicsubsea.marineworld.city",
-      contactEmail: "info@oceanicsubsea.com",
-      status: "VERIFIED",
-      isHeadquarters: true,
-    },
-  ];
+  // Pure Firestore mode: nodes are fetched from Firestore
 }
 
-// Auto-seed
-seedCompanyNodes();
 
 /**
  * Subscribe to Business Twin mutations

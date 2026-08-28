@@ -26,13 +26,13 @@ import {
 import type { CompanyEntity, CompanyOffering, PhysicalFacility } from "@/lib/types";
 import { getCompanyById, getPhysicalFacilities } from "@/lib/services/companyService";
 import { getCompanyOfferings } from "@/lib/services/offeringEntityService";
-import { marineSector } from "@/lib/sectors/marine";
-import { getCompanyBySlug } from "@/lib/registry";
+import { getCompanyRecordSync } from "@/lib/repositories/companyRepository";
 import {
   getCompanyAIConfig,
   saveCompanyAIConfig,
   evaluateCompanyAIReadiness,
   simulateCompanyAIResponse,
+  generateCompanyAIResponse,
   ALL_COMMUNICATION_STYLES,
   ALL_CAPABILITIES,
   type CompanyAIConfig,
@@ -58,7 +58,7 @@ export const CompanyStudioAIView: React.FC<CompanyStudioAIViewProps> = ({
 }) => {
   const canonicalCompany =
     getCompanyById(companyId) ||
-    (getCompanyBySlug(marineSector, companyId) as unknown as CompanyEntity);
+    (getCompanyRecordSync(companyId) as unknown as CompanyEntity);
   const companyName =
     canonicalCompany?.displayName ||
     canonicalCompany?.brandName ||
@@ -134,16 +134,21 @@ export const CompanyStudioAIView: React.FC<CompanyStudioAIViewProps> = ({
     setTimeout(() => setSaveSuccess(false), 2000);
   };
 
-  const handleRunTestQuery = (queryText: string) => {
+  const handleRunTestQuery = async (queryText: string) => {
     if (!queryText.trim()) return;
     setIsSimulating(true);
     setTestQuery(queryText);
 
-    setTimeout(() => {
+    try {
+      const res = await generateCompanyAIResponse(companyId, queryText);
+      setTestResult(res);
+    } catch (err) {
+      console.warn("[CompanyStudioAIView] Live Gemini query error, fallback to sync result:", err);
       const res = simulateCompanyAIResponse(companyId, queryText);
       setTestResult(res);
+    } finally {
       setIsSimulating(false);
-    }, 450);
+    }
   };
 
   const suggestedPrompts = [

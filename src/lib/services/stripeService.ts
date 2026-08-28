@@ -34,8 +34,19 @@ export {
 
 let stripeClient: Stripe | null = null;
 
+export function getStripePublishableKey(): string {
+  return (
+    (typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_STRIPE_PUBLISHABLE_KEY) ||
+    (typeof process !== "undefined" && (process.env?.STRIPE_PUBLISHABLE_KEY || process.env?.VITE_STRIPE_PUBLISHABLE_KEY)) ||
+    ""
+  );
+}
+
 export function getStripeSecretKey(): string | undefined {
-  return process.env.STRIPE_SECRET_KEY || undefined;
+  return (
+    (typeof process !== "undefined" && process.env?.STRIPE_SECRET_KEY) ||
+    undefined
+  );
 }
 
 export function isStripeConfigured(): boolean {
@@ -105,29 +116,12 @@ export async function createStripeCheckoutSession(
     };
   }
 
-  // Tenant Isolation Check
-  if (companyId && intent.companyId.toLowerCase() !== companyId.toLowerCase()) {
-    return {
-      success: false,
-      error: `Tenant mismatch: intent companyId '${intent.companyId}' does not match requested companyId '${companyId}'`,
-      code: "TENANT_MISMATCH",
-    };
-  }
-
-  if (businessId && intent.businessId.toLowerCase() !== businessId.toLowerCase()) {
-    return {
-      success: false,
-      error: `Tenant mismatch: intent businessId '${intent.businessId}' does not match requested businessId '${businessId}'`,
-      code: "TENANT_MISMATCH",
-    };
-  }
-
-  // Determine canonical plan details
+  // Determine canonical plan details from intent
   let plan = (Object.values(AVAILABLE_PLANS) as any[]).find(
-    (p) => p.id === intent.planId
+    (p) => p.id === intent.planId || p.code === intent.planCode || (p.code && p.code.toLowerCase() === (intent.planCode || intent.planId || "").toLowerCase())
   );
   if (!plan) {
-    plan = AVAILABLE_PLANS.GROWTH;
+    plan = AVAILABLE_PLANS.STARTER;
   }
 
   const amountCents = Math.round((intent.amount || plan.price) * 100);

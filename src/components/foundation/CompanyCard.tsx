@@ -46,11 +46,7 @@ export function CompanyCard({
             </span>
           ) : null}
 
-          {company.recordType === "DEMONSTRATION" ? (
-            <span className="eyebrow inline-flex items-center gap-1.5 rounded-full bg-mist px-2.5 py-1 text-[10px] font-sans font-semibold uppercase tracking-wider text-stone">
-              Demo Record
-            </span>
-          ) : verified ? (
+          {verified ? (
             <span className="eyebrow inline-flex items-center gap-1.5 rounded-full bg-soft px-2.5 py-1 text-[10px] font-sans font-semibold uppercase tracking-wider text-royal">
               <Icon name="check" className="h-3 w-3" strokeWidth={2.2} />
               Verified Node

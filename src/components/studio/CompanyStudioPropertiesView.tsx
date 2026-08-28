@@ -135,8 +135,37 @@ export function CompanyStudioPropertiesView({
     });
   }, [companyAgreements]);
 
+  const [inventoryPage, setInventoryPage] = useState<number>(1);
+  const INVENTORY_PAGE_SIZE = 24;
+
+  const handleCityChange = (val: string) => {
+    setSelectedCityId(val);
+    setInventoryPage(1);
+  };
+
+  const handleRegionChange = (val: string) => {
+    setSelectedRegionCode(val);
+    setInventoryPage(1);
+  };
+
+  const handleTierChange = (val: string) => {
+    setSelectedTier(val);
+    setInventoryPage(1);
+  };
+
+  const handleAvailabilityChange = (val: string) => {
+    setSelectedAvailability(val);
+    setInventoryPage(1);
+  };
+
+  const handleSearchChange = (val: string) => {
+    setSearchQuery(val);
+    setInventoryPage(1);
+  };
+
   // Filtered inventory list
   const filteredInventory = useMemo(() => {
+    if (activeTab !== "INVENTORY") return [];
     return allInventory.filter((prop) => {
       if (selectedCityId !== "ALL" && prop.cityId.toLowerCase() !== selectedCityId.toLowerCase()) {
         return false;
@@ -159,7 +188,13 @@ export function CompanyStudioPropertiesView({
       }
       return true;
     });
-  }, [allInventory, selectedCityId, selectedRegionCode, selectedTier, selectedAvailability, searchQuery]);
+  }, [allInventory, activeTab, selectedCityId, selectedRegionCode, selectedTier, selectedAvailability, searchQuery]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredInventory.length / INVENTORY_PAGE_SIZE));
+  const paginatedInventory = useMemo(() => {
+    const start = (inventoryPage - 1) * INVENTORY_PAGE_SIZE;
+    return filteredInventory.slice(start, start + INVENTORY_PAGE_SIZE);
+  }, [filteredInventory, inventoryPage]);
 
   const handleLaunchEditor = (slot: DigitalPropertySlot, cityId: string, regionCode: string) => {
     setEditingSlot({ slot, cityId, regionCode });
@@ -416,7 +451,7 @@ export function CompanyStudioPropertiesView({
                     </button>
                     <button
                       onClick={() => {
-                        const dummySlot: DigitalPropertySlot = {
+                        const propertySlot: DigitalPropertySlot = {
                           slotId: prop.slotId,
                           slotCode: prop.canonicalPropertyKey,
                           tier: prop.tier as any,
@@ -424,7 +459,7 @@ export function CompanyStudioPropertiesView({
                           state: "PUBLISHED",
                           locationName: prop.propertyName,
                         };
-                        handleLaunchEditor(dummySlot, prop.cityId, prop.regionCode);
+                        handleLaunchEditor(propertySlot, prop.cityId, prop.regionCode);
                       }}
                       className="px-4 py-2 bg-royal hover:bg-royal-dark text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-colors shadow-sm flex items-center gap-1.5"
                     >
@@ -460,14 +495,14 @@ export function CompanyStudioPropertiesView({
                 type="text"
                 placeholder="Search slot ID, city, tier, or keyword..."
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => handleSearchChange(e.target.value)}
                 className="w-full bg-transparent text-xs text-slate-900 focus:outline-none"
               />
             </div>
 
             <select
               value={selectedCityId}
-              onChange={(e) => setSelectedCityId(e.target.value)}
+              onChange={(e) => handleCityChange(e.target.value)}
               className="bg-white px-3 py-2 rounded-xl border border-slate-200 text-xs font-medium text-slate-700"
             >
               <option value="ALL">All Sector Cities</option>
@@ -480,7 +515,7 @@ export function CompanyStudioPropertiesView({
 
             <select
               value={selectedRegionCode}
-              onChange={(e) => setSelectedRegionCode(e.target.value)}
+              onChange={(e) => handleRegionChange(e.target.value)}
               className="bg-white px-3 py-2 rounded-xl border border-slate-200 text-xs font-medium text-slate-700"
             >
               <option value="ALL">All Geographic Editions</option>
@@ -493,7 +528,7 @@ export function CompanyStudioPropertiesView({
 
             <select
               value={selectedTier}
-              onChange={(e) => setSelectedTier(e.target.value)}
+              onChange={(e) => handleTierChange(e.target.value)}
               className="bg-white px-3 py-2 rounded-xl border border-slate-200 text-xs font-medium text-slate-700"
             >
               <option value="ALL">All Tiers</option>
@@ -504,7 +539,7 @@ export function CompanyStudioPropertiesView({
 
             <select
               value={selectedAvailability}
-              onChange={(e) => setSelectedAvailability(e.target.value)}
+              onChange={(e) => handleAvailabilityChange(e.target.value)}
               className="bg-white px-3 py-2 rounded-xl border border-slate-200 text-xs font-medium text-slate-700"
             >
               <option value="ALL">All Availability</option>
@@ -515,76 +550,135 @@ export function CompanyStudioPropertiesView({
             </select>
           </div>
 
-          {/* INVENTORY GRID */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredInventory.map((prop) => {
-              const isHeldByMe =
-                prop.tenantCompanyId === companyId || prop.tenantCompanyId?.toLowerCase() === companyId.toLowerCase();
-
-              return (
-                <div
-                  key={`${prop.cityId}-${prop.regionCode}-${prop.slotId}`}
-                  className={`bg-white rounded-3xl border transition-all flex flex-col justify-between overflow-hidden shadow-sm hover:shadow-md ${
-                    isHeldByMe ? "border-royal/30 ring-1 ring-royal/15" : "border-slate-200"
-                  }`}
+          {/* RESULTS BAR & PAGINATION TOP */}
+          <div className="flex items-center justify-between text-xs text-slate-500 px-1">
+            <div>
+              Showing <strong className="text-slate-900 font-bold">{filteredInventory.length > 0 ? (inventoryPage - 1) * INVENTORY_PAGE_SIZE + 1 : 0}</strong> - <strong className="text-slate-900 font-bold">{Math.min(inventoryPage * INVENTORY_PAGE_SIZE, filteredInventory.length)}</strong> of <strong className="text-slate-900 font-bold">{filteredInventory.length}</strong> commercial slots
+            </div>
+            {totalPages > 1 && (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setInventoryPage((p) => Math.max(1, p - 1))}
+                  disabled={inventoryPage === 1}
+                  className="px-3 py-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed font-medium"
                 >
-                  <div className="p-6 space-y-4">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-mono font-bold tracking-widest text-slate-600 uppercase bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200">
-                        {prop.canonicalPropertyKey}
-                      </span>
-                      <span
-                        className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase ${
-                          prop.availabilityStatus === "AVAILABLE"
-                            ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                            : prop.availabilityStatus === "ACTIVE"
-                            ? "bg-royal/5 text-royal border border-royal/20"
-                            : prop.availabilityStatus === "HELD"
-                            ? "bg-amber-50 text-amber-700 border border-amber-200"
-                            : "bg-slate-100 text-slate-600 border border-slate-200"
-                        }`}
-                      >
-                        {prop.availabilityStatus}
-                      </span>
-                    </div>
-
-                    <div>
-                      <div className="text-[10px] font-bold uppercase text-slate-400">
-                        {prop.tier} &bull; {prop.regionCode}
-                      </div>
-                      <h3 className="text-base font-bold text-slate-900 mt-0.5">{prop.propertyName}</h3>
-                      <p className="text-xs text-slate-500 font-light mt-1 line-clamp-2">
-                        {prop.frontageDescription}
-                      </p>
-                    </div>
-
-                    <div className="pt-3 border-t border-slate-100 flex items-baseline justify-between text-xs">
-                      <div>
-                        <span className="text-[10px] text-slate-400 uppercase block font-semibold">Pricing</span>
-                        <span className="font-bold text-slate-900">
-                          ${prop.price.toLocaleString()} {prop.currency}
-                        </span>{" "}
-                        <span className="text-slate-400 text-[10px]">/ {prop.billingPeriod.toLowerCase()}</span>
-                      </div>
-                      <div className="text-right">
-                        <span className="text-[10px] text-slate-400 uppercase block font-semibold">Commitment</span>
-                        <span className="text-slate-700 font-medium">{prop.termOptions[0]?.termMonths || 12}M Standard</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-2">
-                    <button
-                      onClick={() => setDetailModalProperty(prop)}
-                      className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-colors shadow-sm flex items-center justify-center gap-1.5"
-                    >
-                      <Eye className="w-3.5 h-3.5" /> View Property & Terms
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
+                  Previous
+                </button>
+                <span className="font-mono text-slate-700">
+                  Page {inventoryPage} of {totalPages}
+                </span>
+                <button
+                  onClick={() => setInventoryPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={inventoryPage === totalPages}
+                  className="px-3 py-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed font-medium"
+                >
+                  Next
+                </button>
+              </div>
+            )}
           </div>
+
+          {/* INVENTORY GRID */}
+          {paginatedInventory.length === 0 ? (
+            <div className="p-12 text-center bg-slate-50 border border-slate-200 rounded-3xl space-y-2">
+              <Building2 className="w-8 h-8 text-slate-400 mx-auto" />
+              <h4 className="text-sm font-bold text-slate-900">No properties match your filter criteria</h4>
+              <p className="text-xs text-slate-500">Try changing the city, geographic edition, tier or search keyword.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {paginatedInventory.map((prop) => {
+                const isHeldByMe =
+                  prop.tenantCompanyId === companyId || prop.tenantCompanyId?.toLowerCase() === companyId.toLowerCase();
+
+                return (
+                  <div
+                    key={`${prop.cityId}-${prop.regionCode}-${prop.slotId}`}
+                    className={`bg-white rounded-3xl border transition-all flex flex-col justify-between overflow-hidden shadow-sm hover:shadow-md ${
+                      isHeldByMe ? "border-royal/30 ring-1 ring-royal/15" : "border-slate-200"
+                    }`}
+                  >
+                    <div className="p-6 space-y-4">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-mono font-bold tracking-widest text-slate-600 uppercase bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200">
+                          {prop.canonicalPropertyKey}
+                        </span>
+                        <span
+                          className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase ${
+                            prop.availabilityStatus === "AVAILABLE"
+                              ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                              : prop.availabilityStatus === "ACTIVE"
+                              ? "bg-royal/5 text-royal border border-royal/20"
+                              : prop.availabilityStatus === "HELD"
+                              ? "bg-amber-50 text-amber-700 border border-amber-200"
+                              : "bg-slate-100 text-slate-600 border border-slate-200"
+                          }`}
+                        >
+                          {prop.availabilityStatus}
+                        </span>
+                      </div>
+
+                      <div>
+                        <div className="text-[10px] font-bold uppercase text-slate-400">
+                          {prop.tier} &bull; {prop.regionCode}
+                        </div>
+                        <h3 className="text-base font-bold text-slate-900 mt-0.5">{prop.propertyName}</h3>
+                        <p className="text-xs text-slate-500 font-light mt-1 line-clamp-2">
+                          {prop.frontageDescription}
+                        </p>
+                      </div>
+
+                      <div className="pt-3 border-t border-slate-100 flex items-baseline justify-between text-xs">
+                        <div>
+                          <span className="text-[10px] text-slate-400 uppercase block font-semibold">Pricing</span>
+                          <span className="font-bold text-slate-900">
+                            ${prop.price.toLocaleString()} {prop.currency}
+                          </span>{" "}
+                          <span className="text-slate-400 text-[10px]">/ {prop.billingPeriod.toLowerCase()}</span>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-[10px] text-slate-400 uppercase block font-semibold">Commitment</span>
+                          <span className="text-slate-700 font-medium">{prop.termOptions[0]?.termMonths || 12}M Standard</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-2">
+                      <button
+                        onClick={() => setDetailModalProperty(prop)}
+                        className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-colors shadow-sm flex items-center justify-center gap-1.5"
+                      >
+                        <Eye className="w-3.5 h-3.5" /> View Property & Terms
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* PAGINATION BOTTOM */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-center gap-2 pt-4 border-t border-slate-200 text-xs">
+              <button
+                onClick={() => setInventoryPage((p) => Math.max(1, p - 1))}
+                disabled={inventoryPage === 1}
+                className="px-4 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed font-semibold"
+              >
+                Previous Page
+              </button>
+              <span className="font-mono px-3 py-2 bg-slate-100 rounded-xl text-slate-700 font-bold">
+                {inventoryPage} / {totalPages}
+              </span>
+              <button
+                onClick={() => setInventoryPage((p) => Math.min(totalPages, p + 1))}
+                disabled={inventoryPage === totalPages}
+                className="px-4 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed font-semibold"
+              >
+                Next Page
+              </button>
+            </div>
+          )}
         </div>
       )}
 

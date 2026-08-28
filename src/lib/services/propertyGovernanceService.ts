@@ -53,238 +53,40 @@ export function formatCanonicalPropertyKey(cityId: string, regionCode: string, s
   return `${c}::${r}::${s}`;
 }
 
-// Initial canonical publications to satisfy multi-regional architecture and test scenarios
-const initialRevisions: PropertyCreativeRevision[] = [
-  // Supply Chain City
-  {
-    revisionId: "rev-seed-argento-med",
-    propertyId: "prop-slot-lm-supplychain-mediterranean",
-    slotId: "slot-lm-supplychain-mediterranean",
-    companyId: "argento",
-    businessId: "biz-argento",
-    cityId: "supplychain",
-    regionCode: "MEDITERRANEAN",
-    tier: "LANDMARK",
-    version: 1,
-    status: "PUBLISHED",
-    creative: {
-      headline: "Integrated Mediterranean Maritime Supply & Port Logistics",
-      subheadline: "Direct vessel provisioning, technical store replenishment, and customs clearance across 24 Riviera ports.",
-      description: "Premier yacht support and bonded logistics hub serving Mediterranean charter fleets.",
-      mediaUrl: "https://images.unsplash.com/photo-1569263979104-865ab7cd8d17?auto=format&fit=crop&w=1600&q=80",
-      ctaLabel: "EXPLORE LOGISTICS HUB",
-      ctaHref: "/companies/argento-marine",
-      featuredOfferingName: "Riviera Express Vessel Provisioning",
-      featuredOfferingType: "SERVICE",
-    },
-    publishedAt: "2026-01-10T10:00:00.000Z",
-    approvedAt: "2026-01-10T09:00:00.000Z",
-    submittedAt: "2026-01-10T08:00:00.000Z",
-    createdAt: "2026-01-10T08:00:00.000Z",
-    updatedAt: "2026-01-10T10:00:00.000Z",
-  },
-  {
-    revisionId: "rev-seed-medmarine-med",
-    propertyId: "prop-slot-fs-supplychain-mediterranean-1",
-    slotId: "slot-fs-supplychain-mediterranean-1",
-    companyId: "med-marine-systems",
-    businessId: "biz-medmarine",
-    cityId: "supplychain",
-    regionCode: "MEDITERRANEAN",
-    tier: "FLAGSHIP",
-    version: 1,
-    status: "PUBLISHED",
-    creative: {
-      headline: "Automated Propulsion Spares & Ligurian Dockside Integration",
-      subheadline: "Direct technical replenishment and electronics retrofitting for Tyrrhenian refit shipyards.",
-      description: "Naval engineering and marine automation hub located in the Port of Genoa.",
-      mediaUrl: "https://images.unsplash.com/photo-1516483638261-f4dbaf036963?auto=format&fit=crop&w=1600&q=80",
-      ctaLabel: "EXPLORE SHOWROOM",
-      ctaHref: "/companies/mediterranean-marine-systems",
-      featuredOfferingName: "Ligurian Dockside Technical Spares",
-      featuredOfferingType: "PRODUCT",
-    },
-    publishedAt: "2026-01-11T10:00:00.000Z",
-    approvedAt: "2026-01-11T09:00:00.000Z",
-    submittedAt: "2026-01-11T08:00:00.000Z",
-    createdAt: "2026-01-11T08:00:00.000Z",
-    updatedAt: "2026-01-11T10:00:00.000Z",
-  },
-  {
-    revisionId: "rev-seed-blueharbour-noe",
-    propertyId: "prop-slot-lm-supplychain-northern_europe",
-    slotId: "slot-lm-supplychain-northern_europe",
-    companyId: "blueharbour",
-    businessId: "biz-blueharbour",
-    cityId: "supplychain",
-    regionCode: "NORTHERN_EUROPE",
-    tier: "LANDMARK",
-    version: 1,
-    status: "PUBLISHED",
-    creative: {
-      headline: "Northern European Deepwater Logistics & Autonomous Spares Network",
-      subheadline: "Next-day spare parts delivery to major North Sea ports, offshore rigs, and Nordic refit yards.",
-      description: "Heavy logistics coordination and spare parts distribution hub in Rotterdam.",
-      mediaUrl: "https://images.unsplash.com/photo-1544551763-46a013bb70d5?auto=format&fit=crop&w=1600&q=80",
-      ctaLabel: "EXPLORE NETWORK",
-      ctaHref: "/companies/blueharbour-shipyards",
-      featuredOfferingName: "North Sea Autonomous Spares Delivery",
-      featuredOfferingType: "SERVICE",
-    },
-    publishedAt: "2026-01-12T10:00:00.000Z",
-    approvedAt: "2026-01-12T09:00:00.000Z",
-    submittedAt: "2026-01-12T08:00:00.000Z",
-    createdAt: "2026-01-12T08:00:00.000Z",
-    updatedAt: "2026-01-12T10:00:00.000Z",
-  },
-  {
-    revisionId: "rev-seed-anothermarine-noa",
-    propertyId: "prop-slot-fs-supplychain-north_america-1",
-    slotId: "slot-fs-supplychain-north_america-1",
-    companyId: "north-atlantic",
-    businessId: "biz-northatlantic",
-    cityId: "supplychain",
-    regionCode: "NORTH_AMERICA",
-    tier: "FLAGSHIP",
-    version: 1,
-    status: "PUBLISHED",
-    creative: {
-      headline: "Atlantic Marine Sourcing & Intermodal Cargo Gateway",
-      subheadline: "Comprehensive supply chain coordination for Florida superyacht marinas and Gulf Coast workboat fleets.",
-      description: "Intermodal marine parts distribution and technical fleet supply.",
-      mediaUrl: "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1600&q=80",
-      ctaLabel: "EXPLORE SHOWROOM",
-      ctaHref: "/companies/north-atlantic-marine",
-      featuredOfferingName: "Atlantic Intermodal Marine Supply",
-      featuredOfferingType: "PRODUCT",
-    },
-    publishedAt: "2026-01-15T10:00:00.000Z",
-    approvedAt: "2026-01-15T09:00:00.000Z",
-    submittedAt: "2026-01-15T08:00:00.000Z",
-    createdAt: "2026-01-15T08:00:00.000Z",
-    updatedAt: "2026-01-15T10:00:00.000Z",
-  },
+import { db } from "@/lib/firebase";
+import {
+  collection,
+  doc,
+  getDocs,
+  setDoc,
+  onSnapshot,
+} from "firebase/firestore";
 
-  // Brokerage City
-  {
-    revisionId: "rev-seed-argento-brokerage-med",
-    propertyId: "prop-slot-lm-brokerage-mediterranean",
-    slotId: "slot-lm-brokerage-mediterranean",
-    companyId: "argento",
-    businessId: "biz-argento",
-    cityId: "brokerage",
-    regionCode: "MEDITERRANEAN",
-    tier: "LANDMARK",
-    version: 1,
-    status: "PUBLISHED",
-    creative: {
-      headline: "Mediterranean Yacht Brokerage, Vessel Acquisitions & Charter Berth Access",
-      subheadline: "Direct commercial brokerage advisory across 24 Riviera ports with verified title assurance.",
-      description: "Central commercial brokerage and charter management anchor for the Mediterranean basin.",
-      mediaUrl: "https://images.unsplash.com/photo-1569263979104-865ab7cd8d17?auto=format&fit=crop&w=1600&q=80",
-      ctaLabel: "EXPLORE BROKERAGE DESK",
-      ctaHref: "/companies/argento-marine",
-      featuredOfferingName: "Riviera Commercial Vessel Brokerage",
-      featuredOfferingType: "SERVICE",
-    },
-    publishedAt: "2026-01-10T10:00:00.000Z",
-    approvedAt: "2026-01-10T09:00:00.000Z",
-    submittedAt: "2026-01-10T08:00:00.000Z",
-    createdAt: "2026-01-10T08:00:00.000Z",
-    updatedAt: "2026-01-10T10:00:00.000Z",
-  },
-  {
-    revisionId: "rev-seed-crest-brokerage-weu",
-    propertyId: "prop-slot-fs-brokerage-western_europe-1",
-    slotId: "slot-fs-brokerage-western_europe-1",
-    companyId: "crest-group-materials",
-    businessId: "biz-crest",
-    cityId: "brokerage",
-    regionCode: "WESTERN_EUROPE",
-    tier: "FLAGSHIP",
-    version: 1,
-    status: "PUBLISHED",
-    creative: {
-      headline: "Advanced Composite Specifications & Commercial Sourcing Hub",
-      subheadline: "DNV-GL certified composite solutions and technical materials for commercial brokerage surveys.",
-      description: "UK-based composite solutions and commercial vessel refit coatings.",
-      mediaUrl: "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=1600&q=80",
-      ctaLabel: "EXPLORE SHOWROOM",
-      ctaHref: "/companies/crest-group-materials",
-      featuredOfferingName: "CrestCoat-900 High-Gloss Gelcoat",
-      featuredOfferingType: "PRODUCT",
-    },
-    publishedAt: "2026-01-11T10:00:00.000Z",
-    approvedAt: "2026-01-11T09:00:00.000Z",
-    submittedAt: "2026-01-11T08:00:00.000Z",
-    createdAt: "2026-01-11T08:00:00.000Z",
-    updatedAt: "2026-01-11T10:00:00.000Z",
-  },
+// Pure Firestore Revisions & Active Publications Cache
+const revisionsStore = new Map<string, PropertyCreativeRevision>();
+const activePublications = new Map<string, PropertyCreativeRevision>();
+let isGovernanceSyncInitialized = false;
 
-  // MarineCommerce / General Sector City
-  {
-    revisionId: "rev-seed-argento-mc-med",
-    propertyId: "prop-slot-lm-marinecommerce-mediterranean",
-    slotId: "slot-lm-marinecommerce-mediterranean",
-    companyId: "argento",
-    businessId: "biz-argento",
-    cityId: "marinecommerce",
-    regionCode: "MEDITERRANEAN",
-    tier: "LANDMARK",
-    version: 1,
-    status: "PUBLISHED",
-    creative: {
-      headline: "Mediterranean Commercial Logistics & Superyacht Fleet Operations",
-      subheadline: "Integrated vessel support, customs clearance, and bunkering operations across premier Mediterranean ports.",
-      description: "Central commercial anchor property for Mediterranean maritime trade and fleet operations.",
-      mediaUrl: "https://images.unsplash.com/photo-1569263979104-865ab7cd8d17?auto=format&fit=crop&w=1600&q=80",
-      ctaLabel: "EXPLORE SHOWROOM",
-      ctaHref: "/companies/argento-marine",
-      featuredOfferingName: "Riviera Express Vessel Provisioning",
-      featuredOfferingType: "SERVICE",
-    },
-    publishedAt: "2026-01-10T10:00:00.000Z",
-    approvedAt: "2026-01-10T09:00:00.000Z",
-    submittedAt: "2026-01-10T08:00:00.000Z",
-    createdAt: "2026-01-10T08:00:00.000Z",
-    updatedAt: "2026-01-10T10:00:00.000Z",
-  },
-  {
-    revisionId: "rev-seed-blueharbour-mc-noe",
-    propertyId: "prop-slot-lm-marinecommerce-northern_europe",
-    slotId: "slot-lm-marinecommerce-northern_europe",
-    companyId: "blueharbour",
-    businessId: "biz-blueharbour",
-    cityId: "marinecommerce",
-    regionCode: "NORTHERN_EUROPE",
-    tier: "LANDMARK",
-    version: 1,
-    status: "PUBLISHED",
-    creative: {
-      headline: "North Sea Deepwater Logistics & Autonomous Spares Network",
-      subheadline: "Rotterdam deepwater logistics hub coordinating next-day component supply to major North Sea ports.",
-      description: "Primary digital headquarters for Northern European deepwater maritime operations.",
-      mediaUrl: "https://images.unsplash.com/photo-1544551763-46a013bb70d5?auto=format&fit=crop&w=1600&q=80",
-      ctaLabel: "EXPLORE SHOWROOM",
-      ctaHref: "/companies/blueharbour-shipyards",
-      featuredOfferingName: "North Sea Autonomous Spares Delivery",
-      featuredOfferingType: "SERVICE",
-    },
-    publishedAt: "2026-01-12T10:00:00.000Z",
-    approvedAt: "2026-01-12T09:00:00.000Z",
-    submittedAt: "2026-01-12T08:00:00.000Z",
-    createdAt: "2026-01-12T08:00:00.000Z",
-    updatedAt: "2026-01-12T10:00:00.000Z",
-  },
-];
+export function initPropertyGovernanceSync(): void {
+  if (isGovernanceSyncInitialized || typeof window === "undefined") return;
+  isGovernanceSyncInitialized = true;
+  try {
+    const colRef = collection(db, "propertyRevisions");
+    onSnapshot(colRef, (snapshot) => {
+      snapshot.docs.forEach((d) => {
+        const item = { ...d.data(), revisionId: d.id } as PropertyCreativeRevision;
+        revisionsStore.set(item.revisionId, item);
+        if (item.status === "PUBLISHED") {
+          activePublications.set(getSlotKey(item.cityId, item.regionCode, item.slotId), item);
+        }
+      });
+    });
+  } catch (err) {
+    console.warn("[PropertyGovernanceService] Firestore sync error:", err);
+  }
+}
 
-// Memory store for revisions
-const revisionsStore = new Map<string, PropertyCreativeRevision>(
-  initialRevisions.map(r => [r.revisionId, r])
-);
-const activePublications = new Map<string, PropertyCreativeRevision>(
-  initialRevisions.map(r => [getSlotKey(r.cityId, r.regionCode, r.slotId), r])
-);
+initPropertyGovernanceSync();
 
 export function getCompanyRevisions(companyId: string): PropertyCreativeRevision[] {
   return Array.from(revisionsStore.values()).filter(r => r.companyId === companyId);
@@ -388,6 +190,15 @@ export function saveDraft(
   }
   
   revisionsStore.set(revision.revisionId, revision);
+
+  try {
+    const docRef = doc(db, "propertyRevisions", revision.revisionId);
+    setDoc(docRef, revision, { merge: true }).catch((err) => {
+      console.warn("[PropertyGovernanceService] Firestore revision save error:", err);
+    });
+  } catch (err) {
+    console.warn("[PropertyGovernanceService] Firestore write error:", err);
+  }
   
   recordGovernanceAudit(
     currentAuth.uid!,
@@ -441,6 +252,15 @@ export function submitForReview(
   };
   
   revisionsStore.set(updated.revisionId, updated);
+
+  try {
+    const docRef = doc(db, "propertyRevisions", updated.revisionId);
+    setDoc(docRef, updated, { merge: true }).catch((err) => {
+      console.warn("[PropertyGovernanceService] Firestore submit error:", err);
+    });
+  } catch (err) {
+    console.warn("[PropertyGovernanceService] Firestore write error:", err);
+  }
   
   recordGovernanceAudit(
     currentAuth.uid!,
@@ -510,6 +330,15 @@ export function reviewProperty(
   updated.status = newStatus;
 
   revisionsStore.set(updated.revisionId, updated);
+
+  try {
+    const docRef = doc(db, "propertyRevisions", updated.revisionId);
+    setDoc(docRef, updated, { merge: true }).catch((err) => {
+      console.warn("[PropertyGovernanceService] Firestore review error:", err);
+    });
+  } catch (err) {
+    console.warn("[PropertyGovernanceService] Firestore write error:", err);
+  }
   
   const slotKey = getSlotKey(updated.cityId, updated.regionCode, updated.slotId);
 

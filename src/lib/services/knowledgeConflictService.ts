@@ -26,42 +26,36 @@ export interface DocumentConflictResolution {
   manualRationale?: string;
 }
 
-// In-memory persistent registry of conflicts
+import { db } from "@/lib/firebase";
+import {
+  collection,
+  doc,
+  getDocs,
+  setDoc,
+  onSnapshot,
+  type Unsubscribe,
+} from "firebase/firestore";
+
+// In-memory runtime cache of conflicts synced from Firestore
 const CONFLICT_REGISTRY = new Map<string, DocumentConflictResolution>();
+const activeConflictListeners = new Set<string>();
 
 /**
- * Initialize default seeded conflicts for demonstration/testing if empty
+ * Initialize realtime listener for company conflicts from Firestore
  */
-function ensureSeededConflicts(companyId: string) {
-  const existingForCompany = Array.from(CONFLICT_REGISTRY.values()).filter((c) => c.companyId === companyId);
-  if (existingForCompany.length === 0) {
-    const defaultConflict: DocumentConflictResolution = {
-      conflictId: `conf-${companyId}-leadtime-01`,
-      companyId,
-      offeringId: "prod-argento-01",
-      field: "leadTime",
-      fieldLabel: "Production & Delivery Lead Time",
-      status: "OPEN",
-      sourceA: {
-        sourceDocumentId: `doc-${companyId}-02`,
-        sourceDocumentName: "Autonomous Survey ROV Operator Manual & Technical Spec v4.2",
-        extractedAt: new Date(Date.now() - 86400000).toISOString(),
-        confidenceScore: 94,
-        confirmationState: "AI_EXTRACTED",
-        extractedValue: "4 to 6 weeks from purchase order",
-        sectionOrPage: "Sec 8.1 Commercial Logistics",
-      },
-      sourceB: {
-        sourceDocumentId: `doc-${companyId}-price-01`,
-        sourceDocumentName: "2026 Global Commercial Tariff & Delivery Schedule.pdf",
-        extractedAt: new Date(Date.now() - 43200000).toISOString(),
-        confidenceScore: 89,
-        confirmationState: "AI_EXTRACTED",
-        extractedValue: "8 to 10 weeks (High Seasonal Backlog)",
-        sectionOrPage: "Page 4 Tariff Index",
-      },
-    };
-    CONFLICT_REGISTRY.set(defaultConflict.conflictId, defaultConflict);
+export function initCompanyConflictsSync(companyId: string): void {
+  if (!companyId || activeConflictListeners.has(companyId)) return;
+  activeConflictListeners.add(companyId);
+  try {
+    const colRef = collection(db, "companies", companyId, "knowledgeConflicts");
+    onSnapshot(colRef, (snap) => {
+      snap.docs.forEach((d) => {
+        const item = { ...d.data(), conflictId: d.id } as DocumentConflictResolution;
+        CONFLICT_REGISTRY.set(item.conflictId, item);
+      });
+    });
+  } catch (err) {
+    console.warn("[KnowledgeConflictService] Firestore subscription error:", err);
   }
 }
 
@@ -69,7 +63,7 @@ function ensureSeededConflicts(companyId: string) {
  * Get all conflicts for a given company
  */
 export function getCompanyDocumentConflicts(companyId: string): DocumentConflictResolution[] {
-  ensureSeededConflicts(companyId);
+  initCompanyConflictsSync(companyId);
   return Array.from(CONFLICT_REGISTRY.values()).filter((c) => c.companyId === companyId);
 }
 
@@ -80,7 +74,7 @@ export function getOfferingDocumentConflicts(
   companyId: string,
   offeringId: string
 ): DocumentConflictResolution[] {
-  ensureSeededConflicts(companyId);
+  initCompanyConflictsSync(companyId);
   return Array.from(CONFLICT_REGISTRY.values()).filter(
     (c) => c.companyId === companyId && c.offeringId === offeringId
   );
@@ -134,6 +128,16 @@ export function resolveDocumentConflict(params: {
   };
 
   CONFLICT_REGISTRY.set(params.conflictId, resolvedConflict);
+
+  try {
+    const docRef = doc(db, "companies", params.companyId, "knowledgeConflicts", params.conflictId);
+    setDoc(docRef, resolvedConflict, { merge: true }).catch((err) => {
+      console.warn("[KnowledgeConflictService] Firestore conflict resolve sync error:", err);
+    });
+  } catch (err) {
+    console.warn("[KnowledgeConflictService] Firestore write error:", err);
+  }
+
   return resolvedConflict;
 }
 
@@ -148,6 +152,16 @@ export function registerDocumentConflict(
     status: conflict.status || "OPEN",
   };
   CONFLICT_REGISTRY.set(fullConflict.conflictId, fullConflict);
+
+  try {
+    const docRef = doc(db, "companies", fullConflict.companyId, "knowledgeConflicts", fullConflict.conflictId);
+    setDoc(docRef, fullConflict, { merge: true }).catch((err) => {
+      console.warn("[KnowledgeConflictService] Firestore conflict register sync error:", err);
+    });
+  } catch (err) {
+    console.warn("[KnowledgeConflictService] Firestore write error:", err);
+  }
+
   return fullConflict;
 }
 

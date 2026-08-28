@@ -1,354 +1,282 @@
 import type { CompanyEntity, CompanyLifecycleStatus } from "@/lib/types";
-import { getPersistenceMode } from "./persistenceMode";
-import { getFirebaseApp } from "@/lib/auth/firebaseAuth";
+import { db } from "@/lib/firebase";
 import {
-  getFirestore,
   doc,
   getDoc,
   setDoc,
+  collection,
+  getDocs,
+  deleteDoc,
+  query,
+  where,
+  onSnapshot,
 } from "firebase/firestore";
 
 /**
- * Phase 3.4 — Company Repository
+ * Pure Firestore Company Repository
  * Data Access & Persistence Layer for /companies/{companyId}
  */
 
-const initialCanonicalCompanies: CompanyEntity[] = [
-  {
-    id: "argento",
-    businessId: "MW-BUS-100001",
-    companyId6Digit: "100001",
-    slug: "argento-marine",
-    name: "Argento Marine",
-    displayName: "Argento Marine",
-    legalName: "Argento Marine Yatçılık ve Ticaret A.Ş.",
-    brandName: "Argento Marine",
-    primarySectorCategory: "Marine Logistics & Port Operations",
-    secondarySectorCategories: ["Technical Vessel Provisioning", "Charter Fleet Support"],
-    country: "Türkiye",
-    city: "Göcek",
-    headquartersCity: "Göcek",
-    location: "Göcek, Türkiye",
-    sectorId: "marine-services",
-    industry: "Marine Services",
-    verificationStatus: "VERIFIED",
-    verificationLevel: "ENTERPRISE",
-    operatingStatus: "ACTIVE",
-    lifecycleStatus: "ACTIVE",
-    registrationCountry: "Türkiye",
-    registrationAuthority: "Fethiye Chamber of Commerce",
-    registrationStatus: "ACTIVE / REGISTERED",
-    registrationNumber: "TR-48200192",
-    officialEmail: "corporate@argentomarine.com",
-    officialPhone: "+90 252 645 1900",
-    website: "https://argentomarine.com",
-    websiteUrl: "https://argentomarine.com",
-    shortDescription: "Mediterranean marine logistics, technical vessel provisioning, and charter fleet support.",
-    description: "Argento Marine operates a premier network of yacht support services, specialized provisioning facilities, and bonded marine logistics throughout the eastern Mediterranean.",
-    corporateDescription: "Argento Marine operates a premier network of yacht support services, specialized provisioning facilities, and bonded marine logistics throughout the eastern Mediterranean.",
-    coverImage: "https://images.unsplash.com/photo-1569263979104-865ab7cd8d17?auto=format&fit=crop&w=800&q=80",
-    primarySectorCityId: "supplychain",
-    sectorCityIds: ["supplychain", "charter", "brokerage"],
-    presenceTier: "FLAGSHIP",
-    isFlagship: true,
-    flagshipSectorCityId: "charter",
-    flagshipRegisteredAt: "2026-01-01T00:00:00.000Z",
-    isAnchor: true,
-    anchorSectorCityId: "supplychain",
-    anchorRegisteredAt: "2026-01-01T00:00:00.000Z",
-    regionalEditions: ["MEDITERRANEAN"],
-    capabilities: ["Marine Logistics", "Technical Provisioning", "Customs Clearance", "Fleet Support"],
-    cloudBillingAccountId: "01A2B3-45C6D7-89E0F1",
-    cloudBillingOrganizationId: "organizations/4820019200",
-    cloudBillingContact: "procurement@argentomarine.com",
-    googleMarketplaceEnabled: true,
-    stripeCustomerId: "cus_argento_corp_01",
-    enrolledOrganizationId: "maritime-association",
-    enrolledOrganizationName: "World Maritime Association",
-    status: "ACTIVE",
-    platformId: "marineworld",
-    createdAt: "2026-01-01T00:00:00.000Z",
-    updatedAt: "2026-01-01T00:00:00.000Z",
-  } as any,
-  {
-    id: "blueharbour",
-    businessId: "MW-BUS-100002",
-    companyId6Digit: "100002",
-    slug: "blueharbour-shipyards",
-    name: "BlueHarbour",
-    displayName: "BlueHarbour",
-    legalName: "BlueHarbour Marine B.V.",
-    brandName: "BlueHarbour",
-    primarySectorCategory: "Shipyard & Deepwater Refit Engineering",
-    secondarySectorCategories: ["Marine Component Distribution", "Automated Spares"],
-    country: "Netherlands",
-    city: "Rotterdam",
-    headquartersCity: "Rotterdam",
-    location: "Rotterdam, Netherlands",
-    sectorId: "marine-services",
-    industry: "Marine Services",
-    verificationStatus: "VERIFIED",
-    verificationLevel: "ENTERPRISE",
-    operatingStatus: "ACTIVE",
-    lifecycleStatus: "ACTIVE",
-    registrationCountry: "Netherlands",
-    registrationAuthority: "Kamer van Koophandel (KVK)",
-    registrationStatus: "ACTIVE / REGISTERED",
-    registrationNumber: "NL-89201144",
-    officialEmail: "contact@blueharbour.nl",
-    officialPhone: "+31 10 495 2000",
-    website: "https://blueharbour.nl",
-    websiteUrl: "https://blueharbour.nl",
-    shortDescription: "Northern European deepwater logistics, vessel refit engineering, and marine component distribution.",
-    description: "Headquartered in the Port of Rotterdam, BlueHarbour coordinates automated spares supply chains and shipyard engineering services across Northern European maritime hubs.",
-    corporateDescription: "Headquartered in the Port of Rotterdam, BlueHarbour coordinates automated spares supply chains and shipyard engineering services across Northern European maritime hubs.",
-    coverImage: "https://images.unsplash.com/photo-1544551763-46a013bb70d5?auto=format&fit=crop&w=800&q=80",
-    primarySectorCityId: "supplychain",
-    sectorCityIds: ["supplychain", "shipyard"],
-    presenceTier: "FLAGSHIP",
-    isFlagship: true,
-    flagshipSectorCityId: "shipyard",
-    flagshipRegisteredAt: "2026-01-01T00:00:00.000Z",
-    regionalEditions: ["NORTH_EUROPE"],
-    capabilities: ["Deepwater Logistics", "Refit Supervision", "Spares Distribution", "Autonomous Spares Network"],
-    enrolledOrganizationId: "rotterdam-chamber",
-    enrolledOrganizationName: "Rotterdam Maritime Chamber of Commerce",
-    status: "ACTIVE",
-    platformId: "marineworld",
-    createdAt: "2026-01-01T00:00:00.000Z",
-    updatedAt: "2026-01-01T00:00:00.000Z",
-  } as any,
-  {
-    id: "north-atlantic",
-    businessId: "MW-BUS-100003",
-    companyId6Digit: "100003",
-    slug: "north-atlantic-marine",
-    name: "North Atlantic Marine",
-    displayName: "North Atlantic Marine",
-    legalName: "North Atlantic Marine Services LLC",
-    brandName: "North Atlantic Marine",
-    primarySectorCategory: "Transatlantic Marine Equipment Procurement",
-    secondarySectorCategories: ["Intermodal Logistics", "Superyacht Marina Supply"],
-    country: "USA",
-    city: "Fort Lauderdale",
-    headquartersCity: "Fort Lauderdale",
-    location: "Fort Lauderdale, USA",
-    sectorId: "marine-services",
-    industry: "Marine Services",
-    verificationStatus: "VERIFIED",
-    verificationLevel: "ENTERPRISE",
-    operatingStatus: "ACTIVE",
-    lifecycleStatus: "ACTIVE",
-    registrationCountry: "USA",
-    registrationAuthority: "Florida Division of Corporations",
-    registrationStatus: "ACTIVE / REGISTERED",
-    registrationNumber: "US-FL-902188",
-    officialEmail: "operations@northatlanticmarine.com",
-    officialPhone: "+1 954 522 8800",
-    website: "https://northatlanticmarine.com",
-    websiteUrl: "https://northatlanticmarine.com",
-    shortDescription: "Transatlantic marine equipment supply and North American commercial fleet logistics.",
-    description: "North Atlantic Marine provides specialized intermodal supply chain coordination, superyacht marina supply services, and offshore support across North America and the Caribbean.",
-    corporateDescription: "North Atlantic Marine provides specialized intermodal supply chain coordination, superyacht marina supply services, and offshore support across North America and the Caribbean.",
-    coverImage: "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=800&q=80",
-    primarySectorCityId: "supplychain",
-    sectorCityIds: ["supplychain", "procurement"],
-    presenceTier: "ENTERPRISE",
-    isFlagship: false,
-    regionalEditions: ["NORTH_AMERICA", "CARIBBEAN"],
-    capabilities: ["Transatlantic Sourcing", "Marina Logistics", "Fleet Provisioning", "Workboat Support"],
-    enrolledOrganizationId: "world-maritime-federation",
-    enrolledOrganizationName: "World Maritime & Oceanics Federation",
-    status: "ACTIVE",
-    platformId: "marineworld",
-    createdAt: "2026-01-01T00:00:00.000Z",
-    updatedAt: "2026-01-01T00:00:00.000Z",
-  } as any,
-  {
-    id: "med-marine-systems",
-    businessId: "MW-BUS-100005",
-    companyId6Digit: "100005",
-    slug: "mediterranean-marine-systems",
-    name: "Mediterranean Marine Systems",
-    displayName: "Mediterranean Marine Systems",
-    legalName: "Mediterranean Marine Systems S.r.l.",
-    brandName: "Mediterranean Marine Systems",
-    primarySectorCategory: "Ligurian Maritime Automation & Navigation",
-    secondarySectorCategories: ["Vessel Automation Spares", "Dockside Integration"],
-    country: "Italy",
-    city: "Genoa",
-    headquartersCity: "Genoa",
-    location: "Genoa, Italy",
-    sectorId: "marine-services",
-    industry: "Marine Services",
-    verificationStatus: "VERIFIED",
-    verificationLevel: "ENTERPRISE",
-    operatingStatus: "ACTIVE",
-    lifecycleStatus: "ACTIVE",
-    registrationCountry: "Italy",
-    registrationAuthority: "Camera di Commercio di Genova",
-    registrationStatus: "ACTIVE / REGISTERED",
-    registrationNumber: "IT-GE-884019",
-    officialEmail: "contact@medmarinesystems.it",
-    officialPhone: "+39 010 596 3000",
-    website: "https://medmarinesystems.it",
-    websiteUrl: "https://medmarinesystems.it",
-    shortDescription: "Ligurian maritime systems engineering, vessel automation spares, and Mediterranean refit support.",
-    description: "Mediterranean Marine Systems is an Italian engineering and naval supply house providing automated propulsion spares, navigation electronics, and dockside technical integration in Genoa.",
-    corporateDescription: "Mediterranean Marine Systems is an Italian engineering and naval supply house providing automated propulsion spares, navigation electronics, and dockside technical integration in Genoa.",
-    coverImage: "https://images.unsplash.com/photo-1516483638261-f4dbaf036963?auto=format&fit=crop&w=800&q=80",
-    primarySectorCityId: "supplychain",
-    sectorCityIds: ["supplychain", "shipyard"],
-    presenceTier: "FLAGSHIP",
-    isFlagship: true,
-    flagshipSectorCityId: "supplychain",
-    flagshipRegisteredAt: "2026-01-01T00:00:00.000Z",
-    regionalEditions: ["MEDITERRANEAN"],
-    capabilities: ["Marine Automation", "Navigation Electronics", "Refit Integration", "Technical Spares"],
-    enrolledOrganizationId: "rotterdam-chamber",
-    enrolledOrganizationName: "Rotterdam Maritime Chamber of Commerce",
-    status: "ACTIVE",
-    platformId: "marineworld",
-    createdAt: "2026-01-01T00:00:00.000Z",
-    updatedAt: "2026-01-01T00:00:00.000Z",
-  } as any,
-];
+const COLLECTION_NAME = "companies";
 
-const companyStore = new Map<string, CompanyEntity>(
-  initialCanonicalCompanies.map((c) => [c.id, c])
-);
+// Internal runtime cache populated from Firestore (Zero hardcoded mock data)
+const runtimeCompanyCache = new Map<string, CompanyEntity>();
+let isListenerActive = false;
 
-export function getInMemoryCompany(id?: string): CompanyEntity | undefined {
-  if (!id || typeof id !== "string") return undefined;
-  const normId = id.toLowerCase();
-  for (const c of companyStore.values()) {
-    if (!c) continue;
-    if (c.id?.toLowerCase() === normId || c.slug?.toLowerCase() === normId) return c;
+function initCompanyRealtimeCache() {
+  if (isListenerActive || typeof window === "undefined") return;
+  try {
+    const colRef = collection(db, COLLECTION_NAME);
+    onSnapshot(
+      colRef,
+      (snapshot) => {
+        snapshot.docChanges().forEach((change) => {
+          const item = { id: change.doc.id, ...change.doc.data() } as CompanyEntity;
+          if (change.type === "removed") {
+            runtimeCompanyCache.delete(change.doc.id);
+          } else {
+            runtimeCompanyCache.set(change.doc.id, item);
+            if (item.slug) runtimeCompanyCache.set(item.slug, item);
+            if (item.businessId) runtimeCompanyCache.set(item.businessId, item);
+          }
+        });
+      },
+      (error) => {
+        if (error.code === "permission-denied") {
+          // Unauthenticated visitor: collection listener deferred until authenticated
+          isListenerActive = false;
+        } else {
+          console.debug("[CompanyRepository] Realtime listener note:", error.message);
+        }
+      }
+    );
+    isListenerActive = true;
+  } catch {
+    // Offline or restricted environment fallback
   }
-  return companyStore.get(id);
+}
+
+initCompanyRealtimeCache();
+
+export function getInMemoryCompany(companyId: string): CompanyEntity | undefined {
+  return runtimeCompanyCache.get(companyId);
 }
 
 export function saveInMemoryCompany(company: CompanyEntity): CompanyEntity {
-  companyStore.set(company.id, company);
+  runtimeCompanyCache.set(company.id, company);
+  if (company.slug) runtimeCompanyCache.set(company.slug, company);
+  if (company.businessId) runtimeCompanyCache.set(company.businessId, company);
   return company;
 }
 
-export function clearInMemoryCompanyStore(companyId?: string): void {
-  if (companyId) {
-    companyStore.delete(companyId);
-  } else {
-    companyStore.clear();
-  }
-}
 
-export function getCompanyRecordSync(id: string): CompanyEntity | undefined {
-  return getInMemoryCompany(id);
-}
-
-export function saveCompanyRecordSync(company: CompanyEntity): CompanyEntity {
-  return saveInMemoryCompany(company);
+export function getCompanyRecordSync(companyId: string): CompanyEntity | undefined {
+  return runtimeCompanyCache.get(companyId);
 }
 
 export function findAllCompaniesSync(): CompanyEntity[] {
-  return Array.from(companyStore.values());
+  return Array.from(new Set(runtimeCompanyCache.values()));
 }
 
-export const getAllCompanyRecords = findAllCompaniesSync;
+export async function getCompanyRecord(companyId: string): Promise<CompanyEntity | null> {
+  if (!companyId) return null;
+  const cached = runtimeCompanyCache.get(companyId);
+  if (cached) return cached;
 
-export async function findCompanyById(id: string): Promise<CompanyEntity | null> {
-  const local = getInMemoryCompany(id);
-  if (getPersistenceMode() === "FIRESTORE" && id) {
-    try {
-      const db = getFirestore(getFirebaseApp());
-      const docRef = doc(db, "companies", id);
-      const snap = await getDoc(docRef);
-      if (snap.exists()) {
-        const data = snap.data() as CompanyEntity;
-        saveInMemoryCompany(data);
-        return data;
-      }
-    } catch (err) {
-      console.warn(`[CompanyRepository] Firestore read failed for company ${id}, using in-memory fallback`, err);
+  try {
+    const docRef = doc(db, COLLECTION_NAME, companyId);
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      const company = { id: snap.id, ...snap.data() } as CompanyEntity;
+      saveInMemoryCompany(company);
+      return company;
     }
-  }
-  return local || null;
-}
 
-export async function findCompanyBySlug(slug: string): Promise<CompanyEntity | null> {
-  if (!slug) return null;
-  const norm = slug.toLowerCase();
-  const companies = Array.from(companyStore.values());
-  const found = companies.find((c) => c?.slug?.toLowerCase() === norm || c?.id?.toLowerCase() === norm);
-  if (found) return found;
-  return findCompanyById(slug);
+    // Try slug lookup
+    const qSlug = query(collection(db, COLLECTION_NAME), where("slug", "==", companyId));
+    const slugSnap = await getDocs(qSlug);
+    if (!slugSnap.empty) {
+      const docData = slugSnap.docs[0];
+      const company = { id: docData.id, ...docData.data() } as CompanyEntity;
+      saveInMemoryCompany(company);
+      return company;
+    }
+
+    // Try businessId lookup
+    const qBus = query(collection(db, COLLECTION_NAME), where("businessId", "==", companyId));
+    const busSnap = await getDocs(qBus);
+    if (!busSnap.empty) {
+      const docData = busSnap.docs[0];
+      const company = { id: docData.id, ...docData.data() } as CompanyEntity;
+      saveInMemoryCompany(company);
+      return company;
+    }
+  } catch (err) {
+    console.warn(`[CompanyRepository] getCompanyRecord failed for ${companyId}:`, err);
+  }
+
+  return null;
 }
 
 export async function findAllCompanies(): Promise<CompanyEntity[]> {
-  return Array.from(companyStore.values());
-}
-
-export async function saveCompany(company: CompanyEntity): Promise<CompanyEntity> {
-  saveInMemoryCompany(company);
-  if (getPersistenceMode() === "FIRESTORE" && company.id) {
-    try {
-      const db = getFirestore(getFirebaseApp());
-      const docRef = doc(db, "companies", company.id);
-      await setDoc(docRef, { ...company }, { merge: true });
-    } catch (err) {
-      console.warn(`[CompanyRepository] Firestore write failed for company ${company.id}:`, err);
-    }
+  try {
+    const colRef = collection(db, COLLECTION_NAME);
+    const snap = await getDocs(colRef);
+    const results: CompanyEntity[] = [];
+    snap.forEach((d) => {
+      const comp = { id: d.id, ...d.data() } as CompanyEntity;
+      saveInMemoryCompany(comp);
+      results.push(comp);
+    });
+    return results;
+  } catch (err) {
+    console.warn("[CompanyRepository] findAllCompanies failed:", err);
+    return Array.from(new Set(runtimeCompanyCache.values()));
   }
-  return company;
 }
 
-export async function updateCompanyLifecycle(
+export async function findCompanyByEmailOrName(
+  email?: string,
+  nameOrSlug?: string
+): Promise<CompanyEntity | null> {
+  const normEmail = email?.trim().toLowerCase();
+  const normName = nameOrSlug?.trim().toLowerCase();
+
+  // 1. In-memory check
+  for (const comp of runtimeCompanyCache.values()) {
+    const cEmail = (comp.email || comp.officialEmail || "").trim().toLowerCase();
+    const cName = (comp.legalName || comp.displayName || "").trim().toLowerCase();
+    const cSlug = (comp.slug || "").trim().toLowerCase();
+
+    if (normEmail && cEmail === normEmail) return comp;
+    if (normName && (cName === normName || cSlug === normName)) return comp;
+  }
+
+  // 2. Firestore check
+  try {
+    if (typeof window !== "undefined") {
+      if (normEmail) {
+        const qEmail = query(collection(db, COLLECTION_NAME), where("email", "==", normEmail));
+        const snap = await getDocs(qEmail);
+        if (!snap.empty) {
+          const comp = { id: snap.docs[0].id, ...snap.docs[0].data() } as CompanyEntity;
+          saveInMemoryCompany(comp);
+          return comp;
+        }
+
+        const qOfficial = query(collection(db, COLLECTION_NAME), where("officialEmail", "==", normEmail));
+        const snapOff = await getDocs(qOfficial);
+        if (!snapOff.empty) {
+          const comp = { id: snapOff.docs[0].id, ...snapOff.docs[0].data() } as CompanyEntity;
+          saveInMemoryCompany(comp);
+          return comp;
+        }
+      }
+
+      if (normName) {
+        const qSlug = query(collection(db, COLLECTION_NAME), where("slug", "==", normName));
+        const snapSlug = await getDocs(qSlug);
+        if (!snapSlug.empty) {
+          const comp = { id: snapSlug.docs[0].id, ...snapSlug.docs[0].data() } as CompanyEntity;
+          saveInMemoryCompany(comp);
+          return comp;
+        }
+      }
+    }
+  } catch (e) {
+    console.warn("[CompanyRepository] findCompanyByEmailOrName lookup error:", e);
+  }
+
+  return null;
+}
+
+export async function saveCompanyRecord(company: CompanyEntity): Promise<CompanyEntity> {
+  const payload: CompanyEntity = {
+    ...company,
+    updatedAt: new Date().toISOString(),
+    createdAt: company.createdAt || new Date().toISOString(),
+  };
+
+  saveInMemoryCompany(payload);
+
+  try {
+    const docRef = doc(db, COLLECTION_NAME, payload.id);
+    await setDoc(docRef, payload, { merge: true });
+  } catch (err) {
+    console.warn(`[CompanyRepository] saveCompanyRecord failed for ${payload.id}:`, err);
+  }
+
+  return payload;
+}
+
+export async function queryCompaniesBySectorCity(sectorCityId: string): Promise<CompanyEntity[]> {
+  try {
+    const q = query(
+      collection(db, COLLECTION_NAME),
+      where("sectorCityIds", "array-contains", sectorCityId)
+    );
+    const snap = await getDocs(q);
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() } as CompanyEntity));
+  } catch (err) {
+    console.warn(`[CompanyRepository] queryCompaniesBySectorCity failed for ${sectorCityId}:`, err);
+    return Array.from(new Set(runtimeCompanyCache.values())).filter(
+      (c) => c.sectorCityIds?.includes(sectorCityId) || c.primarySectorCityId === sectorCityId
+    );
+  }
+}
+
+export async function queryCompaniesByPresenceTier(tier: string): Promise<CompanyEntity[]> {
+  try {
+    const q = query(collection(db, COLLECTION_NAME), where("presenceTier", "==", tier));
+    const snap = await getDocs(q);
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() } as CompanyEntity));
+  } catch (err) {
+    console.warn(`[CompanyRepository] queryCompaniesByPresenceTier failed for ${tier}:`, err);
+    return Array.from(new Set(runtimeCompanyCache.values())).filter(
+      (c) => c.presenceTier === tier
+    );
+  }
+}
+
+export async function updateCompanyLifecycleStatus(
   companyId: string,
   lifecycleStatus: CompanyLifecycleStatus,
-  status: string,
-  activatedAt?: string | null,
-  deactivatedAt?: string | null
+  status: "ACTIVE" | "INACTIVE" | "PENDING" | "SUSPENDED" | "DEACTIVATED" | string,
+  activatedAt?: string,
+  deactivatedAt?: string
 ): Promise<CompanyEntity | null> {
-  const existing = getInMemoryCompany(companyId);
-  if (!existing) return null;
 
   const now = new Date().toISOString();
-  existing.lifecycleStatus = lifecycleStatus;
-  existing.status = status;
-  existing.updatedAt = now;
+  const updateData: Record<string, any> = {
+    lifecycleStatus,
+    status,
+    updatedAt: now,
+  };
+  if (activatedAt !== undefined) updateData.activatedAt = activatedAt;
+  else if (lifecycleStatus === "ACTIVE") updateData.activatedAt = now;
 
-  if (activatedAt !== undefined) {
-    existing.activatedAt = activatedAt;
-  } else if (lifecycleStatus === "ACTIVE" && !existing.activatedAt) {
-    existing.activatedAt = now;
-  }
+  if (deactivatedAt !== undefined) updateData.deactivatedAt = deactivatedAt;
+  else if (lifecycleStatus === "DEACTIVATED") updateData.deactivatedAt = now;
 
-  if (deactivatedAt !== undefined) {
-    existing.deactivatedAt = deactivatedAt;
-  } else if (lifecycleStatus === "DEACTIVATED" && !existing.deactivatedAt) {
-    existing.deactivatedAt = now;
-  }
-
-  saveInMemoryCompany(existing);
-
-  if (getPersistenceMode() === "FIRESTORE") {
-    try {
-      const db = getFirestore(getFirebaseApp());
-      const docRef = doc(db, "companies", companyId);
-      const updateData: Record<string, any> = {
-        lifecycleStatus,
-        status,
-        updatedAt: now,
-      };
-      if (existing.activatedAt !== undefined) updateData.activatedAt = existing.activatedAt;
-      if (existing.deactivatedAt !== undefined) updateData.deactivatedAt = existing.deactivatedAt;
-
-      await setDoc(docRef, updateData, { merge: true });
-    } catch (err) {
-      console.warn(`[CompanyRepository] Firestore lifecycle update failed for ${companyId}:`, err);
+  try {
+    const docRef = doc(db, COLLECTION_NAME, companyId);
+    await setDoc(docRef, updateData, { merge: true });
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      const comp = { id: snap.id, ...snap.data() } as CompanyEntity;
+      saveInMemoryCompany(comp);
+      return comp;
     }
+  } catch (err) {
+    console.warn(`[CompanyRepository] updateCompanyLifecycleStatus failed for ${companyId}:`, err);
   }
 
-  return existing;
+  const existing = runtimeCompanyCache.get(companyId);
+  if (existing) {
+    Object.assign(existing, updateData);
+    return existing;
+  }
+  return null;
 }
 
 export function updateCompanyBillingConfig(
@@ -361,31 +289,105 @@ export function updateCompanyBillingConfig(
     stripeCustomerId?: string;
   }
 ): CompanyEntity | undefined {
-  const existing = getInMemoryCompany(companyId);
-  if (!existing) return undefined;
-
-  if (billingConfig.cloudBillingAccountId !== undefined) {
-    existing.cloudBillingAccountId = billingConfig.cloudBillingAccountId;
+  const existing = runtimeCompanyCache.get(companyId);
+  if (existing) {
+    Object.assign(existing, billingConfig, { updatedAt: new Date().toISOString() });
+    saveCompanyRecord(existing);
   }
-  if (billingConfig.cloudBillingOrganizationId !== undefined) {
-    existing.cloudBillingOrganizationId = billingConfig.cloudBillingOrganizationId;
-  }
-  if (billingConfig.cloudBillingContact !== undefined) {
-    existing.cloudBillingContact = billingConfig.cloudBillingContact;
-  }
-  if (billingConfig.googleMarketplaceEnabled !== undefined) {
-    existing.googleMarketplaceEnabled = billingConfig.googleMarketplaceEnabled;
-  }
-  if (billingConfig.stripeCustomerId !== undefined) {
-    existing.stripeCustomerId = billingConfig.stripeCustomerId;
-  }
-
-  existing.updatedAt = new Date().toISOString();
-  saveInMemoryCompany(existing);
   return existing;
 }
 
 export async function deleteCompanyRecord(companyId: string): Promise<boolean> {
-  return companyStore.delete(companyId);
+  runtimeCompanyCache.delete(companyId);
+  try {
+    const docRef = doc(db, COLLECTION_NAME, companyId);
+    await deleteDoc(docRef);
+    return true;
+  } catch (err) {
+    console.warn(`[CompanyRepository] deleteCompanyRecord failed for ${companyId}:`, err);
+    return false;
+  }
+}
+
+export async function findCompaniesByOwnerOrEmail(
+  ownerId?: string,
+  email?: string
+): Promise<CompanyEntity[]> {
+  const normEmail = email?.trim().toLowerCase();
+  const results: CompanyEntity[] = [];
+  const seenIds = new Set<string>();
+
+  // 1. Check in-memory runtime cache
+  for (const comp of runtimeCompanyCache.values()) {
+    const cEmail = (comp.email || comp.officialEmail || "").trim().toLowerCase();
+    if ((ownerId && comp.ownerId === ownerId) || (normEmail && cEmail === normEmail)) {
+      if (!seenIds.has(comp.id)) {
+        seenIds.add(comp.id);
+        results.push(comp);
+      }
+    }
+  }
+
+  // 2. Firestore queries
+  try {
+    if (typeof window !== "undefined") {
+      if (ownerId) {
+        const qOwner = query(collection(db, COLLECTION_NAME), where("ownerId", "==", ownerId));
+        const snapOwner = await getDocs(qOwner);
+        snapOwner.forEach((docSnap) => {
+          const comp = { id: docSnap.id, ...docSnap.data() } as CompanyEntity;
+          saveInMemoryCompany(comp);
+          if (!seenIds.has(comp.id)) {
+            seenIds.add(comp.id);
+            results.push(comp);
+          }
+        });
+      }
+
+      if (normEmail) {
+        const qEmail = query(collection(db, COLLECTION_NAME), where("email", "==", normEmail));
+        const snapEmail = await getDocs(qEmail);
+        snapEmail.forEach((docSnap) => {
+          const comp = { id: docSnap.id, ...docSnap.data() } as CompanyEntity;
+          saveInMemoryCompany(comp);
+          if (!seenIds.has(comp.id)) {
+            seenIds.add(comp.id);
+            results.push(comp);
+          }
+        });
+
+        const qOffEmail = query(collection(db, COLLECTION_NAME), where("officialEmail", "==", normEmail));
+        const snapOff = await getDocs(qOffEmail);
+        snapOff.forEach((docSnap) => {
+          const comp = { id: docSnap.id, ...docSnap.data() } as CompanyEntity;
+          saveInMemoryCompany(comp);
+          if (!seenIds.has(comp.id)) {
+            seenIds.add(comp.id);
+            results.push(comp);
+          }
+        });
+      }
+    }
+  } catch (err) {
+    console.warn("[CompanyRepository] findCompaniesByOwnerOrEmail query error:", err);
+  }
+
+  return results;
+}
+
+export function saveCompanyRecordSync(company: CompanyEntity): CompanyEntity {
+  saveInMemoryCompany(company);
+  saveCompanyRecord(company).catch((err) => {
+    console.warn(`[CompanyRepository] Async Firestore save failed for ${company.id}:`, err);
+  });
+  return company;
+}
+
+export const findCompanyById = getCompanyRecord;
+export const saveCompany = saveCompanyRecord;
+export const updateCompanyLifecycle = updateCompanyLifecycleStatus;
+export const getAllCompanyRecords = findAllCompaniesSync;
+export function clearInMemoryCompanyStore(): void {
+  runtimeCompanyCache.clear();
 }
 

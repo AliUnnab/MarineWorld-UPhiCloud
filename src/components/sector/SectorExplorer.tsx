@@ -1,5 +1,5 @@
-import { useMemo } from "react";
-import type { SectorConfig } from "@/lib/types";
+import { useMemo, useState, useEffect } from "react";
+import type { SectorConfig, SectorCity } from "@/lib/types";
 import {
   DigiContainer,
   DigiSection,
@@ -8,6 +8,7 @@ import {
 } from "@/components/digione/primitives";
 import { CanonicalSectorCityCard } from "@/components/foundation/CanonicalCityCard";
 import { getCities, getMarineDomains } from "@/lib/registry";
+import { listSectorCities } from "@/services/sectorService";
 import { ArrowRight, Compass, Layers } from "lucide-react";
 
 /**
@@ -17,8 +18,18 @@ import { ArrowRight, Compass, Layers } from "lucide-react";
  */
 export function SectorExplorer({ config }: { config: SectorConfig }) {
   const { explorer } = config;
-  const cities = useMemo(() => getCities(config), [config]);
+  const [liveCities, setLiveCities] = useState<SectorCity[]>(() => getCities(config));
   const domains = useMemo(() => getMarineDomains(), []);
+
+  useEffect(() => {
+    listSectorCities()
+      .then((c) => {
+        if (c && c.length > 0) setLiveCities(c);
+      })
+      .catch(() => {});
+  }, []);
+
+  const cities = liveCities;
 
   // 4 curated representative Sector Cities across distinct industry domains
   const showcaseCities = useMemo(() => {

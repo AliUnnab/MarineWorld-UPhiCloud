@@ -28,39 +28,8 @@ export interface DeliveryResult {
   error?: string;
 }
 
-// Persistent idempotency ledger (Disk File + Firestore + In-Memory L1 Cache)
+// Persistent idempotency ledger (Firestore + In-Memory L1 Cache)
 const memoryLedger = new Map<string, { dispatchedAt: string; delivered: boolean; provider?: string; providerMessageId?: string }>();
-
-function getLedgerFilePath(): string {
-  if (typeof process !== "undefined" && process.cwd) {
-    return `${process.cwd()}/.data/email_dispatch_ledger.json`;
-  }
-  return "./.data/email_dispatch_ledger.json";
-}
-
-// Hydrate in-memory L1 cache from disk ledger on startup
-function loadDiskLedger(): Record<string, any> {
-  try {
-    const filePath = getLedgerFilePath();
-    const fs = require("fs");
-    if (fs.existsSync(filePath)) {
-      const data = fs.readFileSync(filePath, "utf8");
-      const parsed = JSON.parse(data);
-      Object.entries(parsed).forEach(([key, val]: [string, any]) => {
-        memoryLedger.set(key, val);
-      });
-      return parsed;
-    }
-  } catch (err) {
-    // Non-blocking fallback
-  }
-  return {};
-}
-
-// Initial hydration
-if (typeof window === "undefined") {
-  loadDiskLedger();
-}
 
 /**
  * Checks persistent idempotency across server restarts, filesystem, and Firestore
@@ -68,28 +37,12 @@ if (typeof window === "undefined") {
 async function checkPersistentIdempotency(referenceId?: string): Promise<boolean> {
   if (!referenceId) return false;
 
-  // 1. Check L1 Memory Cache (hydrated from disk)
+  // 1. Check L1 Memory Cache
   if (memoryLedger.has(referenceId)) {
     return true;
   }
 
-  // 2. Check Disk File Ledger
-  try {
-    const fs = require("fs");
-    const filePath = getLedgerFilePath();
-    if (fs.existsSync(filePath)) {
-      const data = fs.readFileSync(filePath, "utf8");
-      const parsed = JSON.parse(data);
-      if (parsed[referenceId]) {
-        memoryLedger.set(referenceId, parsed[referenceId]);
-        return true;
-      }
-    }
-  } catch (err) {
-    // Fallback to next check
-  }
-
-  // 3. Check Firestore (if in FIRESTORE mode)
+  // 2. Check Firestore (if in FIRESTORE mode)
   if (isFirestoreMode() && isFirebaseConfigured()) {
     try {
       const { getFirestore, doc, getDoc } = await import("firebase/firestore");
@@ -132,33 +85,7 @@ async function recordPersistentDispatch(
   // 1. Update L1 Memory Cache
   memoryLedger.set(referenceId, record);
 
-  // 2. Write to Disk File Ledger
-  try {
-    const fs = require("fs");
-    const path = require("path");
-    const filePath = getLedgerFilePath();
-    const dirPath = path.dirname(filePath);
-
-    if (!fs.existsSync(dirPath)) {
-      fs.mkdirSync(dirPath, { recursive: true });
-    }
-
-    let existingData: Record<string, any> = {};
-    if (fs.existsSync(filePath)) {
-      try {
-        existingData = JSON.parse(fs.readFileSync(filePath, "utf8"));
-      } catch {
-        existingData = {};
-      }
-    }
-
-    existingData[referenceId] = record;
-    fs.writeFileSync(filePath, JSON.stringify(existingData, null, 2), "utf8");
-  } catch (err) {
-    console.warn("[EMAIL IDEMPOTENCY] Could not persist to disk ledger:", err);
-  }
-
-  // 3. Write to Firestore (if in FIRESTORE mode)
+  // 2. Write to Firestore (if in FIRESTORE mode)
   if (isFirestoreMode() && isFirebaseConfigured()) {
     try {
       const { getFirestore, doc, setDoc } = await import("firebase/firestore");
@@ -172,7 +99,7 @@ async function recordPersistentDispatch(
 }
 
 /**
- * Checks whether an email provider is configured in environment variables
+ * Checks whether an email provider is configured in environment variables or Firebase Trigger Email
  */
 export function isEmailDeliveryConfigured(): {
   configured: boolean;
@@ -193,18 +120,19 @@ export function isEmailDeliveryConfigured(): {
   const fromAddress = process.env.EMAIL_FROM_ADDRESS || "notifications@marineworld.city";
   const fromName = process.env.EMAIL_FROM_NAME || "MarineWorld.City Operations";
 
-  const isConfigured = Boolean(apiKey && apiKey.length > 5);
+  const hasExternalApi = Boolean(apiKey && apiKey.length > 5);
+  const hasFirebase = isFirebaseConfigured();
 
   return {
-    configured: isConfigured,
-    provider: isConfigured ? provider || "custom" : "none",
+    configured: hasExternalApi || hasFirebase,
+    provider: hasExternalApi ? (provider || "custom") : (hasFirebase ? "firebase-trigger-email" : "none"),
     fromAddress,
     fromName,
   };
 }
 
 /**
- * Server-authoritative transactional email send function
+ * Server-authoritative transactional email send function with Firebase Trigger Email support
  */
 export async function sendTransactionalEmail(
   payload: TransactionalEmailPayload
@@ -226,10 +154,50 @@ export async function sendTransactionalEmail(
 
   const { configured, provider, fromAddress, fromName } = isEmailDeliveryConfigured();
 
-  // 2. Unconfigured Provider Guard (Safe Fallback)
+  // 2. Direct Firebase Trigger Email Enqueue (Firestore 'mail' collection)
+  if (provider === "firebase-trigger-email" || (!configured && isFirebaseConfigured())) {
+    try {
+      const { getFirestore, collection, addDoc } = await import("firebase/firestore");
+      const db = getFirestore(getFirebaseApp());
+      const mailDoc = await addDoc(collection(db, "mail"), {
+        to: payload.toName ? `${payload.toName} <${payload.to}>` : payload.to,
+        from: `${fromName} <${fromAddress}>`,
+        message: {
+          subject: payload.subject,
+          text: payload.text || payload.subject,
+          html: payload.html,
+        },
+        referenceId: refId,
+        type: payload.type,
+        metadata: payload.metadata || {},
+        createdAt: new Date().toISOString(),
+      });
+
+      await recordPersistentDispatch(refId, {
+        delivered: true,
+        provider: "firebase-trigger-email",
+        providerMessageId: mailDoc.id,
+        type: payload.type,
+        to: payload.to,
+      });
+
+      console.log(`[EMAIL DELIVERY] Queued to Firebase Trigger Email collection ('mail') with ID: ${mailDoc.id}`);
+      return {
+        success: true,
+        delivered: true,
+        referenceId: refId,
+        provider: "firebase-trigger-email",
+        providerMessageId: mailDoc.id,
+      };
+    } catch (err: any) {
+      console.warn("[EMAIL DELIVERY] Firebase Trigger Email enqueue error, falling back to ledger:", err);
+    }
+  }
+
+  // 3. Unconfigured Guard (Safe Fallback)
   if (!configured) {
     console.log(
-      `[EMAIL DELIVERY] Provider not configured. Transactional email to '${payload.to}' (Subject: "${payload.subject}") registered safely in ledger.`
+      `[EMAIL DELIVERY] No active email provider or Firebase configured. Transactional email to '${payload.to}' (Subject: "${payload.subject}") registered in persistent ledger.`
     );
     await recordPersistentDispatch(refId, {
       delivered: false,
@@ -242,7 +210,7 @@ export async function sendTransactionalEmail(
       delivered: false,
       referenceId: refId,
       code: "NO_PROVIDER_CONFIGURED",
-      reason: "TRANSACTIONAL EMAIL PROVIDER DECISION REQUIRED. Environment variables missing.",
+      reason: "TRANSACTIONAL EMAIL PROVIDER DECISION REQUIRED. Set API key or enable Firebase.",
     };
   }
 

@@ -4,7 +4,6 @@ import { getCompanyProducts } from "@/lib/services/productService";
 import { getCompanyServices } from "@/lib/services/serviceService";
 import { getKnowledgeSources } from "@/lib/services/knowledgeLifecycleService";
 import { getCompanyInquiries } from "@/lib/connectStore";
-import { marineSector } from "@/lib/sectors/marine";
 import { findMembersByUserId } from "@/lib/repositories/membershipRepository";
 
 export interface PhaseProgress {

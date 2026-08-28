@@ -9,10 +9,8 @@ import {
   findAllCompaniesSync,
 } from "@/lib/repositories/companyRepository";
 import { saveMember } from "@/lib/repositories/membershipRepository";
-import {
-  developmentAuthProvider,
-  type AuthContext,
-} from "@/lib/auth/developmentAuthProvider";
+import type { AuthContext } from "@/lib/auth/authTypes";
+import { firebaseAuthProvider } from "@/lib/auth/firebaseAuthProvider";
 import {
   getCurrentAuthSession,
   setCurrentAuthSession,
@@ -202,422 +200,43 @@ export interface OfficialVerificationResult {
   denialReason?: string;
 }
 
-// Canonical Ecosystem Organizations Registry
-const CANONICAL_ECOSYSTEM_ORGS: EcosystemOrganizationSummary[] = [
-  {
-    id: "maritime-association",
-    name: "World Maritime Association",
-    legalName: "World Maritime Trade & Shipping Association AISBL",
-    slug: "maritime-association",
-    organizationType: "ASSOCIATION",
-    businessId: "MW-BUS-WMA-GLOBAL",
-    verificationStatus: "VERIFIED",
-    status: "HUB_ACTIVE",
-    hubStatus: "ACTIVE",
-    activationCode: "MW-ORG-WMA-2026",
-    enrollmentCode: "MW-WMA-8F42",
-    ecosystemHubId: "hub-maritime-association",
-    country: "Netherlands",
-    officialWebsite: "https://www.maritime-association.org",
-    principalAuthorityUserId: "usr-multi-owner-003",
-    principalAuthorityName: "Capt. Alexander Vance",
-    principalAuthorityRole: "Secretary General & Executive Director",
-    officialEmailDomain: "maritime-association.org",
-    officialContactEmail: "directorate@maritime-association.org",
-    discountPercentage: 20,
-    totalMembersCount: 800,
-    activatedMembersCount: 624,
-    verifiedMembersCount: 412,
-    activeSectorCitiesCount: 18,
-    memberCompanyIds: [
-      "argento",
-      "comp-north-sea-logistics",
-      "comp-rotterdam-propulsion",
-      "comp-baltic-naval",
-    ],
-    aboutDescription: "The World Maritime Association is the premier international body representing 800 accredited maritime logistics operators, vessel owners, port services, and technical suppliers globally.",
-    capabilities: [
-      "Global Industry Advocacy",
-      "ISO/IMO Admiralty Standards Accreditation",
-      "Digital Fleet Onboarding",
-      "Cross-Border Maritime Trade Policy",
-    ],
-    knowledgeArticlesCount: 42,
-    publicationsCount: 18,
-  },
-  {
-    id: "port-authority",
-    name: "International Port & Maritime Authority",
-    legalName: "Global Port Operations & Maritime Authority Board",
-    slug: "port-authority",
-    organizationType: "PUBLIC_ORGANIZATION",
-    businessId: "MW-BUS-PORT-AUTH",
-    verificationStatus: "VERIFIED",
-    status: "HUB_ACTIVE",
-    hubStatus: "ACTIVE",
-    activationCode: "MW-ORG-PORT-2026",
-    enrollmentCode: "MW-PORTAUTH-77B1",
-    ecosystemHubId: "hub-port-authority",
-    country: "Singapore",
-    officialWebsite: "https://www.port-authority.org",
-    principalAuthorityUserId: "usr-ecosystem-admin-004",
-    principalAuthorityName: "Elena Rostova",
-    principalAuthorityRole: "Harbor Compliance Commissioner",
-    officialEmailDomain: "port-authority.org",
-    officialContactEmail: "compliance@port-authority.org",
-    discountPercentage: 25,
-    totalMembersCount: 500,
-    activatedMembersCount: 380,
-    verifiedMembersCount: 295,
-    activeSectorCitiesCount: 14,
-    memberCompanyIds: [
-      "crest-group-materials",
-      "comp-rotterdam-tugboats",
-      "comp-euro-dredging",
-      "comp-haven-logistics",
-    ],
-    aboutDescription: "Regulatory sovereign authority governing port state control, terminal clearances, vessel anchorage protocols, and digital twin clearances across international harbors.",
-    capabilities: [
-      "Port State Clearance Integration",
-      "Digital Terminal Operations",
-      "Vessel Traffic System (VTS) Compliance",
-      "Green Port Environmental Audits",
-    ],
-    knowledgeArticlesCount: 28,
-    publicationsCount: 12,
-  },
-  {
-    id: "rotterdam-chamber",
-    name: "Rotterdam Maritime Chamber of Commerce",
-    legalName: "Chamber of Commerce Rotterdam Maritime Division",
-    slug: "rotterdam-chamber",
-    organizationType: "CHAMBER",
-    businessId: "MW-BUS-ROTTERDAM-CHAMBER",
-    verificationStatus: "VERIFIED",
-    status: "HUB_ACTIVE",
-    hubStatus: "ACTIVE",
-    activationCode: "MW-ORG-ROTTERDAM-2026",
-    enrollmentCode: "MW-ROTTERDAM-2026",
-    ecosystemHubId: "hub-rotterdam-chamber",
-    country: "Netherlands",
-    officialWebsite: "https://www.rotterdam-chamber.org",
-    principalAuthorityUserId: "usr-chamber-lead-006",
-    principalAuthorityName: "Marcus Van Den Berg",
-    principalAuthorityRole: "Executive Director of Maritime Commerce",
-    officialEmailDomain: "rotterdam-chamber.org",
-    officialContactEmail: "maritime@rotterdam-chamber.org",
-    discountPercentage: 15,
-    totalMembersCount: 350,
-    activatedMembersCount: 275,
-    verifiedMembersCount: 210,
-    activeSectorCitiesCount: 10,
-    memberCompanyIds: [
-      "blueharbour",
-      "comp-maritime-steel",
-      "comp-scheldt-naval",
-    ],
-    aboutDescription: "North-West European maritime trade guild accelerating commercial digitalization, marine engineering supply chains, and bonded port services across the Greater Rotterdam delta.",
-    capabilities: [
-      "Regional Commercial Certification",
-      "B2B Marine Trade Matchmaking",
-      "Bonded Logistics Registry",
-      "North Sea Shipping Corridors",
-    ],
-    knowledgeArticlesCount: 31,
-    publicationsCount: 9,
-  },
-  {
-    id: "world-maritime-federation",
-    name: "World Maritime & Oceanics Federation",
-    legalName: "World Federation of Maritime Enterprises",
-    slug: "world-maritime-federation",
-    organizationType: "FEDERATION",
-    businessId: "MW-BUS-WORLD-MARITIME-FED",
-    verificationStatus: "VERIFIED",
-    status: "HUB_ACTIVE",
-    hubStatus: "ACTIVE",
-    activationCode: "MW-ORG-FED-2026",
-    enrollmentCode: "MW-FED-GLOBAL-99",
-    ecosystemHubId: "hub-world-maritime-federation",
-    country: "United Kingdom",
-    officialWebsite: "https://www.world-maritime-fed.org",
-    principalAuthorityUserId: "usr-fed-director-007",
-    principalAuthorityName: "Dr. Alistair Thorne",
-    principalAuthorityRole: "Director of Global Standards",
-    officialEmailDomain: "world-maritime-fed.org",
-    officialContactEmail: "secretary@world-maritime-fed.org",
-    discountPercentage: 30,
-    totalMembersCount: 1200,
-    activatedMembersCount: 940,
-    verifiedMembersCount: 710,
-    activeSectorCitiesCount: 22,
-    memberCompanyIds: [
-      "north-atlantic",
-      "comp-pacific-shipping",
-      "comp-atlantic-harbor",
-    ],
-    aboutDescription: "Global confederation uniting ocean science research institutes, autonomous vessel developers, deep-sea exploration fleets, and international shipping lines.",
-    capabilities: [
-      "Autonomous Navigation Protocols",
-      "Global Marine Standards Verification",
-      "Decarbonization Research Grants",
-      "Inter-continental Maritime Corridors",
-    ],
-    knowledgeArticlesCount: 64,
-    publicationsCount: 24,
-  },
-  {
-    id: "ocean-research-institute",
-    name: "Global Oceanographic & Marine Research Institute",
-    legalName: "International Institute for Oceanographic Research",
-    slug: "ocean-research-institute",
-    organizationType: "INSTITUTION",
-    businessId: "MW-BUS-OCEAN-RESEARCH-INST",
-    verificationStatus: "VERIFIED",
-    status: "HUB_ACTIVE",
-    hubStatus: "ACTIVE",
-    activationCode: "MW-ORG-RESEARCH-2026",
-    enrollmentCode: "MW-RESEARCH-LAB-101",
-    ecosystemHubId: "hub-ocean-research-institute",
-    country: "Germany",
-    officialWebsite: "https://www.ocean-research.edu",
-    principalAuthorityUserId: "usr-research-dean-008",
-    principalAuthorityName: "Prof. Sarah Chen",
-    principalAuthorityRole: "Dean of Marine Sciences & Digital Twins",
-    officialEmailDomain: "ocean-research.edu",
-    officialContactEmail: "partnerships@ocean-research.edu",
-    discountPercentage: 50,
-    totalMembersCount: 250,
-    activatedMembersCount: 210,
-    verifiedMembersCount: 185,
-    activeSectorCitiesCount: 8,
-    memberCompanyIds: [
-      "comp-ocean-sensors",
-      "comp-deep-sea-mapping",
-    ],
-    aboutDescription: "Academic and scientific research institution modeling ocean telemetry, autonomous sensor grids, and climate-resilient coastal infrastructure digital twins.",
-    capabilities: [
-      "Ocean Telemetry Data Feeds",
-      "Hydrographic Mapping Specs",
-      "Academic-Industry Tech Transfer",
-      "Marine AI Modeling Benchmarks",
-    ],
-    knowledgeArticlesCount: 88,
-    publicationsCount: 35,
-  },
-  {
-    id: "international-maritime-registry",
-    name: "International Maritime Flag State Registry",
-    legalName: "International Maritime Flag State Registry & Administration",
-    slug: "international-maritime-registry",
-    organizationType: "PUBLIC_ORGANIZATION",
-    businessId: "MW-BUS-REGISTRY-GLOBAL",
-    verificationStatus: "VERIFIED",
-    status: "HUB_ACTIVE",
-    hubStatus: "ACTIVE",
-    activationCode: "MW-ORG-REG-2026",
-    enrollmentCode: "MW-REGISTRY-77",
-    ecosystemHubId: "hub-international-maritime-registry",
-    country: "Liberia",
-    officialWebsite: "https://www.maritimeregistry.org",
-    principalAuthorityUserId: "usr-registry-commissioner",
-    principalAuthorityName: "Commissioner David Sterling",
-    principalAuthorityRole: "Registrar-General of Shipping",
-    officialEmailDomain: "maritimeregistry.org",
-    officialContactEmail: "registry@maritimeregistry.org",
-    discountPercentage: 25,
-    totalMembersCount: 450,
-    activatedMembersCount: 360,
-    verifiedMembersCount: 310,
-    activeSectorCitiesCount: 12,
-    memberCompanyIds: [],
-    aboutDescription: "Sovereign flag-state vessel registry, international maritime administration, and statutory safety certification authority.",
-    capabilities: [
-      "Flag-State Vessel Registration",
-      "Statutory Safety Certification",
-      "Crew Licensure & Endorsements",
-      "IMO Compliance Audits",
-    ],
-    knowledgeArticlesCount: 52,
-    publicationsCount: 20,
-  },
-  {
-    id: "global-maritime-governance-council",
-    name: "Global Maritime Governance Council",
-    legalName: "International Maritime Governance & Policy Council",
-    slug: "global-maritime-governance-council",
-    organizationType: "ASSOCIATION",
-    businessId: "MW-BUS-GOV-COUNCIL",
-    verificationStatus: "VERIFIED",
-    status: "HUB_ACTIVE",
-    hubStatus: "ACTIVE",
-    activationCode: "MW-ORG-GOV-2026",
-    enrollmentCode: "MW-GOV-COUNCIL-88",
-    ecosystemHubId: "hub-global-maritime-governance-council",
-    country: "United Kingdom",
-    officialWebsite: "https://www.maritimegovernance.org",
-    principalAuthorityUserId: "usr-gov-chair",
-    principalAuthorityName: "Dame Eleanor Wright",
-    principalAuthorityRole: "Council Chairperson",
-    officialEmailDomain: "maritimegovernance.org",
-    officialContactEmail: "secretariat@maritimegovernance.org",
-    discountPercentage: 20,
-    totalMembersCount: 620,
-    activatedMembersCount: 490,
-    verifiedMembersCount: 430,
-    activeSectorCitiesCount: 16,
-    memberCompanyIds: [],
-    aboutDescription: "International policy council framing decarbonization mandates, sovereign data trusts, and ethical AI twin standards for global maritime commerce.",
-    capabilities: [
-      "International Maritime Policy",
-      "Environmental Compliance Accreditations",
-      "Sovereign Data Governance",
-      "Global Trade Policy Harmonization",
-    ],
-    knowledgeArticlesCount: 48,
-    publicationsCount: 16,
-  },
-  {
-    id: "maritime-identity-authority",
-    name: "Maritime Digital Identity & Trust Authority",
-    legalName: "International Maritime Identity & Verification Bureau",
-    slug: "maritime-identity-authority",
-    organizationType: "PUBLIC_ORGANIZATION",
-    businessId: "MW-BUS-IDENTITY-AUTH",
-    verificationStatus: "VERIFIED",
-    status: "HUB_ACTIVE",
-    hubStatus: "ACTIVE",
-    activationCode: "MW-ORG-ID-2026",
-    enrollmentCode: "MW-IDENTITY-TRUST-01",
-    ecosystemHubId: "hub-maritime-identity-authority",
-    country: "Switzerland",
-    officialWebsite: "https://www.maritime-identity.org",
-    principalAuthorityUserId: "usr-identity-lead",
-    principalAuthorityName: "Dr. Jean-Pierre Meyer",
-    principalAuthorityRole: "Chief Identity Officer",
-    officialEmailDomain: "maritime-identity.org",
-    officialContactEmail: "trust@maritime-identity.org",
-    discountPercentage: 30,
-    totalMembersCount: 310,
-    activatedMembersCount: 260,
-    verifiedMembersCount: 240,
-    activeSectorCitiesCount: 9,
-    memberCompanyIds: [],
-    aboutDescription: "Accreditation and root-of-trust authority issuing cryptographic corporate identifiers, digital twin credentials, and verifiable legal entity credentials.",
-    capabilities: [
-      "Cryptographic Identity Verification",
-      "Verifiable Credentials Ledger",
-      "Corporate Ownership Audits",
-      "Digital Twin Key Management",
-    ],
-    knowledgeArticlesCount: 24,
-    publicationsCount: 8,
-  },
-  {
-    id: "european-maritime-cluster",
-    name: "European Maritime Industrial Cluster Alliance",
-    legalName: "European Maritime Cluster Alliance AISBL",
-    slug: "european-maritime-cluster",
-    organizationType: "FEDERATION",
-    businessId: "MW-BUS-EMC-ALLIANCE",
-    verificationStatus: "VERIFIED",
-    status: "HUB_ACTIVE",
-    hubStatus: "ACTIVE",
-    activationCode: "MW-ORG-CLUSTER-2026",
-    enrollmentCode: "MW-EURO-CLUSTER-99",
-    ecosystemHubId: "hub-european-maritime-cluster",
-    country: "Belgium",
-    officialWebsite: "https://www.maritimeclusters.eu",
-    principalAuthorityUserId: "usr-cluster-pres",
-    principalAuthorityName: "Henri de Vries",
-    principalAuthorityRole: "Alliance President",
-    officialEmailDomain: "maritimeclusters.eu",
-    officialContactEmail: "alliance@maritimeclusters.eu",
-    discountPercentage: 25,
-    totalMembersCount: 540,
-    activatedMembersCount: 420,
-    verifiedMembersCount: 380,
-    activeSectorCitiesCount: 15,
-    memberCompanyIds: [],
-    aboutDescription: "Pan-European alliance connecting regional shipbuilding clusters, offshore wind testbeds, and marine innovation hubs into one unified industrial network.",
-    capabilities: [
-      "Regional Cluster Integration",
-      "Cross-Border R&D Consortiums",
-      "Shipbuilding Supply Chain Linkages",
-      "Blue Economy Innovation Grants",
-    ],
-    knowledgeArticlesCount: 36,
-    publicationsCount: 14,
-  },
-  {
-    id: "global-maritime-ecosystem-network",
-    name: "Global Maritime Ecosystem & Hubs Network",
-    legalName: "Global Maritime Ecosystem & Hubs Association",
-    slug: "global-maritime-ecosystem-network",
-    organizationType: "ASSOCIATION",
-    businessId: "MW-BUS-ECOSYSTEM-NET",
-    verificationStatus: "VERIFIED",
-    status: "HUB_ACTIVE",
-    hubStatus: "ACTIVE",
-    activationCode: "MW-ORG-ECO-2026",
-    enrollmentCode: "MW-ECO-HUBS-2026",
-    ecosystemHubId: "hub-global-maritime-ecosystem-network",
-    country: "Denmark",
-    officialWebsite: "https://www.maritime-ecosystem.net",
-    principalAuthorityUserId: "usr-eco-net-lead",
-    principalAuthorityName: "Freja Lindqvist",
-    principalAuthorityRole: "Executive Director",
-    officialEmailDomain: "maritime-ecosystem.net",
-    officialContactEmail: "secretariat@maritime-ecosystem.net",
-    discountPercentage: 20,
-    totalMembersCount: 780,
-    activatedMembersCount: 610,
-    verifiedMembersCount: 520,
-    activeSectorCitiesCount: 20,
-    memberCompanyIds: [],
-    aboutDescription: "International ecosystem coordination body uniting marine hubs, port accelerators, and institutional trade guilds across 20 global maritime gateways.",
-    capabilities: [
-      "Ecosystem Hub Onboarding",
-      "Multi-Tenant Accreditation",
-      "Global Gateway Interconnectivity",
-      "Institutional Best Practices",
-    ],
-    knowledgeArticlesCount: 56,
-    publicationsCount: 22,
-  },
-];
+import { db } from "@/lib/firebase";
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  setDoc,
+  onSnapshot,
+} from "firebase/firestore";
 
-// Persistent Organization Registry Memory & Storage
-let DYNAMIC_ORGS_REGISTRY: EcosystemOrganizationSummary[] | null = null;
+// Pure Firestore Ecosystem Organization Registry State
+let DYNAMIC_ORGS_REGISTRY: EcosystemOrganizationSummary[] = [];
+let isOrgsSyncInitialized = false;
+
+export function initEcosystemOrganizationsSync(): void {
+  if (isOrgsSyncInitialized || typeof window === "undefined") return;
+  isOrgsSyncInitialized = true;
+  try {
+    const colRef = collection(db, "ecosystemOrganizations");
+    onSnapshot(colRef, (snapshot) => {
+      DYNAMIC_ORGS_REGISTRY = snapshot.docs.map((d) => ({
+        id: d.id,
+        ...d.data(),
+      } as EcosystemOrganizationSummary));
+      clearEcosystemMemberCache();
+    });
+  } catch (err) {
+    console.warn("[EcosystemOrganizationService] Firestore subscription error:", err);
+  }
+}
+
+initEcosystemOrganizationsSync();
 
 function loadOrganizationRegistry(): EcosystemOrganizationSummary[] {
-  if (DYNAMIC_ORGS_REGISTRY) return DYNAMIC_ORGS_REGISTRY;
-
-  try {
-    if (typeof window !== "undefined" && window.localStorage) {
-      const saved = localStorage.getItem("marineworld_ecosystem_organizations");
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          // Merge canonical and custom registered orgs
-          const merged = [...CANONICAL_ECOSYSTEM_ORGS];
-          for (const item of parsed) {
-            if (!merged.some((o) => o.id === item.id)) {
-              merged.push(item);
-            }
-          }
-          DYNAMIC_ORGS_REGISTRY = merged;
-          return DYNAMIC_ORGS_REGISTRY;
-        }
-      }
-    }
-  } catch (e) {
-    console.warn("Failed to read ecosystem organization store from localStorage", e);
-  }
-
-  DYNAMIC_ORGS_REGISTRY = [...CANONICAL_ECOSYSTEM_ORGS];
   return DYNAMIC_ORGS_REGISTRY;
 }
+
 
 export function clearEcosystemMemberCache(organizationId?: string): void {
   if (organizationId) {
@@ -629,57 +248,49 @@ export function clearEcosystemMemberCache(organizationId?: string): void {
   }
 }
 
+export async function listEcosystemOrganizationsAsync(): Promise<EcosystemOrganizationSummary[]> {
+  try {
+    const { listEcosystemOrganizations } = await import("@/services/ecosystemService");
+    const live = await listEcosystemOrganizations();
+    if (live && live.length > 0) {
+      DYNAMIC_ORGS_REGISTRY = live as unknown as EcosystemOrganizationSummary[];
+      return live as unknown as EcosystemOrganizationSummary[];
+    }
+  } catch (err) {
+    console.warn("[EcosystemOrganizationService] Firestore list fallback:", err);
+  }
+  return DYNAMIC_ORGS_REGISTRY;
+}
+
+export async function getEcosystemOrganizationByIdAsync(id: string): Promise<EcosystemOrganizationSummary | null> {
+  try {
+    const { getEcosystemOrganizationById } = await import("@/services/ecosystemService");
+    const live = await getEcosystemOrganizationById(id);
+    if (live) {
+      return live as unknown as EcosystemOrganizationSummary;
+    }
+  } catch (err) {
+    console.warn("[EcosystemOrganizationService] Firestore get fallback:", err);
+  }
+  return loadOrganizationRegistry().find(o => o.id === id) || null;
+}
+
 function saveOrganizationRegistry(registry: EcosystemOrganizationSummary[]): void {
   DYNAMIC_ORGS_REGISTRY = registry;
   clearEcosystemMemberCache();
+
+
+  // Authoritative Firestore persistence for custom organizations
   try {
-    if (typeof window !== "undefined" && window.localStorage) {
-      const customOrgs = registry.filter(
-        (o) => !CANONICAL_ECOSYSTEM_ORGS.some((c) => c.id === o.id)
-      );
-      localStorage.setItem("marineworld_ecosystem_organizations", JSON.stringify(customOrgs));
-    }
-  } catch (e) {
-    console.warn("Failed to save ecosystem organization store to localStorage", e);
+    import("@/services/ecosystemService").then(({ saveEcosystemOrganization }) => {
+      for (const org of registry) {
+        saveEcosystemOrganization(org as any);
+      }
+    });
+  } catch (err) {
+    console.warn("[EcosystemOrganizationService] Firestore save fallback:", err);
   }
 }
-
-// Seed canonical companies in companyRepository
-function seedEcosystemOrganizations(): void {
-  for (const org of CANONICAL_ECOSYSTEM_ORGS) {
-    const existing = getCompanyRecordSync(org.id);
-    if (!existing) {
-      const entity: CompanyEntity = {
-        id: org.id,
-        businessId: org.businessId,
-        organizationType: org.organizationType,
-        platformId: "marineworld",
-        sectorId: "marine",
-        primarySectorCityId: "marineworld",
-        sectorCityIds: ["marineworld"],
-        sectorCityId: "marineworld",
-        slug: org.slug,
-        legalName: org.legalName,
-        displayName: org.name,
-        brandName: org.name,
-        description: org.aboutDescription,
-        shortDescription: `Official ${org.organizationType.replace(/_/g, " ").toLowerCase()} ecosystem entity.`,
-        logo: "/icon.png",
-        email: org.officialContactEmail,
-        country: "Netherlands",
-        city: "Rotterdam",
-        status: "ACTIVE",
-        verificationStatus: org.verificationStatus,
-        ownerId: org.principalAuthorityUserId,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      saveCompanyRecordSync(entity);
-    }
-  }
-}
-
-seedEcosystemOrganizations();
 
 // Deterministic Member Repository Cache
 const MEMBER_CACHE: Record<string, EcosystemMemberRecord[]> = {};
@@ -1055,7 +666,6 @@ export function getEcosystemFunnelMetrics(organizationId: string): EcosystemFunn
  * Retrieves all registered ecosystem organizations
  */
 export function getEcosystemOrganizations(): EcosystemOrganizationSummary[] {
-  seedEcosystemOrganizations();
   const registry = loadOrganizationRegistry();
   return [...registry];
 }
@@ -1122,7 +732,6 @@ export function isInstitutionalOrganization(
 export function getEcosystemOrganizationById(
   id: string
 ): EcosystemOrganizationSummary | undefined {
-  seedEcosystemOrganizations();
   const registry = loadOrganizationRegistry();
   const norm = id.trim().toLowerCase();
   return registry.find(
@@ -1186,7 +795,7 @@ export function switchOrganizationContext(organizationId: string): {
     updatedAt: new Date().toISOString(),
   });
 
-  developmentAuthProvider.setCurrentUser(authSession);
+  firebaseAuthProvider.setCurrentUser(authSession);
   setCurrentAuthSession(authSession);
   setActiveOrganizationContext(userId, org.id);
 
@@ -1450,7 +1059,7 @@ export function activateOrganizationHub(
     updatedAt: new Date().toISOString(),
   });
 
-  developmentAuthProvider.setCurrentUser(authSession);
+  firebaseAuthProvider.setCurrentUser(authSession);
   setCurrentAuthSession(authSession);
   setActiveOrganizationContext(userId, org.id);
 
@@ -1610,7 +1219,7 @@ export function signInToOrganizationHub(
     updatedAt: new Date().toISOString(),
   });
 
-  developmentAuthProvider.setCurrentUser(authSession);
+  firebaseAuthProvider.setCurrentUser(authSession);
   setCurrentAuthSession(authSession);
   setActiveOrganizationContext(userId, org.id);
 
@@ -1710,7 +1319,7 @@ export function verifyOfficialDevelopmentAccess(
     updatedAt: new Date().toISOString(),
   });
 
-  developmentAuthProvider.setCurrentUser(officialAuth);
+  firebaseAuthProvider.setCurrentUser(officialAuth);
   setCurrentAuthSession(officialAuth);
   setActiveOrganizationContext(userId, org.id);
 
