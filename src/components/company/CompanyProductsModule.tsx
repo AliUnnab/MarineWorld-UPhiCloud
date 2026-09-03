@@ -8,7 +8,7 @@ import { DigiBadge, DigiButton } from "@/components/digione/primitives";
 import { ProductAIAdvisor } from "./ProductAIAdvisor";
 import { SaveEntityButton } from "@/components/foundation/SaveEntityButton";
 import { AddToCollectionButton } from "@/components/foundation/AddToCollectionButton";
-import { Copy, Check, Share2, ExternalLink, Loader2, AlertCircle } from "lucide-react";
+import { Copy, Check, Share2, ExternalLink, Loader2, AlertCircle, FileText } from "lucide-react";
 import { ShareProtocolModal } from "./ShareProtocolModal";
 
 /* ------------------------------------------------------------
@@ -29,7 +29,13 @@ export function ProductVisualImage({
 
   const imageSrc = useMemo(() => {
     if (activeImageSrc) return activeImageSrc;
+    if ((product as any).coverImage) return (product as any).coverImage;
     if (product.primaryImage) return product.primaryImage;
+    if ((product as any).imageUrl) return (product as any).imageUrl;
+    if ((product as any).mediaReferences?.find((m: any) => m.isCover)?.url) {
+      return (product as any).mediaReferences.find((m: any) => m.isCover).url;
+    }
+    if ((product as any).mediaReferences?.[0]?.url) return (product as any).mediaReferences[0].url;
     if (product.images && product.images.length > 0 && product.images[0]) return product.images[0];
     if (product.gallery && product.gallery.length > 0 && product.gallery[0]) return product.gallery[0];
     return undefined;
@@ -38,6 +44,24 @@ export function ProductVisualImage({
   useEffect(() => {
     setImageError(false);
   }, [imageSrc]);
+
+  const isPdf = Boolean(imageSrc && imageSrc.toLowerCase().includes(".pdf"));
+
+  if (isPdf) {
+    return (
+      <div className={`${containerClassName} flex flex-col items-center justify-center p-6 text-center bg-slate-900 text-white`}>
+        <div className="h-12 w-12 rounded-2xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-400 mb-2 shadow-inner">
+          <FileText className="h-6 w-6" />
+        </div>
+        <span className="font-mono text-[11px] font-bold text-white uppercase tracking-wide truncate max-w-[200px]">
+          {product.name}
+        </span>
+        <span className="font-mono text-[9px] text-rose-400 mt-1 uppercase font-bold px-2 py-0.5 rounded bg-rose-950/80 border border-rose-800/60">
+          PDF BLUEPRINT
+        </span>
+      </div>
+    );
+  }
 
   if (!imageSrc || imageError) {
     return (

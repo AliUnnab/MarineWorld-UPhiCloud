@@ -21,6 +21,7 @@ import {
   registerNewOrganization,
   activateOrganizationHub,
   signInToOrganizationHub,
+  signInToOrganizationHubAsync,
   getEcosystemOrganizations,
   switchOrganizationContext,
   type EcosystemOrganizationSummary,
@@ -43,6 +44,7 @@ export function EcosystemEntryPage({ onSuccess, onNavigateUrl }: EcosystemEntryP
   const [legalName, setLegalName] = useState("");
   const [country, setCountry] = useState("");
   const [officialEmail, setOfficialEmail] = useState("");
+  const [orgPassword, setOrgPassword] = useState("");
   const [officialWebsite, setOfficialWebsite] = useState("");
   const [repName, setRepName] = useState("");
   const [repRole, setRepRole] = useState("");
@@ -67,18 +69,19 @@ export function EcosystemEntryPage({ onSuccess, onNavigateUrl }: EcosystemEntryP
   const [copiedCode, setCopiedCode] = useState(false);
 
   // Handle Registration Submit
-  const handleRegister = (e: React.FormEvent) => {
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
     setIsLoading(true);
 
-    setTimeout(() => {
+    try {
       const res = registerNewOrganization({
         organizationType: orgType,
         name,
         legalName: legalName || name,
         country: country || "International",
         officialEmail,
+        password: orgPassword,
         officialWebsite,
         representativeName: repName,
         representativeRole: repRole || "Executive Representative",
@@ -97,20 +100,24 @@ export function EcosystemEntryPage({ onSuccess, onNavigateUrl }: EcosystemEntryP
       } else {
         setErrorMsg(res.message || "Failed to register organization.");
       }
-    }, 500);
+    } catch (err: any) {
+      setIsLoading(false);
+      setErrorMsg(err?.message || "Failed to register organization.");
+    }
   };
 
   // Handle Activation Submit
-  const handleActivate = (e: React.FormEvent) => {
+  const handleActivate = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
     setIsLoading(true);
 
-    setTimeout(() => {
+    try {
       const res = activateOrganizationHub({
         officialEmail: actEmail || officialEmail,
         activationCode: actCode || pendingActivationCode,
         representativeName: actRepName || repName,
+        password: orgPassword,
       });
 
       setIsLoading(false);
@@ -120,17 +127,20 @@ export function EcosystemEntryPage({ onSuccess, onNavigateUrl }: EcosystemEntryP
       } else {
         setErrorMsg(res.message || "Activation failed. Please check your activation code.");
       }
-    }, 600);
+    } catch (err: any) {
+      setIsLoading(false);
+      setErrorMsg(err?.message || "Activation failed.");
+    }
   };
 
   // Handle Sign In Submit
-  const handleSignIn = (e: React.FormEvent) => {
+  const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
     setIsLoading(true);
 
-    setTimeout(() => {
-      const res = signInToOrganizationHub({
+    try {
+      const res = await signInToOrganizationHubAsync({
         officialEmail: signInEmail,
         passwordOrCode: signInCode,
       });
@@ -148,7 +158,10 @@ export function EcosystemEntryPage({ onSuccess, onNavigateUrl }: EcosystemEntryP
       } else {
         setErrorMsg(res.message || "Sign in failed. No active Hub found.");
       }
-    }, 500);
+    } catch (err: any) {
+      setIsLoading(false);
+      setErrorMsg(err?.message || "Sign in failed. Please check your credentials.");
+    }
   };
 
   const handleCopyCode = () => {
@@ -350,7 +363,7 @@ export function EcosystemEntryPage({ onSuccess, onNavigateUrl }: EcosystemEntryP
         {/* VIEW 2: SIGN IN TO EXISTING HUB */}
         {/* ============================================================ */}
         {flowState === "SIGN_IN" && (
-          <div className="max-w-2xl mx-auto w-full bg-white border border-slate-200/90 rounded-3xl p-6 sm:p-8 space-y-6 shadow-xl animate-in fade-in duration-200">
+          <div className="max-w-xl mx-auto w-full bg-white border border-slate-200/90 rounded-3xl p-6 sm:p-8 space-y-6 shadow-xl animate-in fade-in duration-200">
             <div className="space-y-1">
               <span className="text-[10px] font-bold uppercase tracking-widest text-[#0D3868]">
                 Institutional Authentication
@@ -359,69 +372,14 @@ export function EcosystemEntryPage({ onSuccess, onNavigateUrl }: EcosystemEntryP
                 Sign In to Ecosystem Hub
               </h2>
               <p className="text-xs text-slate-500">
-                Select an active ecosystem organization or enter your official contact email to authenticate.
+                Enter your registered official organization email and credentials to access your Ecosystem Hub.
               </p>
-            </div>
-
-            {/* QUICK SELECTION OF ACTIVE CANONICAL & REGISTERED ORGANIZATIONS */}
-            <div className="space-y-2.5">
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">
-                Select Active Ecosystem Hub (1-Click Access)
-              </label>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-64 overflow-y-auto pr-1">
-                {getEcosystemOrganizations().map((org) => (
-                  <button
-                    key={org.id}
-                    type="button"
-                    onClick={() => {
-                      setIsLoading(true);
-                      setTimeout(() => {
-                        const res = switchOrganizationContext(org.id);
-                        setIsLoading(false);
-                        if (res.success && res.organization) {
-                          onSuccess(res.organization);
-                        }
-                      }, 300);
-                    }}
-                    className="p-3 bg-slate-50 hover:bg-royal/5/80 border border-slate-200 hover:border-royal/30 rounded-2xl text-left transition-all group flex flex-col justify-between cursor-pointer"
-                  >
-                    <div>
-                      <div className="flex items-center justify-between gap-1 mb-1">
-                        <span className="text-xs font-bold text-slate-900 group-hover:text-[#0D3868] line-clamp-1">
-                          {org.name}
-                        </span>
-                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-slate-200 text-slate-700 uppercase shrink-0">
-                          {org.organizationType.replace(/_/g, " ")}
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-slate-500 font-medium">
-                        {org.country} • {org.totalMembersCount.toLocaleString()} Members
-                      </p>
-                    </div>
-                    <div className="mt-2 text-[10px] font-bold text-[#0D3868] flex items-center gap-1 opacity-80 group-hover:opacity-100">
-                      <span>Enter Hub</span>
-                      <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="relative my-4">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-slate-200" />
-              </div>
-              <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-white px-3 text-slate-400 font-bold text-[10px]">
-                  Or Sign In via Official Email
-                </span>
-              </div>
             </div>
 
             <form onSubmit={handleSignIn} className="space-y-4">
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
-                  Official Organization Email
+                  Official Organization Email *
                 </label>
                 <div className="relative">
                   <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -430,6 +388,7 @@ export function EcosystemEntryPage({ onSuccess, onNavigateUrl }: EcosystemEntryP
                     value={signInEmail}
                     onChange={(e) => setSignInEmail(e.target.value)}
                     placeholder="directorate@maritime-association.org"
+                    required
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-xs font-semibold text-slate-900 focus:outline-none focus:border-[#0D3868] focus:bg-white transition-all"
                   />
                 </div>
@@ -437,7 +396,7 @@ export function EcosystemEntryPage({ onSuccess, onNavigateUrl }: EcosystemEntryP
 
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
-                  Password / Access Credentials
+                  Password / Access Credentials *
                 </label>
                 <div className="relative">
                   <KeyRound className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -446,6 +405,7 @@ export function EcosystemEntryPage({ onSuccess, onNavigateUrl }: EcosystemEntryP
                     value={signInCode}
                     onChange={(e) => setSignInCode(e.target.value)}
                     placeholder="••••••••••••"
+                    required
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-xs font-semibold text-slate-900 focus:outline-none focus:border-[#0D3868] focus:bg-white transition-all"
                   />
                 </div>
@@ -454,10 +414,10 @@ export function EcosystemEntryPage({ onSuccess, onNavigateUrl }: EcosystemEntryP
               <button
                 type="submit"
                 disabled={isLoading}
-                className="w-full py-3 bg-[#0D3868] hover:bg-royal-dark text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer disabled:opacity-50"
+                className="w-full py-3.5 bg-[#0D3868] hover:bg-royal-dark text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer disabled:opacity-50 mt-2"
               >
                 {isLoading ? (
-                  <span>Authenticating Tenant...</span>
+                  <span>Authenticating Institutional Credentials...</span>
                 ) : (
                   <>
                     <Lock className="w-4 h-4" />
@@ -580,16 +540,30 @@ export function EcosystemEntryPage({ onSuccess, onNavigateUrl }: EcosystemEntryP
 
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                    Official Website URL
+                    Password / Access Key *
                   </label>
                   <input
-                    type="url"
-                    value={officialWebsite}
-                    onChange={(e) => setOfficialWebsite(e.target.value)}
-                    placeholder="https://www.organization.org"
+                    type="password"
+                    value={orgPassword}
+                    onChange={(e) => setOrgPassword(e.target.value)}
+                    placeholder="••••••••••••"
+                    required
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-slate-900 focus:outline-none focus:border-[#0D3868] focus:bg-white"
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                  Official Website URL
+                </label>
+                <input
+                  type="url"
+                  value={officialWebsite}
+                  onChange={(e) => setOfficialWebsite(e.target.value)}
+                  placeholder="https://www.organization.org"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-slate-900 focus:outline-none focus:border-[#0D3868] focus:bg-white"
+                />
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-slate-100">
@@ -632,7 +606,7 @@ export function EcosystemEntryPage({ onSuccess, onNavigateUrl }: EcosystemEntryP
                 ) : (
                   <>
                     <Building2 className="w-4 h-4" />
-                    <span>REQUEST ORGANIZATION ACCESS →</span>
+                    <span>CREATE YOUR ORGANIZATION →</span>
                   </>
                 )}
               </button>

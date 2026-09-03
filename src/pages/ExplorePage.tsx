@@ -373,13 +373,13 @@ export function ExplorePage({ config }: { config: SectorConfig }) {
                 {isLoading ? (
                   <div className="col-span-full py-12 px-6 rounded-card-md border border-line bg-canvas text-center">
                     <Globe2 className="w-8 h-8 text-royal animate-pulse mx-auto mb-2" />
-                    <p className="text-sm font-bold text-graphite">Sektör Şehirleri Yükleniyor...</p>
+                    <p className="text-sm font-bold text-graphite">Loading Sector Cities...</p>
                   </div>
                 ) : filteredCities.length === 0 ? (
                   <div className="col-span-full py-12 px-6 rounded-card-md border border-line bg-canvas text-center">
                     <Globe2 className="w-8 h-8 text-mute mx-auto mb-2" />
-                    <p className="text-sm font-bold text-graphite">Kayıtlı Sektör Şehri Bulunamadı</p>
-                    <p className="text-xs text-stone mt-1">Arama kriterlerinize uygun aktif sektör şehri mevcut değil.</p>
+                    <p className="text-sm font-bold text-graphite">No Sector Cities Found</p>
+                    <p className="text-xs text-stone mt-1">No active sector city matches your search criteria.</p>
                   </div>
                 ) : (
                   filteredCities.map((city) => (
@@ -485,13 +485,13 @@ export function ExplorePage({ config }: { config: SectorConfig }) {
                 {isLoading ? (
                   <div className="col-span-full py-12 px-6 rounded-card-md border border-line bg-canvas text-center">
                     <Package className="w-8 h-8 text-royal animate-pulse mx-auto mb-2" />
-                    <p className="text-sm font-bold text-graphite">Katalog Verileri Yükleniyor...</p>
+                    <p className="text-sm font-bold text-graphite">Loading Catalog Data...</p>
                   </div>
                 ) : filteredProducts.length === 0 && filteredServices.length === 0 ? (
                   <div className="col-span-full py-12 px-6 rounded-card-md border border-line bg-canvas text-center">
                     <Package className="w-8 h-8 text-mute mx-auto mb-2" />
-                    <p className="text-sm font-bold text-graphite">Kayıtlı Ürün veya Hizmet Bulunamadı</p>
-                    <p className="text-xs text-stone mt-1">Seçilen kriterlere uygun onaylı ticari ürün veya servis bulunmamaktadır.</p>
+                    <p className="text-sm font-bold text-graphite">No Registered Products or Services Found</p>
+                    <p className="text-xs text-stone mt-1">No verified commercial product or service matches the selected criteria.</p>
                   </div>
                 ) : (
                   <>

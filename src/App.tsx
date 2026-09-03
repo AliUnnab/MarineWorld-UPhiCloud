@@ -28,7 +28,6 @@ import { BillingSubView } from "@/components/studio/CompanyStudioBillingView";
 import { CompaniesDirectoryPage } from "@/pages/CompaniesDirectoryPage";
 import { InstitutionalLegalPage, type LegalDocTab } from "@/pages/InstitutionalLegalPage";
 import { GettingStartedPage } from "@/pages/GettingStartedPage";
-import { GlobalErrorBoundary } from "@/components/foundation/GlobalErrorBoundary";
 import { CookieConsentBanner } from "@/components/foundation/CookieConsentBanner";
 import { PublicOrganizationProfile } from "@/components/organization/PublicOrganizationProfile";
 import {
@@ -37,7 +36,7 @@ import {
 } from "@/lib/services/ecosystemOrganizationService";
 
 import { getCurrentAuthSession } from "@/lib/services/securityService";
-import { getActiveOrganizationContext, getUserMemberships } from "@/lib/services/accessContextService";
+import { getActiveOrganizationContext, getUserMemberships, resolveAccessContext } from "@/lib/services/accessContextService";
 
 export default function App() {
   const [path, setPath] = useState(() => window.location.pathname);
@@ -234,7 +233,12 @@ export default function App() {
     }
 
     // CANONICAL ECOSYSTEM ORGANIZATION ROUTES:
-    if (path === "/ecosystem" || path === "/ecosystem/access" || path === "/ecosystem/dashboard") {
+    if (
+      path === "/ecosystem" ||
+      path === "/ecosystem/access" ||
+      path === "/ecosystem/dashboard" ||
+      path === "/ecosystem/onboarding"
+    ) {
       return (
         <EcosystemOrganizationPage
           onNavigate={(newPath) => {
@@ -276,6 +280,29 @@ export default function App() {
       path === "/workspace/activity" ||
       path === "/account"
     ) {
+      // SECURITY & ROUTING POLICY: Company accounts must NEVER view visitor workspace, route to Studio
+      const auth = getCurrentAuthSession();
+      if (auth.uid) {
+        const access = resolveAccessContext(auth);
+        const isCompanyUser =
+          access.contextType === "COMPANY" ||
+          access.activeOrganization?.organizationType === "COMPANY" ||
+          getUserMemberships(auth.uid).some((m) => m.organizationType === "COMPANY");
+
+        if (isCompanyUser) {
+          window.history.replaceState({}, "", "/studio");
+          return (
+            <CompanyStudioShell
+              onNavigateToPublicPage={(targetSlug) => {
+                const targetPath = `/companies/${targetSlug}`;
+                window.history.pushState({}, "", targetPath);
+                setPath(targetPath);
+              }}
+            />
+          );
+        }
+      }
+
       let initialTab: "overview" | "companies" | "products" | "services" | "inquiries" | "collections" | "activity" | "account" = "overview";
       
       // Check search params first
@@ -557,9 +584,9 @@ export default function App() {
   };
 
   return (
-    <GlobalErrorBoundary>
+    <>
       {renderContent()}
       <CookieConsentBanner />
-    </GlobalErrorBoundary>
+    </>
   );
 }

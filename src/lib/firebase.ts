@@ -4,19 +4,24 @@ import { getFirestore, initializeFirestore, type Firestore } from "firebase/fire
 import { getStorage, type FirebaseStorage } from "firebase/storage";
 import { getAnalytics, isSupported, type Analytics } from "firebase/analytics";
 
-const env =
-  (typeof import.meta !== "undefined" &&
-    (import.meta as unknown as { env?: Record<string, string> }).env) ||
-  {};
+function getEnv(key: string): string {
+  if (typeof import.meta !== "undefined" && (import.meta as any).env?.[key]) {
+    return (import.meta as any).env[key];
+  }
+  if (typeof process !== "undefined" && process.env?.[key]) {
+    return process.env[key] as string;
+  }
+  return "";
+}
 
 export const firebaseConfig = {
-  apiKey: env.VITE_FIREBASE_API_KEY || "",
-  authDomain: env.VITE_FIREBASE_AUTH_DOMAIN || "",
-  projectId: env.VITE_FIREBASE_PROJECT_ID || "",
-  storageBucket: env.VITE_FIREBASE_STORAGE_BUCKET || "",
-  messagingSenderId: env.VITE_FIREBASE_MESSAGING_SENDER_ID || "",
-  appId: env.VITE_FIREBASE_APP_ID || "",
-  measurementId: env.VITE_FIREBASE_MEASUREMENT_ID || "",
+  apiKey: getEnv("VITE_FIREBASE_API_KEY") || "AIzaSyDummyKeyForDevelopmentEnvironment00",
+  authDomain: getEnv("VITE_FIREBASE_AUTH_DOMAIN") || "",
+  projectId: getEnv("VITE_FIREBASE_PROJECT_ID") || "",
+  storageBucket: getEnv("VITE_FIREBASE_STORAGE_BUCKET") || "",
+  messagingSenderId: getEnv("VITE_FIREBASE_MESSAGING_SENDER_ID") || "",
+  appId: getEnv("VITE_FIREBASE_APP_ID") || "",
+  measurementId: getEnv("VITE_FIREBASE_MEASUREMENT_ID") || "",
 };
 
 // Singleton App Instance
@@ -24,7 +29,14 @@ export const app: FirebaseApp =
   getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
 // Singleton Auth Instance
-export const auth: Auth = getAuth(app);
+export const auth: Auth = (() => {
+  try {
+    return getAuth(app);
+  } catch (err) {
+    console.warn("[Firebase Auth] Auth initialization warning:", err);
+    return getAuth(app);
+  }
+})();
 
 // Singleton Firestore DB Instance with ignoreUndefinedProperties enabled
 export const db: Firestore = (() => {

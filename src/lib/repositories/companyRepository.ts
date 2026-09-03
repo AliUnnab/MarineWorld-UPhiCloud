@@ -309,6 +309,26 @@ export async function deleteCompanyRecord(companyId: string): Promise<boolean> {
   }
 }
 
+export function findCompaniesByOwnerOrEmailSync(
+  ownerId?: string,
+  email?: string
+): CompanyEntity[] {
+  const normEmail = email?.trim().toLowerCase();
+  const results: CompanyEntity[] = [];
+  const seenIds = new Set<string>();
+
+  for (const comp of runtimeCompanyCache.values()) {
+    const cEmail = (comp.email || comp.officialEmail || "").trim().toLowerCase();
+    if ((ownerId && comp.ownerId === ownerId) || (normEmail && cEmail === normEmail)) {
+      if (!seenIds.has(comp.id)) {
+        seenIds.add(comp.id);
+        results.push(comp);
+      }
+    }
+  }
+  return results;
+}
+
 export async function findCompaniesByOwnerOrEmail(
   ownerId?: string,
   email?: string

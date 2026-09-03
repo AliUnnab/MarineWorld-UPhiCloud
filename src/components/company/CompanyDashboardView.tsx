@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { CompanyProfile, SectorCity, IndustryDomainEntity, SectorConfig, CompanyOffering } from "@/lib/types";
 import { resolveMarineWorldCompanyDigitalId } from "@/lib/services/companyIdentityService";
+import { getCompanyOfferings, fetchCompanyOfferingsAsync } from "@/lib/services/offeringEntityService";
 import {
   Globe2,
   Cpu,
@@ -14,6 +15,10 @@ import {
   BrainCircuit,
   MessageSquareCode,
   Users,
+  Package,
+  Wrench,
+  FileText,
+  CheckCircle2,
 } from "lucide-react";
 import { ProductExperienceModal } from "./ProductExperienceModal";
 
@@ -37,6 +42,17 @@ export function CompanyDashboardView({
   onOpenShareModal?: () => void;
 }) {
   const [selectedOfferingModal, setSelectedOfferingModal] = useState<CompanyOffering | null>(null);
+  const [asyncOfferings, setAsyncOfferings] = useState<CompanyOffering[]>([]);
+
+  useEffect(() => {
+    if (!company?.id) return;
+    fetchCompanyOfferingsAsync(company.id).then((list) => {
+      if (list && list.length > 0) {
+        setAsyncOfferings(list);
+      }
+    });
+  }, [company?.id]);
+
   const displayName = company.displayName || company.name || "Enterprise Company";
   const legalName = company.legalName || company.name || displayName;
   const headquartersCity = company.headquartersCity || "International Maritime Hub";
@@ -70,7 +86,16 @@ export function CompanyDashboardView({
   const operatingNodesCount = Math.max(1, allNodes.size);
 
   // Total offerings count
-  const totalOfferings = (company.offerings?.length ?? 0) ||
+  const canonicalOfferings = getCompanyOfferings(company.id) || [];
+  const mergedOfferingsMap = new Map<string, CompanyOffering>();
+  [...canonicalOfferings, ...(company.offerings ?? []), ...asyncOfferings].forEach((o) => {
+    if (o && o.id && !mergedOfferingsMap.has(o.id)) {
+      mergedOfferingsMap.set(o.id, o);
+    }
+  });
+  const allAvailableOfferings = Array.from(mergedOfferingsMap.values());
+
+  const totalOfferings = allAvailableOfferings.length ||
     ((company.products?.length ?? 0) + (company.services?.length ?? 0));
 
   // Canonical Single Description String (shown exactly once)
@@ -83,10 +108,18 @@ export function CompanyDashboardView({
   const [flagshipImageError, setFlagshipImageError] = useState(false);
 
   // 03 — FLAGSHIP COMPANY PRESENCE MEDIA
+  const hqFacility =
+    company.registeredHeadquarters ||
+    company.physicalFacilities?.find((f) => f.isHeadquarters) ||
+    company.physicalFacilities?.[0];
+  const hqCoverMedia = hqFacility?.media?.find((m) => m.isCover) || hqFacility?.media?.[0];
+  const hqCoverUrl = hqCoverMedia?.url || hqCoverMedia?.image;
+
   const flagshipImage =
     company.coverImage ||
+    hqCoverUrl ||
     (company as any).heroImageUrl ||
-    "https://images.unsplash.com/photo-1541888946425-d0fbb186a5b3?auto=format&fit=crop&w=1600&q=80";
+    undefined;
 
   // 04 — OPERATING PROFILE (Max 5 non-repeating institutional fields)
   const secondaryFocus = company.secondarySectorCategories?.join(", ") || 
@@ -95,11 +128,10 @@ export function CompanyDashboardView({
   const companyClassification = company.recordType === "PUBLIC_REGISTRY" ? "Public Registry Node" : "Verified Commercial Entity";
 
   // 07 — FEATURED OFFERING TEASER
-  const rawOfferings: CompanyOffering[] = company.offerings ?? [];
   let featuredOffering: CompanyOffering | null = null;
 
-  if (rawOfferings.length > 0) {
-    featuredOffering = rawOfferings[0];
+  if (allAvailableOfferings.length > 0) {
+    featuredOffering = allAvailableOfferings[0];
   } else if (company.products && company.products.length > 0) {
     featuredOffering = {
       id: "prod-featured-1",
@@ -419,34 +451,90 @@ export function CompanyDashboardView({
       {/* ========================================================================= */}
       {/* 06 — FEATURED OFFERING (RESTRAINED SINGLE-ROW TEASER)                      */}
       {/* ========================================================================= */}
-      {featuredOffering && (
-        <section aria-labelledby="section-offering-teaser" className="pt-8 border-t border-line">
-          <div className="rounded-lg border border-line bg-white p-5 sm:p-6 shadow-2xs">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div className="space-y-1 max-w-2xl">
-                <div id="section-offering-teaser" className="font-sans text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                  FEATURED OFFERING
-                </div>
-                <div className="text-base font-bold text-graphite tracking-tight">
-                  {featuredOffering.name}
-                </div>
-                <p className="text-xs sm:text-sm text-stone leading-relaxed">
-                  {featuredOffering.shortDescription}
-                </p>
-              </div>
+      {featuredOffering && (() => {
+        const rawFeatImage =
+          (featuredOffering as any).coverImage ||
+          (featuredOffering as any).primaryImage ||
+          (featuredOffering as any).imageUrl ||
+          featuredOffering.mediaReferences?.find((m: any) => m.isCover)?.url ||
+          featuredOffering.mediaReferences?.find((m: any) => m.type !== "drawing" && !m.url?.toLowerCase().includes(".pdf"))?.url ||
+          featuredOffering.mediaReferences?.[0]?.url ||
+          (featuredOffering as any).media?.find((m: any) => m.isCover)?.url ||
+          (featuredOffering as any).media?.[0]?.url ||
+          (Array.isArray((featuredOffering as any).gallery)
+            ? typeof (featuredOffering as any).gallery[0] === "string"
+              ? (featuredOffering as any).gallery[0]
+              : (featuredOffering as any).gallery[0]?.url
+            : undefined) ||
+          "";
+        const isPdfFeat = Boolean(rawFeatImage && rawFeatImage.toLowerCase().includes(".pdf"));
+        const priceFeat = featuredOffering.price || featuredOffering.commercialInformation?.price;
+        const currencyFeat = featuredOffering.currency || featuredOffering.commercialInformation?.currency || "USD";
+        const symbolFeat = currencyFeat === "EUR" ? "€" : currencyFeat === "TRY" ? "₺" : currencyFeat === "GBP" ? "£" : "$";
+        const formattedFeatPrice = priceFeat
+          ? (priceFeat.includes("$") || priceFeat.includes("€") || priceFeat.includes("₺") || priceFeat.includes("£") ? priceFeat : `${symbolFeat}${priceFeat}`)
+          : featuredOffering.commercialInformation?.pricingGuidance || null;
 
-              <button
-                type="button"
-                onClick={() => setSelectedOfferingModal(featuredOffering)}
-                className="inline-flex items-center gap-1.5 font-sans text-xs font-bold text-royal hover:underline shrink-0 self-start sm:self-center cursor-pointer"
-              >
-                <span>OPEN OFFERING</span>
-                <ArrowUpRight className="w-3.5 h-3.5" />
-              </button>
+        return (
+          <section aria-labelledby="section-offering-teaser" className="pt-8 border-t border-line">
+            <div
+              onClick={() => setSelectedOfferingModal(featuredOffering)}
+              className="group rounded-2xl border border-line bg-white p-5 sm:p-6 shadow-2xs hover:border-royal/50 hover:shadow-md transition-all duration-200 cursor-pointer"
+            >
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-5">
+                <div className="flex items-center gap-4 min-w-0">
+                  {/* Thumbnail Image / PDF badge */}
+                  <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-xl bg-slate-900 border border-line shrink-0 overflow-hidden flex items-center justify-center">
+                    {isPdfFeat ? (
+                      <div className="w-full h-full bg-slate-900 flex flex-col items-center justify-center p-1 text-center text-rose-400">
+                        <FileText className="w-5 h-5 mb-0.5" />
+                        <span className="text-[8px] font-mono font-bold uppercase tracking-tight">PDF</span>
+                      </div>
+                    ) : rawFeatImage ? (
+                      <img src={rawFeatImage} alt={featuredOffering.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                    ) : (
+                      <div className="w-full h-full bg-slate-800 flex items-center justify-center text-slate-400">
+                        {featuredOffering.type === "service" ? <Wrench className="w-6 h-6" /> : <Package className="w-6 h-6" />}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap font-sans text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                      <span id="section-offering-teaser" className="text-royal">FEATURED OFFERING</span>
+                      <span>•</span>
+                      <span>{featuredOffering.category || featuredOffering.type}</span>
+                      {formattedFeatPrice && (
+                        <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 font-mono font-bold text-[10.5px]">
+                          {formattedFeatPrice}
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-base sm:text-lg font-bold text-graphite tracking-tight group-hover:text-royal transition-colors truncate">
+                      {featuredOffering.name}
+                    </div>
+                    <p className="text-xs sm:text-sm text-stone leading-relaxed line-clamp-2 max-w-xl">
+                      {featuredOffering.shortDescription}
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedOfferingModal(featuredOffering);
+                  }}
+                  className="inline-flex items-center gap-1.5 font-sans text-xs font-bold text-royal hover:underline shrink-0 self-end sm:self-center cursor-pointer"
+                >
+                  <span>OPEN OFFERING</span>
+                  <ArrowUpRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
-          </div>
-        </section>
-      )}
+          </section>
+        );
+      })()}
 
       {selectedOfferingModal && (
         <ProductExperienceModal

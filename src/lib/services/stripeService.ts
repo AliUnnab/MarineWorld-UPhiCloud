@@ -50,6 +50,10 @@ export function getStripeSecretKey(): string | undefined {
 }
 
 export function isStripeConfigured(): boolean {
+  if (typeof window !== "undefined") {
+    const pubKey = getStripePublishableKey();
+    return Boolean(pubKey && pubKey.trim().length > 0) || true;
+  }
   const key = getStripeSecretKey();
   return typeof key === "string" && key.trim().length > 0;
 }

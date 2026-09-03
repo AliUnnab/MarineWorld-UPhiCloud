@@ -35,6 +35,7 @@ import {
   publishOffering,
   archiveOffering,
   deleteOffering,
+  deleteOfferingAsync,
   MAX_ACTIVE_OFFERINGS_PER_COMPANY,
   countActiveOfferings,
 } from "@/lib/services/offeringEntityService";
@@ -57,7 +58,7 @@ export const CompanyStudioOfferingsView: React.FC<CompanyStudioOfferingsViewProp
   onNavigateToAI,
 }) => {
   const canonicalCompany = getCompanyById(companyId) || (getCompanyRecordSync(companyId) as unknown as CompanyEntity);
-  const [activeTab, setActiveTab] = useState<OfferingTab>("PRODUCTS");
+  const [activeTab, setActiveTab] = useState<OfferingTab>("ALL");
 
   // Canonical offerings state
   const [offerings, setOfferings] = useState<CompanyOffering[]>([]);
@@ -101,8 +102,8 @@ export const CompanyStudioOfferingsView: React.FC<CompanyStudioOfferingsViewProp
   }, [companyId]);
 
   // Derived counts
-  const productsList = useMemo(() => offerings.filter((o) => o.type === "product"), [offerings]);
-  const servicesList = useMemo(() => offerings.filter((o) => o.type === "service"), [offerings]);
+  const productsList = useMemo(() => offerings.filter((o) => o.type === "product" && (o.status as string)?.toUpperCase() !== "ARCHIVED"), [offerings]);
+  const servicesList = useMemo(() => offerings.filter((o) => o.type === "service" && (o.status as string)?.toUpperCase() !== "ARCHIVED"), [offerings]);
   const archivedList = useMemo(
     () => offerings.filter((o) => (o.status as string)?.toUpperCase() === "ARCHIVED"),
     [offerings]
@@ -124,16 +125,16 @@ export const CompanyStudioOfferingsView: React.FC<CompanyStudioOfferingsViewProp
   const displayedOfferings = useMemo(() => {
     switch (activeTab) {
       case "PRODUCTS":
-        return offerings.filter((o) => o.type === "product" && (o.status as string)?.toUpperCase() !== "ARCHIVED");
+        return productsList;
       case "SERVICES":
-        return offerings.filter((o) => o.type === "service" && (o.status as string)?.toUpperCase() !== "ARCHIVED");
+        return servicesList;
       case "ARCHIVED":
         return archivedList;
       case "ALL":
       default:
-        return offerings;
+        return offerings.filter((o) => (o.status as string)?.toUpperCase() !== "ARCHIVED");
     }
-  }, [offerings, activeTab, archivedList]);
+  }, [offerings, activeTab, productsList, servicesList, archivedList]);
 
   // Open creation wizard
   const handleOpenCreateWizard = (type: "product" | "service") => {
@@ -213,13 +214,19 @@ export const CompanyStudioOfferingsView: React.FC<CompanyStudioOfferingsViewProp
   };
 
   // Delete Offering
-  const handleDeleteOffering = (offeringId: string) => {
-    if (confirm("Are you sure you want to permanently remove this offering from your catalog?")) {
-      deleteOffering(companyId, offeringId);
-      setOfferings(getCompanyOfferings(companyId));
-      setSuccessMessage("Offering removed.");
-      setTimeout(() => setSuccessMessage(null), 3000);
-      if (onSaved) onSaved();
+  const handleDeleteOffering = async (offeringId: string) => {
+    if (confirm("Bu teklifi (ürün/hizmet), bağlı tüm görsel ve belgeleri ile birlikte kalıcı olarak silmek istediğinize emin misiniz?")) {
+      try {
+        await deleteOfferingAsync(companyId, offeringId);
+        const updated = await fetchCompanyOfferingsAsync(companyId);
+        setOfferings(updated);
+        setSuccessMessage("Teklif ve ilgili tüm dosyalar Firestore & Storage üzerinden kalıcı olarak silindi.");
+        setTimeout(() => setSuccessMessage(null), 3000);
+        if (onSaved) onSaved();
+      } catch (err: any) {
+        setErrorMessage(`Silme işlemi başarısız: ${err?.message || "Bilinmeyen hata"}`);
+        setTimeout(() => setErrorMessage(null), 4000);
+      }
     }
   };
 
@@ -332,6 +339,23 @@ export const CompanyStudioOfferingsView: React.FC<CompanyStudioOfferingsViewProp
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-line pb-3">
         {/* Filter Tabs */}
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            id="tab-offerings-all"
+            onClick={() => setActiveTab("ALL")}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
+              activeTab === "ALL"
+                ? "bg-royal text-white shadow-2xs"
+                : "bg-white text-stone hover:bg-slate-50 hover:text-graphite border border-line"
+            }`}
+          >
+            <SlidersHorizontal className="w-4 h-4" />
+            <span>All Offerings</span>
+            <span className="px-1.5 py-0.5 rounded-full text-[10px] font-mono bg-white/20">
+              {offerings.filter((o) => (o.status as string)?.toUpperCase() !== "ARCHIVED").length}
+            </span>
+          </button>
+
           <button
             type="button"
             id="tab-offerings-products"

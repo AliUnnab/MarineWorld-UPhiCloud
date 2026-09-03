@@ -80,10 +80,12 @@ export const AVAILABLE_PLANS: Record<PlanCode, Plan> = {
     currency: "USD",
     includedCapabilities: [
       "COMPANY_STUDIO",
+      "BUSINESS_TWIN",
       "PRODUCT_CATALOG",
       "SERVICE_CATALOG",
       "CONNECT",
       "AI_ADVISOR",
+      "FILE_STORAGE",
     ],
     limits: {
       maxProducts: 10,

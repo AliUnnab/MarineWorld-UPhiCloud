@@ -1,5 +1,4 @@
 import { storage, auth } from "@/lib/firebase";
-import { signInAnonymously } from "firebase/auth";
 import {
   ref,
   uploadBytesResumable,
@@ -160,15 +159,6 @@ export async function uploadFileToStorage(
   file: File,
   options: StorageUploadOptions
 ): Promise<StorageUploadResult> {
-  // Ensure native Firebase Auth session exists if anonymous auth is supported
-  if (!auth.currentUser && typeof window !== "undefined") {
-    try {
-      await signInAnonymously(auth);
-    } catch {
-      // ignore
-    }
-  }
-
   const storagePath = buildStoragePath(options, file.name);
   const storageRef = ref(storage, storagePath);
 

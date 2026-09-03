@@ -21,6 +21,7 @@ import {
   resolveAccessContext,
 } from "@/lib/services/accessContextService";
 import { generateBusinessId } from "@/lib/services/companyService";
+import { generateAIContent } from "@/lib/gemini";
 
 export type EcosystemMemberStatus =
   | "NOT_REGISTERED"
@@ -100,6 +101,7 @@ export interface EcosystemOrganizationSummary {
   principalAuthorityRole: string;
   officialEmailDomain: string;
   officialContactEmail: string;
+  password?: string;
   discountCode?: string;
   discountPercentage: number;
   totalMembersCount: number;
@@ -119,6 +121,7 @@ export interface OrganizationRegistrationInput {
   legalName?: string;
   country: string;
   officialEmail: string;
+  password?: string;
   officialWebsite?: string;
   representativeName: string;
   representativeRole: string;
@@ -130,6 +133,7 @@ export interface HubActivationInput {
   officialEmail: string;
   activationCode: string; // Organization Activation Code
   representativeName?: string;
+  password?: string;
 }
 
 export interface HubSignInInput {
@@ -384,125 +388,48 @@ export function getEcosystemMembers(organizationId: string): EcosystemMemberReco
   if (!org) return [];
 
   const members: EcosystemMemberRecord[] = [];
-  const totalCount = org.totalMembersCount || 800;
-  const orgSeed = getOrgSeed(organizationId);
 
-  // 1. Seed canonical companies first (strictly scoped to this tenant organization)
+  // Seed canonical and Firestore enrolled companies (strictly scoped to this tenant organization)
   const repoCompanies = findAllCompaniesSync();
-  let index = 0;
 
   for (const comp of repoCompanies) {
-    if (comp.id === org.id) continue; // Skip self
+    if (comp.id === org.id || (comp.slug && comp.slug === org.slug)) continue; // Skip self
 
     // Strict tenant scoping check:
     const belongsToOrg =
-      (org.memberCompanyIds && (org.memberCompanyIds.includes(comp.id) || org.memberCompanyIds.includes(comp.slug || ""))) ||
+      (org.memberCompanyIds && (org.memberCompanyIds.includes(comp.id) || (comp.slug && org.memberCompanyIds.includes(comp.slug)))) ||
       comp.enrolledOrganizationId === org.id ||
-      comp.enrolledOrganizationCode === org.enrollmentCode;
+      (org.slug && comp.enrolledOrganizationId === org.slug) ||
+      (comp.enrolledOrganizationCode && org.enrollmentCode && comp.enrolledOrganizationCode.trim().toUpperCase() === org.enrollmentCode.trim().toUpperCase());
 
     if (!belongsToOrg) continue;
 
     const memberId = `mem-${org.slug}-${comp.id}`;
-    const loc = comp.country || "Netherlands";
-    const city = comp.city || "Rotterdam";
-    const sectorCityId = comp.primarySectorCityId || "supplychain";
+    const loc = comp.country || "Global";
+    const city = comp.city || comp.headquartersCity || "Port City";
+    const sectorCityId = comp.primarySectorCityId || comp.sectorCityId || "supplychain";
 
     members.push({
       memberId,
       companyId: comp.slug || comp.id,
-      companyName: comp.displayName || comp.legalName || comp.id,
+      companyName: comp.displayName || comp.legalName || comp.brandName || comp.id,
       legalName: comp.legalName || comp.displayName || comp.id,
-      logo: comp.logoUrl || comp.heroImageUrl,
-      country: comp.country || "Netherlands",
-      city: comp.city || comp.headquartersCity || "Rotterdam",
+      logo: comp.logoUrl || comp.heroImageUrl || comp.logo,
+      country: loc,
+      city,
       sectorCityId,
       industry: comp.industry || "Marine Services",
       capabilities: comp.specializedDomains || comp.secondarySectorCategories || ["Marine Logistics", "Technical Provisioning"],
-      status: "ACTIVE",
-      verificationStatus: "VERIFIED",
-      activationDate: "2026-01-15",
-      lastActivityAt: "10 mins ago",
-      enrollmentCodeUsed: org.enrollmentCode,
+      status: (comp.status === "ACTIVE" ? "ACTIVE" : comp.status === "PENDING" ? "COMPANY_CREATED" : "REGISTERED") as EcosystemMemberStatus,
+      verificationStatus: (comp.verificationStatus === "VERIFIED" ? "VERIFIED" : comp.verificationStatus === "PENDING" ? "PENDING" : "INCOMPLETE") as EcosystemMemberVerificationState,
+      activationDate: comp.createdAt ? comp.createdAt.slice(0, 10) : undefined,
+      lastActivityAt: comp.updatedAt ? "Recently active" : "Active member",
+      enrollmentCodeUsed: comp.enrolledOrganizationCode || org.enrollmentCode,
       hasCompanyEntity: true,
       commercialPresence: (comp.status === "ACTIVE" ? "ENTERPRISE" : "STANDARD") as CommercialPresenceTier,
-      contactEmail: comp.officialEmail || `corporate@${comp.slug || comp.id}.com`,
-      invitedAt: "2025-11-10",
-      notes: "Canonical accredited member enterprise.",
-    });
-
-    index++;
-  }
-
-  // 2. Generate remaining members up to totalCount (seeded uniquely per organization)
-  for (let i = members.length; i < totalCount; i++) {
-    const prefixIdx = (i * 3 + orgSeed * 7) % MEMBER_NAME_PREFIXES.length;
-    const suffixIdx = (i * 5 + orgSeed * 13) % MEMBER_NAME_SUFFIXES.length;
-    const prefix = MEMBER_NAME_PREFIXES[prefixIdx];
-    const suffix = MEMBER_NAME_SUFFIXES[suffixIdx];
-    const compName = `${prefix} ${suffix} #${i + 1}`;
-    const slug = `comp-${prefix.toLowerCase()}-${suffix.toLowerCase().replace(/[^a-z0-9]/g, "")}-${org.slug}-${i + 1}`;
-
-    const locObj = COUNTRIES_CITIES_LIST[(i * 7 + orgSeed * 3) % COUNTRIES_CITIES_LIST.length];
-    const sectorCityObj = SECTOR_CITIES_LIST[(i * 5 + orgSeed * 11) % SECTOR_CITIES_LIST.length];
-
-    // Status distribution: 17 ACTIVE, 17 COMPANY_CREATED, 17 REGISTERED, 49 INVITED, remaining NOT_REGISTERED
-    let status: EcosystemMemberStatus = "ACTIVE";
-    let verificationStatus: EcosystemMemberVerificationState = "VERIFIED";
-    let commercialPresence: CommercialPresenceTier = "STANDARD";
-    let hasCompany = true;
-
-    if (i < 17) {
-      status = "ACTIVE";
-      verificationStatus = "VERIFIED";
-      commercialPresence = i % 5 === 0 ? "FLAGSHIP" : i % 3 === 0 ? "ENTERPRISE" : "STANDARD";
-    } else if (i < 34) {
-      status = "COMPANY_CREATED";
-      verificationStatus = i % 2 === 0 ? "PENDING" : "INCOMPLETE";
-      commercialPresence = "STANDARD";
-    } else if (i < 51) {
-      status = "REGISTERED";
-      verificationStatus = "INCOMPLETE";
-      commercialPresence = "STANDARD";
-    } else if (i < 100) {
-      status = "INVITED";
-      verificationStatus = "PENDING";
-      commercialPresence = "NONE";
-      hasCompany = false;
-    } else {
-      status = "NOT_REGISTERED";
-      verificationStatus = "ACTION_REQUIRED";
-      commercialPresence = "NONE";
-      hasCompany = false;
-    }
-
-    const caps = [
-      CAPABILITIES_LIST[(i + orgSeed) % CAPABILITIES_LIST.length],
-      CAPABILITIES_LIST[(i + 3 + orgSeed * 2) % CAPABILITIES_LIST.length],
-      CAPABILITIES_LIST[(i + 7 + orgSeed * 5) % CAPABILITIES_LIST.length],
-    ];
-
-    const daysAgo = (i % 28) + 1;
-    const hoursAgo = (i % 12) + 1;
-
-    members.push({
-      memberId: `mem-${org.slug}-${i + 100}`,
-      companyId: slug,
-      companyName: compName,
-      legalName: `${compName} Corp B.V.`,
-      country: locObj.country,
-      city: locObj.city,
-      sectorCityId: sectorCityObj.id,
-      industry: sectorCityObj.domain,
-      capabilities: caps,
-      status,
-      verificationStatus,
-      activationDate: status === "ACTIVE" ? `2026-0${(i % 5) + 1}-12` : undefined,
-      lastActivityAt: daysAgo === 1 ? `${hoursAgo} hours ago` : `${daysAgo} days ago`,
-      enrollmentCodeUsed: org.enrollmentCode,
-      hasCompanyEntity: hasCompany,
-      commercialPresence,
-      contactEmail: `contact@${slug}.com`,
-      invitedAt: `2025-12-01`,
+      contactEmail: comp.officialEmail || comp.email || `contact@${comp.slug || comp.id}.com`,
+      invitedAt: comp.createdAt || new Date().toISOString(),
+      notes: comp.shortDescription || "Enrolled accredited member enterprise.",
     });
   }
 
@@ -642,12 +569,11 @@ export function getEcosystemMembersPaginated(
  */
 export function getEcosystemFunnelMetrics(organizationId: string): EcosystemFunnelMetrics {
   const members = getEcosystemMembers(organizationId);
-  const org = getEcosystemOrganizationById(organizationId);
 
-  const total = members.length || (org?.totalMembersCount ?? 800);
+  const total = members.length;
   const invited = members.filter((m) => m.status === "INVITED").length;
   const registered = members.filter((m) => m.status === "REGISTERED").length;
-  const companyCreated = members.filter((m) => m.status === "COMPANY_CREATED").length;
+  const companyCreated = members.filter((m) => m.status === "COMPANY_CREATED" || m.hasCompanyEntity).length;
   const verified = members.filter((m) => m.verificationStatus === "VERIFIED" || m.status === "VERIFIED").length;
   const active = members.filter((m) => m.status === "ACTIVE").length;
 
@@ -913,6 +839,7 @@ export function registerNewOrganization(
     enrollmentCode,
     ecosystemHubId: hubId,
     country: input.country,
+    password: input.password || "",
     officialWebsite: input.officialWebsite || `https://www.${emailDomain}`,
     primaryContact: input.primaryContact || input.officialEmail,
     principalAuthorityUserId: `usr-rep-${slug}`,
@@ -970,6 +897,20 @@ export function registerNewOrganization(
   };
   saveCompanyRecordSync(entity);
 
+  // Direct Firestore persistence
+  try {
+    const orgDocRef = doc(db, "ecosystemOrganizations", newOrg.id);
+    setDoc(orgDocRef, newOrg, { merge: true }).catch((err) => {
+      console.warn("[EcosystemOrganizationService] Firestore org write error:", err);
+    });
+    const compDocRef = doc(db, "companies", newOrg.id);
+    setDoc(compDocRef, entity, { merge: true }).catch((err) => {
+      console.warn("[EcosystemOrganizationService] Firestore company write error:", err);
+    });
+  } catch (err) {
+    console.warn("[EcosystemOrganizationService] Firestore direct write error:", err);
+  }
+
   return {
     success: true,
     message: `Organization access requested for ${input.name}. Official activation code generated.`,
@@ -1025,6 +966,9 @@ export function activateOrganizationHub(
   if (input.representativeName) {
     org.principalAuthorityName = input.representativeName;
   }
+  if (input.password) {
+    org.password = input.password;
+  }
 
   saveOrganizationRegistry(registry);
 
@@ -1036,6 +980,20 @@ export function activateOrganizationHub(
       status: "ACTIVE",
       verificationStatus: "VERIFIED",
     });
+  }
+
+  // Direct Firestore persistence
+  try {
+    const orgDocRef = doc(db, "ecosystemOrganizations", org.id);
+    setDoc(orgDocRef, org, { merge: true }).catch(() => {});
+    const compDocRef = doc(db, "companies", org.id);
+    setDoc(compDocRef, {
+      status: "ACTIVE",
+      verificationStatus: "VERIFIED",
+      updatedAt: new Date().toISOString(),
+    }, { merge: true }).catch(() => {});
+  } catch (err) {
+    console.warn("[EcosystemOrganizationService] Firestore activation write error:", err);
   }
 
   // Authenticate user & bind active tenant context
@@ -1058,6 +1016,18 @@ export function activateOrganizationHub(
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   });
+
+  try {
+    setDoc(doc(db, "companies", org.id, "members", userId), {
+      userId,
+      companyId: org.id,
+      role: "ADMIN",
+      status: "ACTIVE",
+      updatedAt: new Date().toISOString(),
+    }, { merge: true }).catch(() => {});
+  } catch {
+    // ignore
+  }
 
   firebaseAuthProvider.setCurrentUser(authSession);
   setCurrentAuthSession(authSession);
@@ -1168,6 +1138,9 @@ export function applyOrganizationEnrollmentToCompany(
 /**
  * Signs in a returning organization representative to their Hub
  */
+/**
+ * Signs in a returning organization representative to their Hub (sync helper)
+ */
 export function signInToOrganizationHub(
   input: HubSignInInput
 ): {
@@ -1179,6 +1152,7 @@ export function signInToOrganizationHub(
 } {
   const registry = loadOrganizationRegistry();
   const cleanEmail = input.officialEmail.trim().toLowerCase();
+  const cleanPassOrCode = (input.passwordOrCode || "").trim();
 
   const org = registry.find((o) => o.officialContactEmail.toLowerCase() === cleanEmail);
 
@@ -1187,6 +1161,19 @@ export function signInToOrganizationHub(
       success: false,
       message: `No Ecosystem Hub registration was found for '${cleanEmail}'. Please create your organization first.`,
     };
+  }
+
+  // Password / credential verification
+  if (org.password && cleanPassOrCode) {
+    const isPassValid =
+      cleanPassOrCode === org.password ||
+      (org.activationCode && cleanPassOrCode.toUpperCase() === org.activationCode.toUpperCase());
+    if (!isPassValid) {
+      return {
+        success: false,
+        message: "Incorrect password or access credentials.",
+      };
+    }
   }
 
   if (org.status !== "HUB_ACTIVE" && org.hubStatus !== "ACTIVE") {
@@ -1218,6 +1205,124 @@ export function signInToOrganizationHub(
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   });
+
+  try {
+    setDoc(doc(db, "companies", org.id, "members", userId), {
+      userId,
+      companyId: org.id,
+      role: "ADMIN",
+      status: "ACTIVE",
+      updatedAt: new Date().toISOString(),
+    }, { merge: true }).catch(() => {});
+  } catch {
+    // ignore
+  }
+
+  firebaseAuthProvider.setCurrentUser(authSession);
+  setCurrentAuthSession(authSession);
+  setActiveOrganizationContext(userId, org.id);
+
+  return {
+    success: true,
+    message: `Signed in to ${org.name} Ecosystem Hub.`,
+    organization: org,
+    authSession,
+  };
+}
+
+/**
+ * Async sign in to Ecosystem Hub with authoritative Firestore query
+ */
+export async function signInToOrganizationHubAsync(
+  input: HubSignInInput
+): Promise<{
+  success: boolean;
+  message: string;
+  isPendingActivation?: boolean;
+  organization?: EcosystemOrganizationSummary;
+  authSession?: AuthContext;
+}> {
+  const cleanEmail = input.officialEmail.trim().toLowerCase();
+  const cleanPassOrCode = (input.passwordOrCode || "").trim();
+
+  let org = loadOrganizationRegistry().find((o) => o.officialContactEmail.toLowerCase() === cleanEmail);
+
+  if (!org) {
+    try {
+      const { query, where, getDocs, collection } = await import("firebase/firestore");
+      const q = query(collection(db, "ecosystemOrganizations"), where("officialContactEmail", "==", cleanEmail));
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        const found = snap.docs[0].data() as EcosystemOrganizationSummary;
+        DYNAMIC_ORGS_REGISTRY.push(found);
+        org = found;
+      }
+    } catch (err) {
+      console.warn("[EcosystemOrganizationService] Firestore sign-in lookup error:", err);
+    }
+  }
+
+  if (!org) {
+    return {
+      success: false,
+      message: `No Ecosystem Hub registration was found for '${cleanEmail}'. Please create your organization first.`,
+    };
+  }
+
+  // Password verification
+  if (org.password && cleanPassOrCode) {
+    const isPassValid =
+      cleanPassOrCode === org.password ||
+      (org.activationCode && cleanPassOrCode.toUpperCase() === org.activationCode.toUpperCase());
+    if (!isPassValid) {
+      return {
+        success: false,
+        message: "Incorrect password or access credentials.",
+      };
+    }
+  }
+
+  if (org.status !== "HUB_ACTIVE" && org.hubStatus !== "ACTIVE") {
+    return {
+      success: false,
+      isPendingActivation: true,
+      organization: org,
+      message: `Organization '${org.name}' registration is pending activation. Please verify your official activation code.`,
+    };
+  }
+
+  // Perform sign-in & tenant binding
+  const emailPrefix = cleanEmail.split("@")[0].replace(/[^a-z0-9]/g, "-");
+  const userId = `usr-eco-${org.slug}-${emailPrefix}`.slice(0, 32);
+
+  const authSession: AuthContext = {
+    uid: userId,
+    email: cleanEmail,
+    displayName: org.principalAuthorityName,
+    emailVerified: true,
+    isDevelopmentSession: true,
+  };
+
+  saveMember({
+    userId,
+    companyId: org.id,
+    role: "ADMIN",
+    status: "ACTIVE",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  });
+
+  try {
+    setDoc(doc(db, "companies", org.id, "members", userId), {
+      userId,
+      companyId: org.id,
+      role: "ADMIN",
+      status: "ACTIVE",
+      updatedAt: new Date().toISOString(),
+    }, { merge: true }).catch(() => {});
+  } catch {
+    // ignore
+  }
 
   firebaseAuthProvider.setCurrentUser(authSession);
   setCurrentAuthSession(authSession);
@@ -1377,38 +1482,149 @@ export function getEcosystemAIInsights(organizationId: string): string[] {
 
   if (!org || members.length === 0) {
     return [
-      "Your member ecosystem is initializing.",
-      "Distribute your Enrollment Code to start onboarding members.",
+      `Your organization '${org?.name || "Ecosystem Hub"}' is active on MarineWorld.`,
+      `Distribute your enrollment code ${org?.enrollmentCode || "MW-CODE"} to onboard your first member company.`,
+      `Member companies receive 20% ecosystem accreditation benefit and instant AI-Native Company Studio access.`,
     ];
   }
 
   const funnel = getEcosystemFunnelMetrics(organizationId);
-  const pendingCount = members.filter((m) => m.verificationStatus === "PENDING" || m.verificationStatus === "INCOMPLETE").length;
+  const activeCount = members.filter((m) => m.status === "ACTIVE").length;
+  const verifiedCount = members.filter((m) => m.verificationStatus === "VERIFIED").length;
+  const cities = Array.from(new Set(members.map((m) => m.sectorCityId))).filter(Boolean);
+  const countries = Array.from(new Set(members.map((m) => m.country))).filter(Boolean);
 
-  return [
-    `Your ecosystem is expanding fastest in Northern Europe and Mediterranean port hubs.`,
-    `${funnel.active} members have fully activated their AI-Native Company inside MarineWorld.`,
-    `${pendingCount} members are currently waiting for verification or require onboarding assistance.`,
-    `SupplyChain.City and MarineServices.City have the highest member concentration.`,
-    `${funnel.invited - funnel.companyCreated} members have been issued enrollment codes but have not yet published their AI-Native Company profile.`,
-    `Member activation is strongest among companies in Marine Logistics and Technical Provisioning.`,
-  ];
+  const insightsList: string[] = [];
+
+  insightsList.push(
+    `${members.length} member ${members.length === 1 ? "enterprise is" : "enterprises are"} currently connected under ${org.name}.`
+  );
+
+  if (activeCount > 0) {
+    insightsList.push(
+      `${activeCount} member ${activeCount === 1 ? "company has" : "companies have"} active AI-Native Company operating environments inside MarineWorld.`
+    );
+  } else {
+    insightsList.push(
+      `Pending member activation: Guide your enrolled companies through the MarineWorld Studio onboarding.`
+    );
+  }
+
+  if (verifiedCount > 0) {
+    insightsList.push(
+      `${verifiedCount} member ${verifiedCount === 1 ? "company holds" : "companies hold"} official verified accreditation status.`
+    );
+  }
+
+  if (cities.length > 0) {
+    insightsList.push(
+      `Ecosystem footprint spans ${cities.length} Sector Cities (${cities.map((c) => `${c}.city`).join(", ")}).`
+    );
+  }
+
+  if (countries.length > 0) {
+    insightsList.push(
+      `Regional presence verified in ${countries.join(", ")}.`
+    );
+  }
+
+  return insightsList.slice(0, 6);
 }
 
 /**
- * Interactive Ecosystem AI Query Handler
+ * Interactive Ecosystem AI Query with real Gemini AI
+ */
+export async function askEcosystemAIAsync(
+  organizationId: string,
+  userQuery: string
+): Promise<{ answer: string; matchedMembers: EcosystemMemberRecord[] }> {
+  const org = getEcosystemOrganizationById(organizationId);
+  const members = getEcosystemMembers(organizationId);
+  const orgName = org?.name || "Maritime Organization";
+  const orgType = org?.organizationType || "ASSOCIATION";
+  const code = org?.enrollmentCode || "MW-CODE";
+
+  const memberSummary = members.map((m) => ({
+    name: m.companyName,
+    legalName: m.legalName,
+    city: m.city,
+    country: m.country,
+    sectorCity: m.sectorCityId,
+    industry: m.industry,
+    capabilities: m.capabilities,
+    status: m.status,
+    verification: m.verificationStatus,
+    commercialPresence: m.commercialPresence,
+    contactEmail: m.contactEmail,
+  }));
+
+  const systemInstruction = `You are MarineWorld Ecosystem Intelligence AI, an AI system embedded inside MarineWorld.City for institutional entities (Associations, Chambers of Commerce, Port Authorities, Federations, Clusters). You analyze organization data, member company rosters, sector cities, verification statuses, and commercial presence based on authorized organization data. Provide direct, helpful, well-structured, and factual answers in the language of the inquiry (English or Turkish). Use markdown formatting with bullet points where appropriate. Do not invent fake company names; use the provided real member roster.`;
+
+  const prompt = `Organization Profile:
+- Name: ${orgName}
+- Type: ${orgType}
+- Headquarters / Region: ${org?.country || "International"}
+- Enrollment Code: ${code}
+- Total Enrolled Members in MarineWorld: ${members.length}
+
+Member Records (${members.length} enrolled companies):
+${members.length > 0 ? JSON.stringify(memberSummary, null, 2) : "No member companies have enrolled yet under this organization."}
+
+User Inquiry: "${userQuery}"
+
+Provide a comprehensive, clear, and professional response answering the user's query about this organization's ecosystem. If member companies match the query, mention them clearly.`;
+
+  // Find matched members based on query terms
+  const qLower = userQuery.toLowerCase();
+  const matchedMembers = members.filter((m) => {
+    return (
+      m.companyName.toLowerCase().includes(qLower) ||
+      m.country.toLowerCase().includes(qLower) ||
+      m.city.toLowerCase().includes(qLower) ||
+      m.sectorCityId.toLowerCase().includes(qLower) ||
+      m.capabilities.some((c) => c.toLowerCase().includes(qLower)) ||
+      (qLower.includes("active") && m.status === "ACTIVE") ||
+      (qLower.includes("verified") && m.verificationStatus === "VERIFIED") ||
+      (qLower.includes("pending") && (m.status === "COMPANY_CREATED" || m.status === "REGISTERED"))
+    );
+  });
+
+  try {
+    const aiAnswer = await generateAIContent(prompt, systemInstruction);
+    return {
+      answer: aiAnswer,
+      matchedMembers: matchedMembers.length > 0 ? matchedMembers.slice(0, 6) : members.slice(0, 4),
+    };
+  } catch (err) {
+    console.warn("[EcosystemAI] Gemini API fallback to local reasoning engine:", err);
+    // Intelligent local reasoning fallback
+    const res = askEcosystemAI(organizationId, userQuery);
+    return res;
+  }
+}
+
+/**
+ * Interactive Ecosystem AI Query Handler (Local Fallback)
  */
 export function askEcosystemAI(
   organizationId: string,
   userQuery: string
 ): { answer: string; matchedMembers: EcosystemMemberRecord[] } {
   const members = getEcosystemMembers(organizationId);
+  const org = getEcosystemOrganizationById(organizationId);
   const q = userQuery.toLowerCase().trim();
+
+  if (members.length === 0) {
+    return {
+      answer: `There are currently no member companies enrolled under ${org?.name || "your organization"}. Share your enrollment code (${org?.enrollmentCode || "MW-CODE"}) or invitation link with enterprises to onboard them to MarineWorld.`,
+      matchedMembers: [],
+    };
+  }
 
   if (q.includes("not activated") || q.includes("not registered") || q.includes("invited")) {
     const unactive = members.filter((m) => m.status === "INVITED" || m.status === "NOT_REGISTERED");
     return {
-      answer: `Found ${unactive.length} members who have received enrollment codes but have not yet activated their AI-Native Company. Direct invitation reminders can be dispatched from the Enrollment tab.`,
+      answer: `Found ${unactive.length} member companies that have not yet fully activated their AI-Native operating presence in MarineWorld. Direct invitation reminders can be dispatched from the Enrollment tab.`,
       matchedMembers: unactive.slice(0, 5),
     };
   }
@@ -1421,24 +1637,15 @@ export function askEcosystemAI(
     const sorted = Object.entries(cityMap).sort((a, b) => b[1] - a[1]);
     const topCity = sorted[0];
     return {
-      answer: `SupplyChain.City currently holds the highest member concentration with ${topCity ? topCity[1] : 124} registered companies, followed by MarineServices.City and PortOps.City.`,
+      answer: `Sector City analysis for ${members.length} enrolled members: Highest concentration is in ${topCity ? `${topCity[0]}.city with ${topCity[1]} member(s)` : "SupplyChain.City"}.`,
       matchedMembers: members.filter((m) => m.sectorCityId === (topCity ? topCity[0] : "supplychain")).slice(0, 5),
-    };
-  }
-
-  if (q.includes("italy") || q.includes("germany") || q.includes("netherlands") || q.includes("singapore") || q.includes("uk")) {
-    const countryName = q.includes("italy") ? "italy" : q.includes("germany") ? "germany" : q.includes("singapore") ? "singapore" : "netherlands";
-    const matched = members.filter((m) => m.country.toLowerCase().includes(countryName));
-    return {
-      answer: `Found ${matched.length} verified member companies operating out of ${countryName.toUpperCase()}. All entities hold active MarineWorld presence slots.`,
-      matchedMembers: matched.slice(0, 5),
     };
   }
 
   if (q.includes("verified")) {
     const verified = members.filter((m) => m.verificationStatus === "VERIFIED");
     return {
-      answer: `There are ${verified.length} verified member companies in your ecosystem holding ISO/IMO compliant MarineWorld accreditation.`,
+      answer: `There are ${verified.length} verified member companies in your ecosystem holding official accreditation under ${org?.name || "this organization"}.`,
       matchedMembers: verified.slice(0, 5),
     };
   }
@@ -1446,14 +1653,23 @@ export function askEcosystemAI(
   if (q.includes("commercial") || q.includes("presence")) {
     const commercial = members.filter((m) => m.commercialPresence !== "NONE");
     return {
-      answer: `${commercial.length} members maintain active commercial presence slots across MarineWorld Sector Cities (Enterprise, Flagship, and Landmark tiers).`,
+      answer: `${commercial.length} members maintain active commercial presence slots across MarineWorld Sector Cities.`,
       matchedMembers: commercial.slice(0, 5),
+    };
+  }
+
+  // Country check
+  const matchedCountry = members.filter((m) => q.includes(m.country.toLowerCase()) || q.includes(m.city.toLowerCase()));
+  if (matchedCountry.length > 0) {
+    return {
+      answer: `Found ${matchedCountry.length} member enterprise(s) matching your location search.`,
+      matchedMembers: matchedCountry.slice(0, 5),
     };
   }
 
   // Default intelligent response
   return {
-    answer: `Analysis of ${members.length} ecosystem members for '${userQuery}': Your organization maintains 78% activation across 18 Sector Cities. 412 members hold verified enterprise credentials.`,
+    answer: `Intelligence analysis for '${userQuery}': ${org?.name || "Organization"} has ${members.length} enrolled member companies across ${Array.from(new Set(members.map(m => m.sectorCityId))).length} Sector Cities.`,
     matchedMembers: members.slice(0, 5),
   };
 }

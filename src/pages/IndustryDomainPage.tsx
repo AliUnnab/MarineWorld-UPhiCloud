@@ -167,13 +167,13 @@ export function IndustryDomainPage({
                 {isLoading ? (
                   <div className="col-span-full py-12 px-6 rounded-card-md border border-line bg-canvas text-center">
                     <Globe2 className="w-8 h-8 text-royal animate-pulse mx-auto mb-2" />
-                    <p className="text-sm font-bold text-graphite">Sektör Şehirleri Yükleniyor...</p>
+                    <p className="text-sm font-bold text-graphite">Loading Sector Cities...</p>
                   </div>
                 ) : citiesInDomain.length === 0 ? (
                   <div className="col-span-full py-12 px-6 rounded-card-md border border-line bg-canvas text-center">
                     <Globe2 className="w-8 h-8 text-mute mx-auto mb-2" />
-                    <p className="text-sm font-bold text-graphite">Bu Alanda Şehir Bulunamadı</p>
-                    <p className="text-xs text-stone mt-1">Bu alt sektör kategorisine henüz bir sektör şehri bağlanmamıştır.</p>
+                    <p className="text-sm font-bold text-graphite">No Sector Cities Found</p>
+                    <p className="text-xs text-stone mt-1">No sector city has been linked to this sub-sector domain yet.</p>
                   </div>
                 ) : (
                   citiesInDomain.map((city) => (
@@ -208,13 +208,13 @@ export function IndustryDomainPage({
                 {isLoading ? (
                   <div className="col-span-full py-12 px-6 rounded-card-md border border-line bg-canvas text-center">
                     <Building2 className="w-8 h-8 text-royal animate-pulse mx-auto mb-2" />
-                    <p className="text-sm font-bold text-graphite">İşletmeler Yükleniyor...</p>
+                    <p className="text-sm font-bold text-graphite">Loading Companies...</p>
                   </div>
                 ) : companiesInDomain.length === 0 ? (
                   <div className="col-span-full py-12 px-6 rounded-card-md border border-line bg-canvas text-center">
                     <Building2 className="w-8 h-8 text-mute mx-auto mb-2" />
-                    <p className="text-sm font-bold text-graphite">Kayıtlı İşletme Bulunamadı</p>
-                    <p className="text-xs text-stone mt-1">Bu domain altında kayıtlı işletme bulunmamaktadır.</p>
+                    <p className="text-sm font-bold text-graphite">No Registered Companies Found</p>
+                    <p className="text-xs text-stone mt-1">There are no registered companies under this domain yet.</p>
                   </div>
                 ) : (
                   companiesInDomain.map((company) => (

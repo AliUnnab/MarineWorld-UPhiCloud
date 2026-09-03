@@ -726,6 +726,10 @@ export function getCompanyProducts(company: CompanyProfile): ProductEntity[] {
           visibility: "PUBLIC",
           availability: "AVAILABLE",
           specifications: off.specifications,
+          coverImage: (off as any).coverImage || (off as any).primaryImage || off.mediaReferences?.[0]?.url,
+          mediaReferences: off.mediaReferences,
+          media: (off as any).media,
+          imageUrl: (off as any).coverImage || (off as any).primaryImage || off.mediaReferences?.[0]?.url,
         });
       }
     }
@@ -830,6 +834,11 @@ export function getCompanyServices(company: CompanyProfile): ServiceEntity[] {
           visibility: "PUBLIC",
           availability: "AVAILABLE",
           serviceAreas: [company.city || "Global"],
+          specifications: off.specifications,
+          coverImage: (off as any).coverImage || (off as any).primaryImage || off.mediaReferences?.[0]?.url,
+          mediaReferences: off.mediaReferences,
+          media: (off as any).media,
+          imageUrl: (off as any).coverImage || (off as any).primaryImage || off.mediaReferences?.[0]?.url,
           capabilities: [off.name],
         });
       }

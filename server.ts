@@ -1,8 +1,8 @@
+import "dotenv/config";
 import express from "express";
 import http from "http";
 import path from "path";
 import { fileURLToPath } from "url";
-import dotenv from "dotenv";
 import { createServer as createViteServer } from "vite";
 import {
   isStripeConfigured,
@@ -18,8 +18,6 @@ import {
   isEmailDeliveryConfigured,
   sendTransactionalEmail,
 } from "./src/lib/services/emailDeliveryService";
-
-dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -63,7 +61,31 @@ async function startServer() {
   );
 
   // Standard JSON body parser for all other API endpoints
-  app.use(express.json());
+  app.use(express.json({ limit: "50mb" }));
+
+  // File Proxy Endpoint (Avoids CORS for remote PDF / Cloud Storage assets)
+  app.all("/api/proxy-file-base64", async (req: express.Request, res: express.Response) => {
+    try {
+      const url = (req.query.url as string) || req.body?.url;
+      if (!url || typeof url !== "string") {
+        res.status(400).json({ error: "Missing url parameter" });
+        return;
+      }
+      const fetchRes = await fetch(url);
+      if (!fetchRes.ok) {
+        res.status(fetchRes.status).json({ error: `Failed to fetch file: ${fetchRes.statusText}` });
+        return;
+      }
+      const arrayBuffer = await fetchRes.arrayBuffer();
+      const base64 = Buffer.from(arrayBuffer).toString("base64");
+      const mimeType = fetchRes.headers.get("content-type") || "application/pdf";
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.json({ base64, mimeType });
+    } catch (err: any) {
+      console.error("[Proxy File API] Error fetching remote file:", err);
+      res.status(500).json({ error: err?.message || "Internal server error" });
+    }
+  });
 
   // API Health Endpoint
   app.get("/api/health", (_req, res) => {

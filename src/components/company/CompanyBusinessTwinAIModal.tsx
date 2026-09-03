@@ -30,9 +30,13 @@ import {
   Lock,
   BadgeCheck,
 } from "lucide-react";
-import type { CompanyProfile, ProductEntity, ServiceEntity, CompanyOffering } from "@/lib/types";
+import type { CompanyProfile, ProductEntity, ServiceEntity, CompanyOffering, KnowledgeSourceEntity } from "@/lib/types";
 import { getCompanyProducts, getCompanyServices } from "@/lib/registry";
 import { resolveMarineWorldCompanyDigitalId } from "@/lib/services/companyIdentityService";
+import { getCompanyOfferings, fetchCompanyOfferingsAsync } from "@/lib/services/offeringEntityService";
+import { resolvePdfAsBase64 } from "@/lib/services/offeringAIService";
+import { getKnowledgeSources } from "@/lib/services/knowledgeLifecycleService";
+import { generateAIContent, generateAIContentWithParts, type AIPart } from "@/lib/gemini";
 import { ShareProtocolModal } from "./ShareProtocolModal";
 
 export type TwinPerspectiveMode = "technical" | "commercial" | "negotiation" | "operations";
@@ -75,8 +79,19 @@ export function CompanyBusinessTwinAIModal({
   const [isRecording, setIsRecording] = useState(false);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [copiedId, setCopiedId] = useState(false);
+  const [asyncOfferings, setAsyncOfferings] = useState<CompanyOffering[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Sync offerings from Firestore on mount
+  useEffect(() => {
+    if (!company?.id) return;
+    fetchCompanyOfferingsAsync(company.id).then((list) => {
+      if (list && list.length > 0) {
+        setAsyncOfferings(list);
+      }
+    });
+  }, [company?.id]);
 
   // Identity extraction
   const displayName = company.displayName || company.name || "Enterprise Node";
@@ -100,10 +115,24 @@ export function CompanyBusinessTwinAIModal({
   const sectorCityName = (company.sectorCityIds?.[0] || company.cityIds?.[0] || "shipyard").toUpperCase();
   const formattedSectorCity = sectorCityName.endsWith(".CITY") ? sectorCityName : `${sectorCityName}.CITY`;
 
-  // Offerings & Capabilities
+  // Offerings & Knowledge Sources
   const products: ProductEntity[] = getCompanyProducts(company) || [];
   const services: ServiceEntity[] = getCompanyServices(company) || [];
-  const offerings: CompanyOffering[] = company.offerings || [];
+  const canonicalOfferings = getCompanyOfferings(company.id) || [];
+  const mergedOfferingsMap = new Map<string, CompanyOffering>();
+  [...canonicalOfferings, ...(company.offerings || []), ...asyncOfferings].forEach((o) => {
+    if (o && o.id && !mergedOfferingsMap.has(o.id)) {
+      mergedOfferingsMap.set(o.id, o);
+    }
+  });
+  const offerings: CompanyOffering[] = Array.from(mergedOfferingsMap.values());
+
+  const knowledgeDocs: KnowledgeSourceEntity[] = [
+    ...(getKnowledgeSources(company.id) || []),
+    ...((company as any).knowledgeSources || []),
+    ...((company as any).documents || []),
+  ];
+
   const capabilities: string[] = company.capabilities || [
     "Custom Shipbuilding",
     "Naval Architecture",
@@ -247,14 +276,15 @@ export function CompanyBusinessTwinAIModal({
     setInputQuery("");
     setIsGenerating(true);
 
-    setTimeout(() => {
-      const response = generateComprehensiveTwinResponse(
+    try {
+      const response = await generateComprehensiveTwinResponseAsync(
         q,
         selectedMode,
         company,
         products,
         services,
         offerings,
+        knowledgeDocs,
         capabilities,
         digitalIdInfo.mwCompanyDigitalId,
         formattedSectorCity
@@ -272,8 +302,11 @@ export function CompanyBusinessTwinAIModal({
       };
 
       setMessages((prev) => [...prev, twinMsg]);
+    } catch (err) {
+      console.warn("[CompanyBusinessTwinAIModal] Error generating response:", err);
+    } finally {
       setIsGenerating(false);
-    }, 600);
+    }
   };
 
   // Simulated Voice Dictation
@@ -863,55 +896,75 @@ function renderFormattedText(text: string, isUser: boolean) {
 
   const lines = text.split("\n");
   return (
-    <div className="space-y-2 font-sans">
-      {lines.map((line, idx) => {
-        if (!line.trim()) {
+    <div className="space-y-2 font-sans text-[13px] leading-relaxed">
+      {lines.map((rawLine, idx) => {
+        const trimmed = rawLine.trim();
+        if (!trimmed) {
           return <div key={idx} className="h-1" />;
         }
 
-        // Bold and italic formatting parser
-        const parts = line.split(/(\*\*.*?\*\*|\*.*?\*|`.*?`)/g);
+        // Bullet detection
+        const isSubBullet = rawLine.startsWith("    ") || rawLine.startsWith("\t") || rawLine.startsWith("  *") || rawLine.startsWith("  -");
+        const isBullet = isSubBullet || trimmed.startsWith("* ") || trimmed.startsWith("- ") || trimmed.startsWith("• ") || trimmed.startsWith("* *");
 
-        const renderedLine = parts.map((part, pIdx) => {
+        let contentLine = trimmed;
+        if (isBullet) {
+          contentLine = contentLine.replace(/^(\*\s*|\-\s*|•\s*)+/, "").trim();
+        }
+
+        // Bold and formatting parser
+        const parts = contentLine.split(/(\*\*.*?\*\*|\*.*?\*|`.*?`)/g);
+
+        const parsedContent = parts.map((part, pIdx) => {
           if (part.startsWith("**") && part.endsWith("**")) {
+            const inner = part.slice(2, -2).trim();
+            const cleanedInner = inner.replace(/^\*+|\*+$/g, "");
             return (
               <strong key={pIdx} className="font-bold text-graphite">
-                {part.slice(2, -2)}
+                {cleanedInner}
               </strong>
             );
           }
-          if (part.startsWith("*") && part.endsWith("*")) {
+          if (part.startsWith("*") && part.endsWith("*") && part.length > 2) {
             return (
-              <em key={pIdx} className="text-stone italic">
+              <span key={pIdx} className="font-medium text-graphite">
                 {part.slice(1, -1)}
-              </em>
+              </span>
             );
           }
           if (part.startsWith("`") && part.endsWith("`")) {
             return (
-              <code key={pIdx} className="font-sans font-semibold text-[11px] bg-canvas border border-line px-1.5 py-0.5 rounded text-royal">
+              <code key={pIdx} className="font-mono text-royal bg-canvas border border-line px-1.5 py-0.5 rounded text-[11px]">
                 {part.slice(1, -1)}
               </code>
             );
           }
-          return <span key={pIdx}>{part}</span>;
+          const cleanedText = part.replace(/\*\*\*/g, "").replace(/\*\*/g, "");
+          return <span key={pIdx}>{cleanedText}</span>;
         });
 
-        if (line.startsWith("• ") || line.startsWith("- ")) {
+        if (isBullet) {
           return (
-            <div key={idx} className="flex items-start gap-2 pl-1">
-              <span className="text-royal font-bold">•</span>
-              <div className="flex-1 text-slate-800">{renderedLine.slice(1)}</div>
+            <div key={idx} className={`flex items-start gap-2 ${isSubBullet ? "pl-4 text-slate-700" : "pl-0.5 text-slate-800"}`}>
+              <span className="text-royal font-bold select-none text-[13px] leading-tight">
+                {isSubBullet ? "›" : "•"}
+              </span>
+              <div className="flex-1 leading-relaxed">
+                {parsedContent}
+              </div>
             </div>
           );
         }
 
-        return <p key={idx} className="text-slate-800 leading-relaxed">{renderedLine}</p>;
+        return <p key={idx} className="text-slate-800 leading-relaxed">{parsedContent}</p>;
       })}
     </div>
   );
 }
 
+/**
+ * Comprehensive Grounded AI Knowledge Generator
+ */
 /**
  * Comprehensive Grounded AI Knowledge Generator
  */
@@ -937,22 +990,28 @@ function generateComprehensiveTwinResponse(
   const country = company.country || company.registrationCountry || "Netherlands";
 
   // 1. Products & Offerings Query
-  if (q.includes("product") || q.includes("offering") || q.includes("build") || q.includes("yacht") || q.includes("vessel") || q.includes("equipment") || q.includes("catalog")) {
+  if (q.includes("product") || q.includes("offering") || q.includes("build") || q.includes("equipment") || q.includes("catalog") || q.includes("ürün") || q.includes("katalog")) {
     const list = offerings.length > 0
-      ? offerings.slice(0, 4).map((o) => `• **${o.name}** (${o.category || "Commercial Offering"}) — ${o.shortDescription || "Full institutional specification available."}`).join("\n")
+      ? offerings.slice(0, 5).map((o) => {
+          const price = o.price || o.commercialInformation?.price;
+          const currency = o.currency || o.commercialInformation?.currency || "USD";
+          const symbol = currency === "EUR" ? "€" : currency === "TRY" ? "₺" : currency === "GBP" ? "£" : "$";
+          const priceBadge = price ? ` — Price: **${price.includes("$") || price.includes("€") || price.includes("₺") ? price : `${symbol}${price} ${currency}`}**` : "";
+          return `• **${o.name}** (${o.category || "Commercial Offering"})${priceBadge}\n  ${o.shortDescription || "Full institutional specification available."}`;
+        }).join("\n\n")
       : products.length > 0
-      ? products.slice(0, 4).map((p) => `• **${p.name}** (${p.category}) — ${p.shortDescription || p.description}`).join("\n")
-      : `• **Custom Naval Architecture & Shipbuilding** — Flagship specialized marine construction.\n• **Propulsion & Propulsion System Integration** — High-efficiency mechanical and hybrid systems.\n• **Drydock Refit & Modernization Programs** — Lifecycle upgrades and survey completions.`;
+      ? products.slice(0, 5).map((p) => `• **${p.name}** (${p.category})\n  ${p.shortDescription || p.description}`).join("\n\n")
+      : `• **Verified Marine Engineering Services** — Flagship specialized maritime solutions.`;
 
     return {
-      text: `Here is an overview of our verified product catalog and build programs for **${displayName}**:\n\n${list}\n\nAll units are engineered under strict classification standards (DNV, Lloyd's Register, ABS) and supported across international corridors in **${sectorCity}**.\n\nWould you like detailed engineering schematics, drydock lead times, or a formal build-slot schedule?`,
-      sources: ["MarineWorld Product Catalog", "Vessel Build Registry", "Class Society Certifications"],
+      text: `Here is an overview of our verified product & offering catalog for **${displayName}**:\n\n${list}\n\nAll items are manufactured/delivered under verified classification standards (DNV, Lloyd's Register, ABS) and supported across **${sectorCity}**.\n\nWould you like detailed engineering schematics, lead times, or a formal quotation?`,
+      sources: ["MarineWorld Product Catalog", "Verified Offering Registry", "Class Society Certifications"],
       parameterCard: {
         title: "Catalog Compliance & Specifications",
         items: [
           { label: "Class Society", value: "DNV / Lloyd's / ABS" },
           { label: "Jurisdiction", value: sectorCity },
-          { label: "Standard Terms", value: "BIMCO / Baltic Exchange" },
+          { label: "Standard Terms", value: "BIMCO / Maritime Standard" },
           { label: "Warranty Coverage", value: "24-Month Comprehensive" },
         ],
       },
@@ -960,8 +1019,8 @@ function generateComprehensiveTwinResponse(
     };
   }
 
-  // 2. Sales / Contact / RFQ Query
-  if (q.includes("sales") || q.includes("contact") || q.includes("rfq") || q.includes("email") || q.includes("quote") || q.includes("pricing") || q.includes("cost") || q.includes("rate") || q.includes("desk")) {
+  // 2. Sales / Contact / RFQ / Price Query
+  if (q.includes("sales") || q.includes("contact") || q.includes("rfq") || q.includes("email") || q.includes("quote") || q.includes("pricing") || q.includes("cost") || q.includes("rate") || q.includes("desk") || q.includes("fiyat") || q.includes("iletişim") || q.includes("teklif")) {
     const email = company.officialEmail || `commercial@${company.slug || "marine"}.com`;
     const phone = company.officialPhone || "+31 (0) 10 400 9000";
 
@@ -981,17 +1040,17 @@ function generateComprehensiveTwinResponse(
     };
   }
 
-  // 3. Technical Specs / Docks / Engineering
-  if (q.includes("spec") || q.includes("technical") || q.includes("dock") || q.includes("shipyard") || q.includes("facility") || q.includes("engine") || q.includes("power") || q.includes("dimension")) {
+  // 3. Technical Specs / Facility / Engineering
+  if (q.includes("spec") || q.includes("technical") || q.includes("dock") || q.includes("shipyard") || q.includes("facility") || q.includes("teknik") || q.includes("kapasite")) {
     const caps = capabilities.slice(0, 5).map((c) => `• **${c}**`).join("\n");
     return {
-      text: `**Technical Profile & Operating Facilities for ${displayName}**:\n\n• **Primary Hub**: ${city}, ${country}\n• **Dock Capacities**: Accommodates drydocking, major refits, and newbuild hulls.\n• **Classification Societies**: DNV, Lloyd's Register, Bureau Veritas, ABS.\n• **Core Capabilities**:\n${caps}\n\nOur engineering offices leverage 3D finite-element modeling, CFD hydrodynamic simulations, and digital twin telemetry integration.`,
+      text: `**Technical Profile & Operating Facilities for ${displayName}**:\n\n• **Primary Operating Hub**: ${city}, ${country}\n• **Classification Societies**: DNV, Lloyd's Register, Bureau Veritas, ABS.\n• **Core Capabilities**:\n${caps}\n\nOur engineering offices leverage 3D finite-element modeling, CFD hydrodynamic simulations, and digital twin telemetry integration.`,
       sources: ["Technical Facility Audit", "Engineering Taxonomy Database"],
       parameterCard: {
         title: "Engineering & Facility Envelope",
         items: [
           { label: "Class Society Approvals", value: "DNV, LR, ABS, BV" },
-          { label: "Hydrodynamics", value: "CFD & Scale Tank Tested" },
+          { label: "Jurisdiction", value: sectorCity },
           { label: "IMO Compliance", value: "IMO Tier III / MARPOL" },
           { label: "Telemetry Integration", value: "Live Sync" },
         ],
@@ -1003,14 +1062,14 @@ function generateComprehensiveTwinResponse(
   // 4. Perspective Mode specific answers
   if (mode === "commercial") {
     return {
-      text: `**Commercial Terms & Contract Framework (${displayName})**:\n\n• **Build Milestones**: 20% Initial Contract Deposit, 30% Hull Completion, 30% Outfitting & Sea Trials, 20% Delivery.\n• **Standard Lead Time**: 6–18 months depending on hull series and customization scope.\n• **Warranties**: 24-month comprehensive shipyard warranty backed by global parts availability.\n• **Contract Standard**: BIMCO / Baltic Exchange standard shipbuilding contract clauses.`,
+      text: `**Commercial Terms & Contract Framework (${displayName})**:\n\n• **Milestone Terms**: 20% Initial Contract Deposit, 30% Hull/Engineering Completion, 30% Outfitting & Sea Trials, 20% Delivery.\n• **Standard Lead Time**: Standard manufacturing & mobilization schedule.\n• **Warranties**: 24-month comprehensive warranty backed by global parts availability.\n• **Contract Standard**: BIMCO / Baltic Exchange standard commercial clauses.`,
       sources: ["Commercial Policy & Standard Contract Framework"],
       parameterCard: {
         title: "Milestone & Settlement Framework",
         items: [
           { label: "Deposit Structure", value: "20% Initial Milestone" },
           { label: "Interim Payment", value: "60% Progress Milestones" },
-          { label: "Final Delivery", value: "20% Sea Trial Acceptance" },
+          { label: "Final Delivery", value: "20% Acceptance" },
           { label: "Governing Law", value: "Maritime Commercial Law" },
         ],
       },
@@ -1018,26 +1077,9 @@ function generateComprehensiveTwinResponse(
     };
   }
 
-  if (mode === "negotiation") {
-    return {
-      text: `**Project Scope & SLA Customization (${displayName})**:\n\nWe structure tailored commercial agreements for enterprise clients, commercial fleet operators, and institutional buyers, including:\n\n• Turnkey fixed-price or cost-plus milestone contracts.\n• Integrated logistics support (ILS) and 5-year guaranteed service level agreements (SLAs).\n• Joint venture partnerships and customized contract terms.\n\nTo discuss non-disclosure terms or request a commercial consultation, please open our direct connect portal.`,
-      sources: ["Commercial Consultation Protocol", "Enterprise SLA Architecture"],
-      parameterCard: {
-        title: "Governance & Contract Terms",
-        items: [
-          { label: "Custom Scope", value: "Full Turnkey or Modular" },
-          { label: "SLA Term", value: "Up to 5 Years Guaranteed" },
-          { label: "Contract Terms", value: "Tailored Commercial Terms" },
-          { label: "Commercial Desk", value: "Direct Routing" },
-        ],
-      },
-      action: { label: "Initiate Commercial Dialogue", actionType: "CONNECT" },
-    };
-  }
-
   // Default Comprehensive Answer
   return {
-    text: `**${displayName}** is a verified marine enterprise headquartered in **${city}, ${country}**.\n\nWe maintain commercial readiness, certified marine engineering, and active operations across **${sectorCity}**.\n\nI can provide information on:\n• **Verified Products & Vessel Configurations**\n• **Shipyard Dock Dimensions & Global Support Hubs**\n• **Quotation & Commercial RFQ Timelines**\n• **Classification Certifications & Quality Standards**\n\nWhat would you like to know?`,
+    text: `**${displayName}** is a verified marine enterprise headquartered in **${city}, ${country}**.\n\nWe maintain commercial readiness, certified marine engineering, and active operations across **${sectorCity}**.\n\nI can provide information on:\n• **Verified Products & Technical Specifications**\n• **Pricing, Lead Times & Commercial Quotations**\n• **Attached Engineering Documents & Blueprints**\n• **Classification Certifications & Quality Standards**\n\nWhat would you like to know?`,
     sources: ["MarineWorld Digital Identity Master", "Verified Corporate Factsheet"],
     parameterCard: {
       title: "Company Summary",
@@ -1050,4 +1092,166 @@ function generateComprehensiveTwinResponse(
     },
     action: { label: "Explore Offerings", actionType: "OFFERINGS" },
   };
+}
+
+/**
+ * Live Grounded Company AI using Gemini API with all Firestore data, offerings, prices, and attached documents
+ */
+async function generateComprehensiveTwinResponseAsync(
+  query: string,
+  mode: TwinPerspectiveMode,
+  company: CompanyProfile,
+  products: ProductEntity[],
+  services: ServiceEntity[],
+  offerings: CompanyOffering[],
+  knowledgeDocs: KnowledgeSourceEntity[],
+  capabilities: string[],
+  digitalId: string,
+  sectorCity: string
+): Promise<{
+  text: string;
+  sources: string[];
+  parameterCard?: { title: string; items: { label: string; value: string }[] };
+  action?: { label: string; actionType: "CONNECT" | "OFFERINGS" | "SHARE" | "DOWNLOAD" };
+}> {
+  const syncFallback = generateComprehensiveTwinResponse(
+    query,
+    mode,
+    company,
+    products,
+    services,
+    offerings,
+    capabilities,
+    digitalId,
+    sectorCity
+  );
+
+  try {
+    const displayName = company.displayName || company.name || "Company";
+    const city = company.headquartersCity || company.city || "Rotterdam";
+    const country = company.country || company.registrationCountry || "Netherlands";
+    
+    // Format offerings summary with prices and specs
+    const offeringLines = offerings.map((o) => {
+      const price = o.price || o.commercialInformation?.price;
+      const currency = o.currency || o.commercialInformation?.currency || "USD";
+      const symbol = currency === "EUR" ? "€" : currency === "TRY" ? "₺" : currency === "GBP" ? "£" : "$";
+      const priceStr = price ? `Price: ${price.includes("$") || price.includes("€") || price.includes("₺") ? price : `${symbol}${price} ${currency}`}` : "Price: Available upon RFQ";
+      const leadTime = o.commercialInformation?.leadTime ? `, Lead Time: ${o.commercialInformation.leadTime}` : "";
+      const incoterms = o.commercialInformation?.incoterms ? `, Incoterms: ${o.commercialInformation.incoterms}` : "";
+      const specs = o.specifications ? Object.entries(o.specifications).slice(0, 3).map(([k, v]) => `${k}: ${v}`).join(", ") : "";
+      return `- **${o.name}** (${o.type?.toUpperCase() || "OFFERING"} / ${o.category || "General"}): ${o.shortDescription || ""}. [${priceStr}${leadTime}${incoterms}]. ${specs ? `Key Specs: [${specs}]` : ""}`;
+    }).join("\n");
+
+    // Format company knowledge documents & all offering grounding documents
+    const allCompanyDocsMap = new Map<string, string>();
+    knowledgeDocs.forEach((d: any) => {
+      const title = d.title || d.name || d.filename || "Document";
+      const type = d.sourceType || d.type || "Document";
+      const summary = d.summary || d.contentExcerpt || d.description || d.extractedText || "";
+      allCompanyDocsMap.set(title, `• Document: "${title}" (${type})${summary ? `\n  Summary/Content: ${summary}` : ""}`);
+    });
+
+    offerings.forEach((o) => {
+      (o.groundingSources || []).forEach((g) => {
+        const title = g.title || g.filename || "Offering Resource";
+        const summary = g.summary || g.contentExcerpt || g.description || g.extractedText || o.shortDescription || "";
+        allCompanyDocsMap.set(title, `• Resource Document: "${title}" (${g.fileType || "PDF"}) for Offering [${o.name}]\n  Summary/Content: ${summary}`);
+      });
+      (o.mediaReferences || []).filter((m) => m.type === "drawing" || m.url?.toLowerCase().includes(".pdf")).forEach((m) => {
+        const title = m.title || "Blueprint Drawing";
+        allCompanyDocsMap.set(title, `• Technical Drawing / Blueprint: "${title}" (PDF) for Offering [${o.name}]`);
+      });
+    });
+
+    const docLines = Array.from(allCompanyDocsMap.values()).join("\n\n");
+
+    const prompt = `You are the official Company AI representative for "${displayName}" on the MarineWorld global maritime network.
+You have complete access to this company's verified profile, all registered products and services, commercial pricing, technical parameters, and all attached documents and resources.
+
+VERIFIED COMPANY DATA:
+- Company Name: ${displayName}
+- Legal Name: ${company.legalName || displayName}
+- Digital Registry ID: ${digitalId}
+- Headquarters: ${city}, ${country}
+- Sector City: ${sectorCity}
+- Operating Status: ${company.operatingStatus || "ACTIVE"}
+- Verification Status: ${company.verificationStatus || "VERIFIED"}
+- Official Commercial Email: ${company.officialEmail || "commercial@" + (company.slug || "marine") + ".com"}
+- Official Operations Phone: ${company.officialPhone || "+31 (0) 10 400 9000"}
+- Company Description: ${company.description || company.corporateDescription || company.shortDescription || "N/A"}
+- Core Capabilities: ${capabilities.join(", ") || "Marine Engineering, Vessel Construction, Maritime Services"}
+
+REGISTERED PRODUCTS & SERVICES (OFFERINGS WITH SPECIFICATIONS & PRICING):
+${offeringLines || "No individual offerings registered yet."}
+
+ATTACHED DOCUMENTS & GROUNDED KNOWLEDGE RESOURCES (FULL DIRECT VISIBILITY):
+${docLines || "Standard MarineWorld Verified Registry Files."}
+
+CURRENT PERSPECTIVE MODE: ${mode.toUpperCase()}
+
+USER INQUIRY:
+"${query}"
+
+INSTRUCTIONS:
+1. Provide an authoritative, precise, professional, and helpful response strictly representing ${displayName}.
+2. You have FULL DIRECT VISIBILITY to inspect and understand all attached PDF documents, datasheets, blueprints, and files listed under ATTACHED DOCUMENTS & GROUNDED KNOWLEDGE RESOURCES.
+3. If the user asks what is in any document, asks about the document contents, or refers to any uploaded PDF/resource, explain and cite the content of that document accurately.
+4. Use ALL facts from the verified data above. If the user asks about specific products, prices, lead times, documents, or services, quote them accurately.
+5. If the user asks in Turkish, respond in natural professional Turkish. If in English, respond in English.
+6. Structure the response clearly with bold titles, clean bullet points (e.g. • Item: Value), and markdown without messy asterisks.
+7. If the user asks for commercial quotes, RFQs, or contact, provide the email, phone, and direct connect recommendations.
+8. Keep the response concise and focused (1 to 3 paragraphs).`;
+
+    const systemInstruction = `You are the verified Company AI for "${displayName}". You have full direct access to the company's verified profile, offerings, specifications, prices, and attached PDF resources. Answer authoritatively and accurately using ONLY the verified facts. Zero hallucination.`;
+
+    // Gather candidate PDF URLs (limit to 2 most relevant documents)
+    const candidateUrls: string[] = [];
+    for (const d of knowledgeDocs) {
+      const candidateUrl = (d as any).base64Data || d.url || (d as any).fileUrl;
+      if (candidateUrl && !candidateUrls.includes(candidateUrl)) candidateUrls.push(candidateUrl);
+    }
+    for (const o of offerings) {
+      for (const g of o.groundingSources || []) {
+        const candidateUrl = (g as any).base64Data || g.url;
+        if (candidateUrl && !candidateUrls.includes(candidateUrl)) candidateUrls.push(candidateUrl);
+      }
+    }
+
+    const parts: (string | AIPart)[] = [];
+    const resolvedPdfs = await Promise.all(
+      candidateUrls.slice(0, 2).map((url) => resolvePdfAsBase64(url))
+    );
+
+    for (const b64 of resolvedPdfs) {
+      if (b64) {
+        parts.push({
+          inlineData: {
+            mimeType: "application/pdf",
+            data: b64,
+          },
+        });
+      }
+    }
+
+    // Append instruction prompt
+    parts.push({ text: prompt });
+
+    const aiText = await generateAIContentWithParts(parts, systemInstruction);
+    if (aiText && aiText.trim().length > 10) {
+      const sources: string[] = ["MarineWorld Verified Registry", `${displayName} Corporate Catalog`];
+      if (offerings.length > 0) sources.push("Verified Offering Specifications");
+      if (knowledgeDocs.length > 0) sources.push("Attached Technical Documents");
+
+      return {
+        ...syncFallback,
+        text: aiText.trim(),
+        sources: sources.slice(0, 3),
+      };
+    }
+  } catch (err) {
+    console.warn("[CompanyBusinessTwinAIModal] Live Gemini AI fallback:", err);
+  }
+
+  return syncFallback;
 }

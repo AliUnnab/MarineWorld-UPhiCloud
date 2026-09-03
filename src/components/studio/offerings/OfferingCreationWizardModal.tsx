@@ -38,6 +38,7 @@ import {
   ArrowDown,
   Maximize2,
   RefreshCw,
+  ExternalLink,
 } from "lucide-react";
 import type {
   CompanyOffering,
@@ -98,11 +99,23 @@ const AVAILABLE_ROLES: AdvisorRole[] = [
 
 const AVAILABLE_PRIORITIES: AdvisorConversationPriority[] = [
   "Technical Specifications",
-  "Applications & Suitability",
-  "Certifications & Compliance",
-  "Commercial Information",
-  "Availability & Lead Time",
-  "RFQ / Offer Requests",
+  "Commercial Terms",
+  "Class & Certification",
+  "Applications & Integrations",
+];
+
+const SUGGESTED_PARAMETERS = [
+  "Dimensions (L x W x H)",
+  "Weight (Air / Water)",
+  "Power / Operating Voltage",
+  "Max Depth Rating",
+  "Operating Temperature",
+  "Material / Alloy Grade",
+  "Payload Capacity",
+  "Flow Rate / Speed",
+  "Communication Protocol",
+  "Class Approval / Standard",
+  "Warranty Period",
 ];
 
 const AVAILABLE_STYLES: AdvisorCommunicationStyle[] = [
@@ -147,6 +160,7 @@ export const OfferingCreationWizardModal: React.FC<OfferingCreationWizardModalPr
     url?: string;
     isDownloadable?: boolean;
     isGroundingSource?: boolean;
+    base64Data?: string;
   }>>([]);
   const [selectedDriveFolderId, setSelectedDriveFolderId] = useState<string>("gdrive-f-rov4");
   const [selectedDriveFiles, setSelectedDriveFiles] = useState<string[]>(["gdf-01", "gdf-02", "gdf-03"]);
@@ -183,44 +197,52 @@ export const OfferingCreationWizardModal: React.FC<OfferingCreationWizardModalPr
     resolvedValue?: string;
   }>>([]);
 
-  // Specifications key/value
+  // Specifications key/value (Starts empty unless edited or AI extracted)
   const [specifications, setSpecifications] = useState<Array<{ key: string; value: string; source?: string }>>(
     initialOffering?.specifications
-      ? Object.entries(initialOffering.specifications).map(([key, value]) => ({ key, value: String(value) }))
-      : [
-          { key: "Standard Operating Rating", value: "Heavy-Duty Marine Grade" },
-          { key: "Classification Standard", value: "Class Approved (DNV / Lloyd's)" },
-        ]
+      ? (Array.isArray(initialOffering.specifications)
+          ? (initialOffering.specifications as any)
+          : Object.entries(initialOffering.specifications).map(([key, value]) => ({ key, value: String(value) })))
+      : []
   );
 
   // Applications
   const [applications, setApplications] = useState<string[]>(
-    initialOffering?.applications || ["Commercial Shipping", "Shipyard Overhaul", "Offshore Marine Operations"]
+    initialOffering?.applications || []
   );
   const [newApplicationInput, setNewApplicationInput] = useState("");
 
   // Certifications
   const [certifications, setCertifications] = useState<string[]>(
-    initialOffering?.certifications || ["ISO 9001:2015", "DNV GL Class Approved"]
+    initialOffering?.certifications || []
   );
   const [newCertInput, setNewCertInput] = useState("");
 
   // Standards
   const [standards, setStandards] = useState<string[]>(
-    initialOffering?.standards || ["IMO Tier III Compliant", "IEC 60092 Marine Standard"]
+    initialOffering?.standards || []
   );
   const [newStandardInput, setNewStandardInput] = useState("");
 
-  // Commercial Information
+  // Commercial Information & Pricing
+  const [price, setPrice] = useState<string>(
+    initialOffering?.price || initialOffering?.commercialInformation?.price || ""
+  );
+  const [currency, setCurrency] = useState<string>(
+    initialOffering?.currency || initialOffering?.commercialInformation?.currency || "USD"
+  );
+  const [pricingType, setPricingType] = useState<string>(
+    initialOffering?.commercialInformation?.pricingType || "FIXED"
+  );
   const [commercialInfo, setCommercialInfo] = useState<OfferingCommercialInfo>(
     initialOffering?.commercialInformation || {
-      pricingGuidance: "Available upon commercial RFQ / project quotation.",
-      incoterms: "EXW / FOB Port of Delivery",
-      leadTime: "4–8 Weeks Standard",
+      pricingGuidance: "",
+      incoterms: "EXW / FOB",
+      leadTime: "",
       availability: "AVAILABLE ON ORDER",
       rfqAvailable: true,
-      minOrderQty: "1 Unit / Project Scope",
-      warranty: "24-Month Marine Warranty",
+      minOrderQty: "1 Unit",
+      warranty: "",
     }
   );
 
@@ -229,20 +251,9 @@ export const OfferingCreationWizardModal: React.FC<OfferingCreationWizardModalPr
   const [coverage, setCoverage] = useState(initialOffering?.coverage || "");
   const [deliveryModel, setDeliveryModel] = useState(initialOffering?.deliveryModel || "");
 
-  // Media State & Desktop Upload
+  // Media State & Desktop Upload (Starts empty unless already uploaded/saved in data storage)
   const [mediaList, setMediaList] = useState<OfferingMediaItem[]>(
-    initialOffering?.mediaReferences || initialOffering?.media || [
-      {
-        id: "med-01",
-        url: offeringType === "product"
-          ? "https://images.unsplash.com/photo-1544551763-46a013bb70d5?auto=format&fit=crop&w=1200&q=80"
-          : "https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=1200&q=80",
-        title: `${name || "Offering"} Primary Visual Asset`,
-        type: "cover",
-        isCover: true,
-        order: 1,
-      },
-    ]
+    initialOffering?.mediaReferences || initialOffering?.media || []
   );
   const [mediaUploadTab, setMediaUploadTab] = useState<"DESKTOP" | "URL">("DESKTOP");
   const [isMediaDragActive, setIsMediaDragActive] = useState(false);
@@ -447,6 +458,10 @@ export const OfferingCreationWizardModal: React.FC<OfferingCreationWizardModalPr
     setSpecifications([...specifications, { key: "", value: "" }]);
   };
 
+  const handleAddSpecWithKey = (keyName: string = "", defaultValue: string = "") => {
+    setSpecifications((prev) => [...prev, { key: keyName, value: defaultValue }]);
+  };
+
   const handleUpdateSpec = (index: number, field: "key" | "value", val: string) => {
     const updated = [...specifications];
     updated[index][field] = val;
@@ -478,6 +493,55 @@ export const OfferingCreationWizardModal: React.FC<OfferingCreationWizardModalPr
     setNewStandardInput("");
   };
 
+  const readFileAsBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const res = reader.result as string;
+        const base64 = res.includes(",") ? res.split(",")[1] : res;
+        resolve(base64);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleSelectDocumentFiles = async (files: FileList | File[]) => {
+    const fileArray = Array.from(files);
+    if (fileArray.length === 0) return;
+
+    const newFiles: Array<{
+      name: string;
+      size: number;
+      type: string;
+      origin: "COMPUTER";
+      isGroundingSource: boolean;
+      isDownloadable: boolean;
+      base64Data?: string;
+    }> = [];
+
+    for (const f of fileArray) {
+      let b64: string | undefined;
+      try {
+        b64 = await readFileAsBase64(f);
+      } catch (err) {
+        console.warn("Could not read file base64:", err);
+      }
+
+      newFiles.push({
+        name: f.name,
+        size: f.size,
+        type: f.type,
+        origin: "COMPUTER",
+        isGroundingSource: true,
+        isDownloadable: true,
+        base64Data: b64,
+      });
+    }
+
+    setSourceFilesList((prev) => [...prev, ...newFiles]);
+  };
+
   // Format file size
   const formatFileSize = (bytes: number) => {
     if (bytes < 1024) return `${bytes} B`;
@@ -485,7 +549,7 @@ export const OfferingCreationWizardModal: React.FC<OfferingCreationWizardModalPr
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
-  // Add Desktop Media Files
+  // Add Desktop Media Files (Photos, Blueprints, PDF Schematics, CAD Renders)
   const handleProcessDesktopFiles = async (files: FileList | File[], makeCoverFirst: boolean = false) => {
     const fileArray = Array.from(files);
     if (fileArray.length === 0) return;
@@ -494,12 +558,16 @@ export const OfferingCreationWizardModal: React.FC<OfferingCreationWizardModalPr
       const file = fileArray[index];
       const isImgOrDoc =
         file.type.startsWith("image/") ||
-        file.name.match(/\.(png|jpe?g|webp|svg|gif|avif|bmp|tiff|pdf|dwg)$/i);
+        file.type === "application/pdf" ||
+        file.name.match(/\.(png|jpe?g|webp|svg|gif|avif|bmp|tiff|pdf|dwg|dxf|cad|step|stp)$/i);
       if (!isImgOrDoc) continue;
 
       const lower = file.name.toLowerCase();
+      const isPdf = lower.endsWith(".pdf") || file.type === "application/pdf";
       let detectedType: "cover" | "photo" | "drawing" | "video" = "photo";
-      if (
+      if (isPdf) {
+        detectedType = "drawing";
+      } else if (
         lower.includes("drawing") ||
         lower.includes("dwg") ||
         lower.includes("cad") ||
@@ -511,7 +579,7 @@ export const OfferingCreationWizardModal: React.FC<OfferingCreationWizardModalPr
         detectedType = "drawing";
       } else if (
         makeCoverFirst ||
-        (index === 0 && (mediaList.length === 0 || lower.includes("cover") || lower.includes("main") || lower.includes("hero")))
+        (index === 0 && !isPdf && (mediaList.length === 0 || lower.includes("cover") || lower.includes("main") || lower.includes("hero")))
       ) {
         detectedType = "cover";
       }
@@ -526,7 +594,7 @@ export const OfferingCreationWizardModal: React.FC<OfferingCreationWizardModalPr
           companyId,
           categoryFolder: "offerings",
           subFolder: (initialOffering?.id || name || "offering").toLowerCase().replace(/[^a-z0-9]+/g, "-"),
-          fileRole: detectedType,
+          fileRole: isPdf ? "drawing" : detectedType,
         });
 
         const newMediaItem: OfferingMediaItem = {
@@ -534,7 +602,7 @@ export const OfferingCreationWizardModal: React.FC<OfferingCreationWizardModalPr
           url: res.url,
           title: cleanTitle || `${name || "Offering"} Asset`,
           type: detectedType,
-          isCover: makeCoverFirst || (index === 0 && (mediaList.length === 0 || detectedType === "cover")),
+          isCover: !isPdf && (makeCoverFirst || (index === 0 && (mediaList.length === 0 || detectedType === "cover"))),
           order: mediaList.length + index + 1,
         };
 
@@ -551,6 +619,26 @@ export const OfferingCreationWizardModal: React.FC<OfferingCreationWizardModalPr
           }
           return [...prev, newMediaItem];
         });
+
+        // Also register PDF documents into Grounding Sources
+        if (isPdf) {
+          const newSource: OfferingGroundingSource = {
+            id: `src-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            title: cleanTitle,
+            filename: file.name,
+            fileType: "PDF",
+            size: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
+            url: res.url,
+            uploadedAt: new Date().toISOString(),
+            sourceConfidence: 100,
+            extractedFieldsCount: 1,
+            syncStatus: "SYNCED",
+            syncEnabled: true,
+            isDownloadableDocument: true,
+            isGroundingSource: true,
+          };
+          setGroundingSources((prev) => [...prev.filter((s) => s.url !== res.url && s.filename !== file.name), newSource]);
+        }
       } catch (uploadErr) {
         console.error("[OfferingCreationWizardModal] Media upload error:", uploadErr);
       }
@@ -752,7 +840,14 @@ export const OfferingCreationWizardModal: React.FC<OfferingCreationWizardModalPr
       standards: standards.filter(Boolean),
       mediaReferences: mediaList,
       media: mediaList,
-      commercialInformation: commercialInfo,
+      price: offeringType === "product" ? (price.trim() || undefined) : undefined,
+      currency: offeringType === "product" ? (currency.trim() || "USD") : undefined,
+      commercialInformation: {
+        ...commercialInfo,
+        price: offeringType === "product" ? (price.trim() || undefined) : undefined,
+        currency: offeringType === "product" ? (currency.trim() || "USD") : undefined,
+        pricingType: offeringType === "product" ? pricingType : undefined,
+      },
       serviceScope: offeringType === "service" ? serviceScope.trim() : undefined,
       coverage: offeringType === "service" ? coverage.trim() : undefined,
       deliveryModel: offeringType === "service" ? deliveryModel.trim() : undefined,
@@ -1086,6 +1181,17 @@ export const OfferingCreationWizardModal: React.FC<OfferingCreationWizardModalPr
                 <div className="space-y-4">
                   <label
                     htmlFor="file-upload-input"
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                        handleSelectDocumentFiles(e.dataTransfer.files);
+                      }
+                    }}
                     className="border-2 border-dashed border-royal/40 hover:border-royal bg-royal/5 hover:bg-royal/10 rounded-2xl p-8 flex flex-col items-center justify-center gap-3 transition-all cursor-pointer text-center"
                   >
                     <div className="w-14 h-14 rounded-2xl bg-white border border-royal/20 flex items-center justify-center text-royal shadow-xs">
@@ -1108,15 +1214,7 @@ export const OfferingCreationWizardModal: React.FC<OfferingCreationWizardModalPr
                       onChange={(e) => {
                         const files = e.target.files;
                         if (files && files.length > 0) {
-                          const newFiles = Array.from(files).map((f: File) => ({
-                            name: f.name,
-                            size: f.size,
-                            type: f.type,
-                            origin: "COMPUTER" as const,
-                            isGroundingSource: true,
-                            isDownloadable: true,
-                          }));
-                          setSourceFilesList((prev) => [...prev, ...newFiles]);
+                          handleSelectDocumentFiles(files);
                         }
                       }}
                     />
@@ -1573,13 +1671,20 @@ export const OfferingCreationWizardModal: React.FC<OfferingCreationWizardModalPr
                   </div>
 
                   <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 p-3 rounded-xl bg-slate-50 border border-line">
-                    <div className="w-20 h-14 rounded-lg bg-slate-900 overflow-hidden shrink-0 relative border border-slate-200">
+                    <div className="w-20 h-14 rounded-lg bg-slate-900 overflow-hidden shrink-0 relative border border-slate-200 flex items-center justify-center">
                       {mediaList.find((m) => m.isCover)?.url || mediaList[0]?.url ? (
-                        <img
-                          src={mediaList.find((m) => m.isCover)?.url || mediaList[0]?.url}
-                          alt="Cover preview"
-                          className="w-full h-full object-cover"
-                        />
+                        (mediaList.find((m) => m.isCover)?.url || mediaList[0]?.url)?.toLowerCase().includes(".pdf") ? (
+                          <div className="w-full h-full flex flex-col items-center justify-center bg-slate-900 text-rose-400 p-1">
+                            <FileText className="w-5 h-5" />
+                            <span className="text-[8px] font-mono font-bold uppercase mt-0.5">PDF Asset</span>
+                          </div>
+                        ) : (
+                          <img
+                            src={mediaList.find((m) => m.isCover)?.url || mediaList[0]?.url}
+                            alt="Cover preview"
+                            className="w-full h-full object-cover"
+                          />
+                        )
                       ) : (
                         <div className="w-full h-full flex items-center justify-center text-slate-500 text-[10px]">
                           No visual
@@ -1624,51 +1729,117 @@ export const OfferingCreationWizardModal: React.FC<OfferingCreationWizardModalPr
 
               {/* Form Section 2: Technical Specifications Matrix */}
               <div className="rounded-2xl border border-line bg-white p-5 space-y-4 shadow-xs">
-                <div className="flex items-center justify-between border-b border-line pb-2">
-                  <div className="flex items-center gap-2 font-mono text-[11px] font-bold text-graphite uppercase tracking-wider">
-                    <SlidersHorizontal className="w-4 h-4 text-royal" />
-                    <span>2. Verified Technical Specifications ({specifications.length})</span>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-line pb-3">
+                  <div>
+                    <div className="flex items-center gap-2 font-mono text-[11px] font-bold text-graphite uppercase tracking-wider">
+                      <SlidersHorizontal className="w-4 h-4 text-royal" />
+                      <span>2. Technical Specifications & Operating Parameters ({specifications.length})</span>
+                    </div>
+                    <p className="text-[11px] text-stone mt-0.5">
+                      Define engineering attributes, physical dimensions, electrical ratings, depth capabilities, and tolerances.
+                    </p>
                   </div>
                   <button
                     type="button"
-                    onClick={handleAddSpec}
-                    className="inline-flex items-center gap-1 text-[10.5px] font-mono font-bold text-royal hover:underline"
+                    onClick={() => handleAddSpecWithKey("")}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-royal text-white text-xs font-bold shadow-2xs hover:bg-royal/90 cursor-pointer transition shrink-0 uppercase"
                   >
                     <Plus className="w-3.5 h-3.5" />
-                    <span>Add Parameter</span>
+                    <span>Add Parameter +</span>
                   </button>
                 </div>
 
-                <div className="space-y-2.5">
+                {/* Quick Add Suggestions Chips */}
+                <div className="space-y-1.5">
+                  <div className="text-[10px] font-mono font-bold text-stone uppercase tracking-wider flex items-center gap-1">
+                    <span>Quick Suggestion Chips:</span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {SUGGESTED_PARAMETERS.map((param) => {
+                      const alreadyExists = specifications.some((s) => s.key.toLowerCase().trim() === param.toLowerCase().trim());
+                      return (
+                        <button
+                          key={param}
+                          type="button"
+                          onClick={() => handleAddSpecWithKey(param)}
+                          className={`px-2.5 py-1 rounded-lg text-[11px] font-medium border transition cursor-pointer flex items-center gap-1 ${
+                            alreadyExists
+                              ? "bg-slate-100 border-slate-200 text-slate-500 hover:bg-slate-200"
+                              : "bg-mist hover:bg-royal/10 border-line hover:border-royal/30 text-graphite hover:text-royal"
+                          }`}
+                        >
+                          <Plus className="w-3 h-3 text-royal" />
+                          <span>{param}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Specifications Rows */}
+                <div className="space-y-2.5 pt-1">
                   {specifications.map((spec, idx) => (
-                    <div key={idx} className="flex items-center gap-2">
-                      <input
-                        type="text"
-                        value={spec.key}
-                        onChange={(e) => handleUpdateSpec(idx, "key", e.target.value)}
-                        placeholder="Parameter Name (e.g. Max Depth Rating)"
-                        className="flex-1 px-3 py-1.5 rounded-lg border border-line bg-canvas text-xs font-bold text-graphite focus:outline-hidden focus:border-royal"
-                      />
-                      <input
-                        type="text"
-                        value={spec.value}
-                        onChange={(e) => handleUpdateSpec(idx, "value", e.target.value)}
-                        placeholder="Value (e.g. 450 m / 1,476 ft)"
-                        className="flex-1 px-3 py-1.5 rounded-lg border border-line bg-canvas text-xs font-mono text-graphite focus:outline-hidden focus:border-royal"
-                      />
+                    <div key={idx} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 p-2.5 rounded-xl bg-slate-50 border border-line group hover:border-royal/30 transition">
+                      <div className="w-7 h-7 rounded-lg bg-white border border-slate-200 flex items-center justify-center font-mono text-[10px] font-bold text-stone shrink-0">
+                        #{idx + 1}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <input
+                          type="text"
+                          value={spec.key}
+                          onChange={(e) => handleUpdateSpec(idx, "key", e.target.value)}
+                          placeholder="Parameter Name (e.g. Dimensions, Operating Voltage, Weight...)"
+                          className="w-full px-3 py-2 rounded-lg border border-line bg-white text-xs font-bold text-graphite focus:outline-hidden focus:border-royal shadow-2xs"
+                        />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <input
+                          type="text"
+                          value={spec.value}
+                          onChange={(e) => handleUpdateSpec(idx, "value", e.target.value)}
+                          placeholder="Value (e.g. 1200 x 800 mm, 24V DC, 450 m...)"
+                          className="w-full px-3 py-2 rounded-lg border border-line bg-white text-xs font-mono text-graphite focus:outline-hidden focus:border-royal shadow-2xs"
+                        />
+                      </div>
                       <button
                         type="button"
                         onClick={() => handleRemoveSpec(idx)}
-                        className="p-1.5 rounded-lg text-stone hover:text-rose-600 transition"
+                        title="Delete parameter"
+                        className="p-2 rounded-lg text-stone hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer shrink-0 self-end sm:self-center"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
                   ))}
-                  {specifications.length === 0 && (
-                    <div className="p-4 rounded-xl border border-dashed border-amber-200 bg-amber-50/60 text-center font-mono text-xs text-amber-800">
-                      <span className="font-bold">NOT PROVIDED</span> — No technical specifications were found in the uploaded document. Add parameters above to unlock AI Ready status.
+
+                  {/* Empty state or Add more button */}
+                  {specifications.length === 0 ? (
+                    <div className="p-6 rounded-xl border border-dashed border-slate-300 bg-slate-50 text-center space-y-2">
+                      <SlidersHorizontal className="w-8 h-8 mx-auto text-slate-400" />
+                      <div className="space-y-0.5">
+                        <p className="text-xs font-bold text-graphite uppercase">No Parameters Defined</p>
+                        <p className="text-xs text-stone">
+                          Add technical parameters manually or choose from quick suggestion chips above.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleAddSpecWithKey("")}
+                        className="px-4 py-2 rounded-xl bg-royal text-white text-xs font-bold shadow-2xs hover:bg-royal/90 cursor-pointer inline-flex items-center gap-1.5 uppercase"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Add Parameter +</span>
+                      </button>
                     </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => handleAddSpecWithKey("")}
+                      className="w-full py-2.5 rounded-xl border-2 border-dashed border-slate-300 hover:border-royal bg-slate-50/50 hover:bg-royal/5 text-xs font-bold text-royal flex items-center justify-center gap-1.5 transition cursor-pointer uppercase"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>Add Parameter +</span>
+                    </button>
                   )}
                 </div>
               </div>
@@ -1782,92 +1953,163 @@ export const OfferingCreationWizardModal: React.FC<OfferingCreationWizardModalPr
               </div>
 
               {/* Form Section 4: Commercial Information */}
-              <div className="rounded-2xl border border-line bg-white p-5 space-y-4 shadow-xs">
-                <div className="flex items-center gap-2 border-b border-line pb-2 font-mono text-[11px] font-bold text-graphite uppercase tracking-wider">
-                  <FileBadge className="w-4 h-4 text-royal" />
-                  <span>3. Commercial Information & RFQ Parameters</span>
+                {/* Form Section 4: Commercial Information & Pricing */}
+                <div className="rounded-2xl border border-line bg-white p-5 space-y-4 shadow-xs">
+                  <div className="flex items-center justify-between border-b border-line pb-2">
+                    <div className="flex items-center gap-2 font-mono text-[11px] font-bold text-graphite uppercase tracking-wider">
+                      <FileBadge className="w-4 h-4 text-royal" />
+                      <span>3. Commercial Information & RFQ Parameters</span>
+                    </div>
+                    {offeringType === "product" && (
+                      <span className="text-[10px] font-mono font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                        COMMERCIAL PRICING ENABLED
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Dedicated Product Price Row */}
+                  {offeringType === "product" && (
+                    <div className="p-4 rounded-xl bg-slate-50 border border-line/80 space-y-3">
+                      <div className="text-xs font-bold text-graphite uppercase tracking-wider flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                        <span>Product Pricing & Currency</span>
+                      </div>
+                      
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        {/* 1. Price Amount */}
+                        <div className="space-y-1">
+                          <label className="text-[11px] font-bold text-graphite uppercase tracking-wider flex items-center justify-between">
+                            <span>Price / Unit Price</span>
+                            <span className="text-[10px] text-stone font-normal">e.g. 250.00</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={price}
+                            onChange={(e) => setPrice(e.target.value)}
+                            placeholder="e.g. 250.00 or $250"
+                            className="w-full px-3.5 py-2 rounded-xl border border-line bg-white text-xs font-semibold text-graphite focus:border-royal focus:ring-1 focus:ring-royal/20"
+                          />
+                        </div>
+
+                        {/* 2. Currency */}
+                        <div className="space-y-1">
+                          <label className="text-[11px] font-bold text-graphite uppercase tracking-wider">
+                            Currency
+                          </label>
+                          <select
+                            value={currency}
+                            onChange={(e) => setCurrency(e.target.value)}
+                            className="w-full px-3.5 py-2 rounded-xl border border-line bg-white text-xs font-mono font-bold text-graphite focus:border-royal"
+                          >
+                            <option value="USD">USD ($ - US Dollar)</option>
+                            <option value="EUR">EUR (€ - Euro)</option>
+                            <option value="TRY">TRY (₺ - Turkish Lira)</option>
+                            <option value="GBP">GBP (£ - British Pound)</option>
+                            <option value="AED">AED (د.إ - UAE Dirham)</option>
+                            <option value="SGD">SGD (S$ - Singapore Dollar)</option>
+                          </select>
+                        </div>
+
+                        {/* 3. Pricing Model */}
+                        <div className="space-y-1">
+                          <label className="text-[11px] font-bold text-graphite uppercase tracking-wider">
+                            Pricing Model
+                          </label>
+                          <select
+                            value={pricingType}
+                            onChange={(e) => setPricingType(e.target.value)}
+                            className="w-full px-3.5 py-2 rounded-xl border border-line bg-white text-xs font-bold text-graphite focus:border-royal"
+                          >
+                            <option value="FIXED">Fixed Price (Unit)</option>
+                            <option value="STARTING_FROM">Starting From</option>
+                            <option value="UPON_REQUEST">Upon Request / RFQ</option>
+                            <option value="TIERED">Volume Tiered</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-graphite uppercase tracking-wider">
+                        Pricing Guidance / RFQ Note
+                      </label>
+                      <input
+                        type="text"
+                        value={commercialInfo.pricingGuidance || ""}
+                        onChange={(e) => setCommercialInfo({ ...commercialInfo, pricingGuidance: e.target.value })}
+                        placeholder={offeringType === "product" ? "e.g. Volume discounts available on RFQ" : "e.g. Available upon commercial inquiry"}
+                        className="w-full px-3.5 py-2 rounded-xl border border-line bg-canvas text-xs text-graphite"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-graphite uppercase tracking-wider">
+                        Standard Incoterms
+                      </label>
+                      <input
+                        type="text"
+                        value={commercialInfo.incoterms || ""}
+                        onChange={(e) => setCommercialInfo({ ...commercialInfo, incoterms: e.target.value })}
+                        placeholder="e.g. EXW / FOB Shipyard Gate"
+                        className="w-full px-3.5 py-2 rounded-xl border border-line bg-canvas text-xs font-mono text-graphite"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-graphite uppercase tracking-wider">
+                        Lead Time
+                      </label>
+                      <input
+                        type="text"
+                        value={commercialInfo.leadTime || ""}
+                        onChange={(e) => setCommercialInfo({ ...commercialInfo, leadTime: e.target.value })}
+                        placeholder="e.g. 4 to 8 Weeks"
+                        className="w-full px-3.5 py-2 rounded-xl border border-line bg-canvas text-xs font-mono text-graphite"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-graphite uppercase tracking-wider">
+                        Availability Status
+                      </label>
+                      <input
+                        type="text"
+                        value={commercialInfo.availability || ""}
+                        onChange={(e) => setCommercialInfo({ ...commercialInfo, availability: e.target.value })}
+                        placeholder="e.g. IN STOCK / BUILT TO ORDER"
+                        className="w-full px-3.5 py-2 rounded-xl border border-line bg-canvas text-xs font-mono text-graphite"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-graphite uppercase tracking-wider">
+                        Minimum Order / Scope
+                      </label>
+                      <input
+                        type="text"
+                        value={commercialInfo.minOrderQty || ""}
+                        onChange={(e) => setCommercialInfo({ ...commercialInfo, minOrderQty: e.target.value })}
+                        placeholder="e.g. 1 Unit / Scope"
+                        className="w-full px-3.5 py-2 rounded-xl border border-line bg-canvas text-xs font-mono text-graphite"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-graphite uppercase tracking-wider">
+                        Warranty Coverage
+                      </label>
+                      <input
+                        type="text"
+                        value={commercialInfo.warranty || ""}
+                        onChange={(e) => setCommercialInfo({ ...commercialInfo, warranty: e.target.value })}
+                        placeholder="e.g. 24-Month Comprehensive Warranty"
+                        className="w-full px-3.5 py-2 rounded-xl border border-line bg-canvas text-xs text-graphite"
+                      />
+                    </div>
+                  </div>
                 </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-graphite uppercase tracking-wider">
-                      Pricing Guidance
-                    </label>
-                    <input
-                      type="text"
-                      value={commercialInfo.pricingGuidance || ""}
-                      onChange={(e) => setCommercialInfo({ ...commercialInfo, pricingGuidance: e.target.value })}
-                      placeholder="e.g. Available upon commercial inquiry"
-                      className="w-full px-3.5 py-2 rounded-xl border border-line bg-canvas text-xs text-graphite"
-                    />
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-graphite uppercase tracking-wider">
-                      Standard Incoterms
-                    </label>
-                    <input
-                      type="text"
-                      value={commercialInfo.incoterms || ""}
-                      onChange={(e) => setCommercialInfo({ ...commercialInfo, incoterms: e.target.value })}
-                      placeholder="e.g. EXW / FOB Shipyard Gate"
-                      className="w-full px-3.5 py-2 rounded-xl border border-line bg-canvas text-xs font-mono text-graphite"
-                    />
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-graphite uppercase tracking-wider">
-                      Lead Time
-                    </label>
-                    <input
-                      type="text"
-                      value={commercialInfo.leadTime || ""}
-                      onChange={(e) => setCommercialInfo({ ...commercialInfo, leadTime: e.target.value })}
-                      placeholder="e.g. 4 to 8 Weeks"
-                      className="w-full px-3.5 py-2 rounded-xl border border-line bg-canvas text-xs font-mono text-graphite"
-                    />
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-graphite uppercase tracking-wider">
-                      Availability Status
-                    </label>
-                    <input
-                      type="text"
-                      value={commercialInfo.availability || ""}
-                      onChange={(e) => setCommercialInfo({ ...commercialInfo, availability: e.target.value })}
-                      placeholder="e.g. IN STOCK / BUILT TO ORDER"
-                      className="w-full px-3.5 py-2 rounded-xl border border-line bg-canvas text-xs font-mono text-graphite"
-                    />
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-graphite uppercase tracking-wider">
-                      Minimum Order / Scope
-                    </label>
-                    <input
-                      type="text"
-                      value={commercialInfo.minOrderQty || ""}
-                      onChange={(e) => setCommercialInfo({ ...commercialInfo, minOrderQty: e.target.value })}
-                      placeholder="e.g. 1 Unit / Scope"
-                      className="w-full px-3.5 py-2 rounded-xl border border-line bg-canvas text-xs font-mono text-graphite"
-                    />
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-graphite uppercase tracking-wider">
-                      Warranty Coverage
-                    </label>
-                    <input
-                      type="text"
-                      value={commercialInfo.warranty || ""}
-                      onChange={(e) => setCommercialInfo({ ...commercialInfo, warranty: e.target.value })}
-                      placeholder="e.g. 24-Month Comprehensive Warranty"
-                      className="w-full px-3.5 py-2 rounded-xl border border-line bg-canvas text-xs text-graphite"
-                    />
-                  </div>
-                </div>
-              </div>
 
               {/* Navigation Footer */}
               <div className="flex items-center justify-between pt-4 border-t border-line">
@@ -2090,139 +2332,213 @@ export const OfferingCreationWizardModal: React.FC<OfferingCreationWizardModalPr
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                    {mediaList.map((item, idx) => (
-                      <div
-                        key={item.id}
-                        className={`group relative rounded-2xl border overflow-hidden bg-white shadow-xs transition-all flex flex-col justify-between ${
-                          item.isCover
-                            ? "border-royal ring-2 ring-royal/20"
-                            : "border-line hover:border-slate-400"
-                        }`}
-                      >
-                        {/* Image Canvas */}
-                        <div className="aspect-video relative bg-slate-950 overflow-hidden">
-                          <img
-                            src={item.url}
-                            alt={item.title}
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                          />
-                          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent pointer-events-none" />
+                    {mediaList.map((item, idx) => {
+                      const isPdf =
+                        item.url?.toLowerCase().includes(".pdf") ||
+                        item.url?.toLowerCase().endsWith(".pdf") ||
+                        item.title?.toLowerCase().endsWith(".pdf") ||
+                        item.type === "drawing";
 
-                          {/* Top Left Badge */}
-                          <div className="absolute top-2 left-2 flex flex-col gap-1 pointer-events-none">
-                            {item.isCover ? (
-                              <span className="px-2 py-0.5 rounded-md text-[9px] font-mono font-bold bg-royal text-white uppercase tracking-wider shadow-sm">
-                                COVER IMAGE
-                              </span>
-                            ) : (
-                              <span className="px-2 py-0.5 rounded-md text-[9px] font-mono font-bold bg-black/70 text-white uppercase tracking-wider">
-                                {item.type.toUpperCase()}
-                              </span>
-                            )}
-                            <span className="px-1.5 py-0.5 rounded text-[8px] font-mono bg-black/60 text-slate-300 uppercase">
-                              {item.url.startsWith("data:") ? "DESKTOP" : "WEB URL"}
-                            </span>
-                          </div>
-
-                          {/* Top Right Action Icons */}
-                          <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button
-                              type="button"
+                      return (
+                        <div
+                          key={item.id}
+                          className={`group relative rounded-2xl border overflow-hidden bg-white shadow-xs transition-all flex flex-col justify-between ${
+                            item.isCover
+                              ? "border-royal ring-2 ring-royal/20"
+                              : "border-line hover:border-slate-400"
+                          }`}
+                        >
+                          {/* Image or PDF Canvas */}
+                          {item.url?.toLowerCase().includes(".pdf") ? (
+                            <div
                               onClick={() => setSelectedPreviewMedia(item)}
-                              title="Full Screen Preview"
-                              className="p-1.5 rounded-md bg-black/70 text-white hover:bg-black/90 cursor-pointer transition"
+                              className="aspect-video relative bg-slate-900 overflow-hidden flex flex-col items-center justify-center p-4 text-center cursor-pointer group-hover:bg-slate-850 transition-colors"
                             >
-                              <Maximize2 className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveMedia(item.id)}
-                              title="Remove Asset"
-                              className="p-1.5 rounded-md bg-black/70 text-rose-400 hover:text-rose-200 hover:bg-rose-950/80 cursor-pointer transition"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
+                              <div className="w-11 h-11 rounded-xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-500 mb-1.5 shadow-inner group-hover:scale-105 transition-transform">
+                                <FileText className="w-5 h-5" />
+                              </div>
+                              <p className="text-xs font-bold text-white max-w-[90%] truncate">
+                                {item.title || "PDF Blueprint / Schematic"}
+                              </p>
+                              <span className="text-[8.5px] font-mono text-rose-400 font-extrabold uppercase mt-1 tracking-wider bg-rose-950/60 px-2 py-0.5 rounded border border-rose-800/50">
+                                PDF BLUEPRINT / SCHEMATIC
+                              </span>
 
-                          {/* Bottom Caption Overlay */}
-                          <div className="absolute bottom-2 left-2 right-2 pointer-events-none">
-                            <p className="text-xs font-bold text-white truncate">{item.title || "Asset"}</p>
-                          </div>
-                        </div>
+                              {/* Top Left Badge */}
+                              <div className="absolute top-2 left-2 flex flex-col gap-1 pointer-events-none">
+                                {item.isCover ? (
+                                  <span className="px-2 py-0.5 rounded-md text-[9px] font-mono font-bold bg-royal text-white uppercase tracking-wider shadow-sm">
+                                    COVER ASSET
+                                  </span>
+                                ) : (
+                                  <span className="px-2 py-0.5 rounded-md text-[9px] font-mono font-bold bg-black/70 text-white uppercase tracking-wider">
+                                    PDF DRAWING
+                                  </span>
+                                )}
+                              </div>
 
-                        {/* Card Controls & Details */}
-                        <div className="p-3 bg-slate-50 space-y-2.5 border-t border-line text-xs">
-                          {/* Caption Input */}
-                          <div className="space-y-1">
-                            <label className="text-[10px] font-mono text-stone uppercase block">
-                              Caption / Title
-                            </label>
-                            <input
-                              type="text"
-                              value={item.title}
-                              onChange={(e) => handleUpdateMediaTitle(item.id, e.target.value)}
-                              className="w-full px-2.5 py-1 text-xs rounded-lg border border-line bg-white text-graphite focus:outline-hidden focus:border-royal"
-                            />
-                          </div>
-
-                          {/* Type & Order controls */}
-                          <div className="flex items-center justify-between gap-2 pt-1 border-t border-line/60">
-                            <select
-                              value={item.isCover ? "cover" : item.type}
-                              onChange={(e) => handleUpdateMediaType(item.id, e.target.value as any)}
-                              className="px-2 py-1 rounded-md border border-line bg-white text-[11px] font-mono font-bold text-graphite"
-                            >
-                              <option value="cover">COVER</option>
-                              <option value="photo">PHOTO</option>
-                              <option value="drawing">DRAWING</option>
-                              <option value="video">VIDEO</option>
-                            </select>
-
-                            <div className="flex items-center gap-1 font-mono text-[11px]">
-                              {!item.isCover ? (
+                              {/* Top Right Action Icons */}
+                              <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <a
+                                  href={item.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  onClick={(e) => e.stopPropagation()}
+                                  title="Open PDF in new tab"
+                                  className="p-1.5 rounded-md bg-black/80 text-white hover:bg-black cursor-pointer transition"
+                                >
+                                  <ExternalLink className="w-3.5 h-3.5" />
+                                </a>
                                 <button
                                   type="button"
-                                  onClick={() => handleSetCover(item.id)}
-                                  className="px-2 py-0.5 rounded bg-white border border-line text-royal font-bold hover:bg-royal hover:text-white transition cursor-pointer"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedPreviewMedia(item);
+                                  }}
+                                  title="Full Screen Preview"
+                                  className="p-1.5 rounded-md bg-black/80 text-white hover:bg-black cursor-pointer transition"
                                 >
-                                  Make Cover
+                                  <Maximize2 className="w-3.5 h-3.5" />
                                 </button>
-                              ) : (
-                                <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold text-[10px]">
-                                  Active Cover
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleRemoveMedia(item.id);
+                                  }}
+                                  title="Remove Asset"
+                                  className="p-1.5 rounded-md bg-black/80 text-rose-400 hover:text-rose-200 hover:bg-rose-950/80 cursor-pointer transition"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="aspect-video relative bg-slate-950 overflow-hidden">
+                              <img
+                                src={item.url}
+                                alt={item.title}
+                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                              />
+                              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent pointer-events-none" />
+
+                              {/* Top Left Badge */}
+                              <div className="absolute top-2 left-2 flex flex-col gap-1 pointer-events-none">
+                                {item.isCover ? (
+                                  <span className="px-2 py-0.5 rounded-md text-[9px] font-mono font-bold bg-royal text-white uppercase tracking-wider shadow-sm">
+                                    COVER IMAGE
+                                  </span>
+                                ) : (
+                                  <span className="px-2 py-0.5 rounded-md text-[9px] font-mono font-bold bg-black/70 text-white uppercase tracking-wider">
+                                    {item.type.toUpperCase()}
+                                  </span>
+                                )}
+                                <span className="px-1.5 py-0.5 rounded text-[8px] font-mono bg-black/60 text-slate-300 uppercase">
+                                  {item.url.startsWith("data:") ? "DESKTOP" : "WEB URL"}
                                 </span>
-                              )}
+                              </div>
 
-                              <div className="flex items-center">
+                              {/* Top Right Action Icons */}
+                              <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                 <button
                                   type="button"
-                                  disabled={idx === 0}
-                                  onClick={() => handleMoveMedia(item.id, "up")}
-                                  className="p-1 text-stone hover:text-graphite disabled:opacity-30 cursor-pointer"
-                                  title="Move Earlier"
+                                  onClick={() => setSelectedPreviewMedia(item)}
+                                  title="Full Screen Preview"
+                                  className="p-1.5 rounded-md bg-black/70 text-white hover:bg-black/90 cursor-pointer transition"
                                 >
-                                  <ArrowUp className="w-3 h-3" />
+                                  <Maximize2 className="w-3.5 h-3.5" />
                                 </button>
                                 <button
                                   type="button"
-                                  disabled={idx === mediaList.length - 1}
-                                  onClick={() => handleMoveMedia(item.id, "down")}
-                                  className="p-1 text-stone hover:text-graphite disabled:opacity-30 cursor-pointer"
-                                  title="Move Later"
+                                  onClick={() => handleRemoveMedia(item.id)}
+                                  title="Remove Asset"
+                                  className="p-1.5 rounded-md bg-black/70 text-rose-400 hover:text-rose-200 hover:bg-rose-950/80 cursor-pointer transition"
                                 >
-                                  <ArrowDown className="w-3 h-3" />
+                                  <Trash2 className="w-3.5 h-3.5" />
                                 </button>
+                              </div>
+
+                              {/* Bottom Caption Overlay */}
+                              <div className="absolute bottom-2 left-2 right-2 pointer-events-none">
+                                <p className="text-xs font-bold text-white truncate">{item.title || "Asset"}</p>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Card Controls & Details */}
+                          <div className="p-3 bg-slate-50 space-y-2.5 border-t border-line text-xs">
+                            {/* Caption Input */}
+                            <div className="space-y-1">
+                              <label className="text-[10px] font-mono text-stone uppercase block">
+                                Caption / Title
+                              </label>
+                              <input
+                                type="text"
+                                value={item.title}
+                                onChange={(e) => handleUpdateMediaTitle(item.id, e.target.value)}
+                                className="w-full px-2.5 py-1 text-xs rounded-lg border border-line bg-white text-graphite focus:outline-hidden focus:border-royal"
+                              />
+                            </div>
+
+                            {/* Type & Order controls */}
+                            <div className="flex items-center justify-between gap-2 pt-1 border-t border-line/60">
+                              <select
+                                value={item.isCover ? "cover" : item.type}
+                                onChange={(e) => handleUpdateMediaType(item.id, e.target.value as any)}
+                                className="px-2 py-1 rounded-md border border-line bg-white text-[11px] font-mono font-bold text-graphite"
+                              >
+                                <option value="cover">COVER</option>
+                                <option value="photo">PHOTO</option>
+                                <option value="drawing">DRAWING / PDF</option>
+                                <option value="video">VIDEO</option>
+                              </select>
+
+                              <div className="flex items-center gap-1 font-mono text-[11px]">
+                                {!item.isCover ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSetCover(item.id)}
+                                    className="px-2 py-0.5 rounded bg-white border border-line text-royal font-bold hover:bg-royal hover:text-white transition cursor-pointer"
+                                  >
+                                    Make Cover
+                                  </button>
+                                ) : (
+                                  <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold text-[10px]">
+                                    Active Cover
+                                  </span>
+                                )}
+
+                                <div className="flex items-center">
+                                  <button
+                                    type="button"
+                                    disabled={idx === 0}
+                                    onClick={() => handleMoveMedia(item.id, "up")}
+                                    className="p-1 text-stone hover:text-graphite disabled:opacity-30 cursor-pointer"
+                                    title="Move Earlier"
+                                  >
+                                    <ArrowUp className="w-3 h-3" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={idx === mediaList.length - 1}
+                                    onClick={() => handleMoveMedia(item.id, "down")}
+                                    className="p-1 text-stone hover:text-graphite disabled:opacity-30 cursor-pointer"
+                                    title="Move Later"
+                                  >
+                                    <ArrowDown className="w-3 h-3" />
+                                  </button>
+                                </div>
                               </div>
                             </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
 
-              {/* Fullscreen Preview Lightbox Modal */}
+              {/* Fullscreen Preview Lightbox Modal (Supports both Images and PDF Documents) */}
               {selectedPreviewMedia && (
                 <div
                   onClick={() => setSelectedPreviewMedia(null)}
@@ -2230,29 +2546,62 @@ export const OfferingCreationWizardModal: React.FC<OfferingCreationWizardModalPr
                 >
                   <div
                     onClick={(e) => e.stopPropagation()}
-                    className="relative max-w-4xl max-h-[85vh] bg-slate-950 rounded-2xl overflow-hidden border border-slate-800 shadow-2xl flex flex-col"
+                    className="relative w-full max-w-4xl max-h-[90vh] bg-slate-950 rounded-2xl overflow-hidden border border-slate-800 shadow-2xl flex flex-col"
                   >
-                    <div className="p-3 bg-slate-900 flex items-center justify-between text-white border-b border-slate-800">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-xs font-bold text-royal uppercase">
+                    <div className="p-3.5 bg-slate-900 flex items-center justify-between text-white border-b border-slate-800">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="font-mono text-xs font-bold text-royal uppercase px-2 py-0.5 rounded bg-royal/10 border border-royal/20">
                           {selectedPreviewMedia.type}
                         </span>
                         <span className="text-xs font-bold truncate">{selectedPreviewMedia.title}</span>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedPreviewMedia(null)}
-                        className="p-1 rounded-lg text-slate-400 hover:text-white"
-                      >
-                        <X className="w-5 h-5" />
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <a
+                          href={selectedPreviewMedia.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-semibold text-white flex items-center gap-1.5 transition"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                          <span>Open in New Tab</span>
+                        </a>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedPreviewMedia(null)}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-white"
+                        >
+                          <X className="w-5 h-5" />
+                        </button>
+                      </div>
                     </div>
-                    <div className="flex-1 overflow-auto flex items-center justify-center p-4 bg-black/40">
-                      <img
-                        src={selectedPreviewMedia.url}
-                        alt={selectedPreviewMedia.title}
-                        className="max-w-full max-h-[70vh] object-contain rounded-lg"
-                      />
+                    <div className="flex-1 overflow-auto flex flex-col items-center justify-center p-4 bg-slate-950 min-h-[60vh]">
+                      {selectedPreviewMedia.url?.toLowerCase().includes(".pdf") ? (
+                        <div className="w-full flex-1 flex flex-col items-center justify-center space-y-3">
+                          <iframe
+                            src={`https://docs.google.com/viewer?url=${encodeURIComponent(selectedPreviewMedia.url)}&embedded=true`}
+                            title={selectedPreviewMedia.title || "PDF Document"}
+                            className="w-full h-[65vh] rounded-xl border border-slate-800 bg-white"
+                          />
+                          <div className="flex items-center justify-between w-full px-2 text-xs text-slate-400">
+                            <span>Direct PDF Storage Resource</span>
+                            <a
+                              href={selectedPreviewMedia.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="px-3.5 py-1.5 rounded-lg bg-royal text-white font-bold flex items-center gap-1.5 hover:bg-royal/90 transition shadow-2xs text-xs"
+                            >
+                              <ExternalLink className="w-3.5 h-3.5" />
+                              <span>Open / Download Original PDF</span>
+                            </a>
+                          </div>
+                        </div>
+                      ) : (
+                        <img
+                          src={selectedPreviewMedia.url}
+                          alt={selectedPreviewMedia.title}
+                          className="max-w-full max-h-[70vh] object-contain rounded-lg shadow-lg"
+                        />
+                      )}
                     </div>
                   </div>
                 </div>

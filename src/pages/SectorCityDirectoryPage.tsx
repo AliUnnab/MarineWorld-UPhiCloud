@@ -50,7 +50,7 @@ export function SectorCityDirectoryPage({
     return (
       <div className="min-h-screen bg-white flex flex-col items-center justify-center p-6 text-center font-sans">
         <Search className="w-10 h-10 text-royal animate-pulse mb-3" />
-        <h2 className="text-lg font-bold text-graphite">Sektör Şehri Yükleniyor...</h2>
+        <h2 className="text-lg font-bold text-graphite">Loading Sector City...</h2>
       </div>
     );
   }
@@ -58,15 +58,15 @@ export function SectorCityDirectoryPage({
   if (!city) {
     return (
       <div className="min-h-screen bg-white flex flex-col items-center justify-center p-6 text-center font-sans">
-        <h1 className="text-2xl font-extrabold text-graphite tracking-tight">Sektör Şehri Bulunamadı</h1>
+        <h1 className="text-2xl font-extrabold text-graphite tracking-tight">Sector City Not Found</h1>
         <p className="text-sm text-stone max-w-md mt-2">
-          Talep edilen sektör şehri veritabanında bulunamadı.
+          The requested sector city could not be found in the database.
         </p>
         <a
           href="/cities"
           className="mt-6 px-6 py-2.5 rounded-card-sm bg-slate-900 text-white text-xs font-bold uppercase tracking-wider hover:bg-slate-800 transition-colors"
         >
-          Tüm Sektör Şehirlerine Dön &rarr;
+          Return to All Sector Cities &rarr;
         </a>
       </div>
     );

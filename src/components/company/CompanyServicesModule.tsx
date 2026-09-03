@@ -8,7 +8,7 @@ import { DigiBadge, DigiButton } from "@/components/digione/primitives";
 import { ServiceAIAdvisor } from "./ServiceAIAdvisor";
 import { SaveEntityButton } from "@/components/foundation/SaveEntityButton";
 import { AddToCollectionButton } from "@/components/foundation/AddToCollectionButton";
-import { Copy, Check, Share2, ExternalLink, Loader2, AlertCircle } from "lucide-react";
+import { Copy, Check, Share2, ExternalLink, Loader2, AlertCircle, FileText } from "lucide-react";
 import { ShareProtocolModal } from "./ShareProtocolModal";
 
 /* ------------------------------------------------------------
@@ -29,7 +29,13 @@ export function ServiceVisualImage({
 
   const imageSrc = useMemo(() => {
     if (activeImageSrc) return activeImageSrc;
+    if ((service as any).coverImage) return (service as any).coverImage;
     if (service.primaryImage) return service.primaryImage;
+    if ((service as any).imageUrl) return (service as any).imageUrl;
+    if ((service as any).mediaReferences?.find((m: any) => m.isCover)?.url) {
+      return (service as any).mediaReferences.find((m: any) => m.isCover).url;
+    }
+    if ((service as any).mediaReferences?.[0]?.url) return (service as any).mediaReferences[0].url;
     if (service.images && service.images.length > 0 && service.images[0]) return service.images[0];
     if (service.gallery && service.gallery.length > 0 && service.gallery[0]) return service.gallery[0];
     return undefined;
@@ -38,6 +44,24 @@ export function ServiceVisualImage({
   useEffect(() => {
     setImageError(false);
   }, [imageSrc]);
+
+  const isPdf = Boolean(imageSrc && imageSrc.toLowerCase().includes(".pdf"));
+
+  if (isPdf) {
+    return (
+      <div className={`${containerClassName} flex flex-col items-center justify-center p-6 text-center bg-slate-900 text-white`}>
+        <div className="h-12 w-12 rounded-2xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-400 mb-2 shadow-inner">
+          <FileText className="h-6 w-6" />
+        </div>
+        <span className="font-mono text-[11px] font-bold text-white uppercase tracking-wide truncate max-w-[200px]">
+          {service.name}
+        </span>
+        <span className="font-mono text-[9px] text-rose-400 mt-1 uppercase font-bold px-2 py-0.5 rounded bg-rose-950/80 border border-rose-800/60">
+          PDF BLUEPRINT
+        </span>
+      </div>
+    );
+  }
 
   if (!imageSrc || imageError) {
     return (

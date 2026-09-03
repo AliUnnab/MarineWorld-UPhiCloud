@@ -16,6 +16,7 @@ import {
   findMembersByUserId,
   saveMember,
 } from "@/lib/repositories/membershipRepository";
+import { findCompaniesByOwnerOrEmailSync } from "@/lib/repositories/companyRepository";
 import { recordCanonicalAuditEvent, AuditModuleType } from "@/lib/services/auditService";
 
 /**
@@ -82,7 +83,7 @@ export function derivePersonalUserContext(auth: AuthContext): PersonalUserContex
  */
 export function isPersonalVisitor(context?: AccessContext): boolean {
   const ctx = context || resolveAccessContext();
-  return ctx.contextType === "VISITOR" && ctx.isAuthenticated === true && ctx.visitorSubtype === "PERSONAL_VISITOR";
+  return ctx.contextType === "VISITOR" && ctx.isAuthenticated === true && ctx.visitorSubtype === "PERSONAL_VISITOR" && !ctx.activeOrganization;
 }
 
 /**
@@ -134,7 +135,27 @@ export function registerOrganizationalMembership(
  * Retrieves all registered memberships for a given user ID dynamically from membershipRepository
  */
 export function getUserMemberships(userId: string): OrganizationalMembership[] {
-  const memberRecords = findMembersByUserId(userId);
+  let memberRecords = findMembersByUserId(userId);
+  
+  // If no explicit membership is found in-memory, auto-check if user owns/registered any company
+  if (memberRecords.length === 0 && userId) {
+    const userAuth = getCurrentAuthSession();
+    const userEmail = userAuth.uid === userId ? userAuth.email : undefined;
+    const companies = findCompaniesByOwnerOrEmailSync(userId, userEmail);
+    if (companies.length > 0) {
+      for (const comp of companies) {
+        saveMember({
+          userId,
+          companyId: comp.id,
+          role: "OWNER",
+          status: "ACTIVE",
+          createdAt: comp.createdAt || new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        });
+      }
+      memberRecords = findMembersByUserId(userId);
+    }
+  }
   
   return memberRecords.map((m) => {
     const comp = getCompanyById(m.companyId);
@@ -226,12 +247,14 @@ export function getActiveOrganizationContext(userId: string): ActiveOrganization
   const activeOrgId = userActiveOrgMap.get(userId);
   const memberships = getUserMemberships(userId);
 
-  // If user explicitly chose personal mode ("NONE")
+  // If user explicitly chose personal mode ("NONE") and has no company memberships
   if (activeOrgId === "NONE") {
-    return null;
+    if (memberships.length === 0) {
+      return null;
+    }
   }
 
-  if (activeOrgId) {
+  if (activeOrgId && activeOrgId !== "NONE") {
     const activeMembership = memberships.find(
       (m) => (m.organizationId === activeOrgId || m.companyId === activeOrgId) && m.memberStatus === "ACTIVE"
     );
@@ -249,9 +272,9 @@ export function getActiveOrganizationContext(userId: string): ActiveOrganization
     }
   }
 
-  if (!activeOrgId && memberships.length > 0) {
+  if (memberships.length > 0) {
     // Default to first active membership if available for existing test backwards compatibility
-    const firstActive = memberships.find((m) => m.memberStatus === "ACTIVE");
+    const firstActive = memberships.find((m) => m.memberStatus === "ACTIVE") || memberships[0];
     if (firstActive) {
       return {
         organizationType: firstActive.organizationType,

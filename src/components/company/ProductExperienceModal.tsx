@@ -39,12 +39,14 @@ import {
   Gauge,
   Tag,
   ArrowUpRight,
+  Package,
+  Wrench,
 } from "lucide-react";
 import type { CompanyOffering, CompanyProfile } from "@/lib/types";
 import { getCompanyProducts, getCompanyServices } from "@/lib/registry";
 import { ShareProtocolModal } from "./ShareProtocolModal";
 import { CommercialInquiryModal } from "./CommercialInquiryModal";
-import { answerOfferingAdvisorQuery } from "@/lib/services/offeringAIService";
+import { answerOfferingAdvisorQuery, answerOfferingAdvisorQueryAsync, resolvePdfAsBase64 } from "@/lib/services/offeringAIService";
 import { initializeCanonicalOfferingDefaults } from "@/lib/services/offeringEntityService";
 
 export type ModalTab = "overview" | "media" | "downloads" | "company";
@@ -215,6 +217,14 @@ export function ProductExperienceModal({
             status: (p.availability as any) || "AVAILABLE",
             code: p.productCode || `PROP-${p.id.slice(0, 4).toUpperCase()}-${idx + 100}`,
             specifications: p.specifications as any,
+            coverImage: (p as any).coverImage || (p as any).primaryImage || (p as any).imageUrl || p.mediaReferences?.[0]?.url,
+            mediaReferences: p.mediaReferences || (p as any).media || [],
+            media: (p as any).media,
+            gallery: (p as any).gallery,
+            groundingSources: (p as any).groundingSources,
+            commercialInformation: (p as any).commercialInformation,
+            applications: (p as any).applications,
+            certifications: (p as any).certifications,
           };
           list.push(initializeCanonicalOfferingDefaults(offItem, company));
         }
@@ -237,6 +247,14 @@ export function ProductExperienceModal({
             status: "ACTIVE",
             code: `SRV-${company.id.slice(0, 3).toUpperCase()}-${idx + 200}`,
             specifications: (s as any).specifications,
+            coverImage: (s as any).coverImage || (s as any).primaryImage || (s as any).imageUrl || s.mediaReferences?.[0]?.url,
+            mediaReferences: s.mediaReferences || (s as any).media || [],
+            media: (s as any).media,
+            gallery: (s as any).gallery,
+            groundingSources: (s as any).groundingSources,
+            commercialInformation: (s as any).commercialInformation,
+            applications: (s as any).applications,
+            certifications: (s as any).certifications,
           };
           list.push(initializeCanonicalOfferingDefaults(offItem, company));
         }
@@ -297,130 +315,62 @@ export function ProductExperienceModal({
   const offeringCode = activeOffering.code || `REF-${activeOffering.id.slice(-6).toUpperCase()}`;
   const isVerified = String(company.verificationStatus || "VERIFIED").toLowerCase().includes("verified");
 
-  // Multi-item Media Gallery Generation
+  // Multi-item Media Gallery Generation from Real Uploaded Offering Media
   const primaryCoverImg = (activeOffering as any).coverImage || (activeOffering as any).primaryImage;
 
   const mediaGallery: MediaItem[] = useMemo(() => {
     const items: MediaItem[] = [];
 
-    // Check custom media arrays
-    const customMedia = (activeOffering as any).media || (activeOffering as any).gallery;
+    // Check canonical mediaReferences first, then media / gallery
+    const customMedia =
+      (activeOffering as any).mediaReferences ||
+      (activeOffering as any).media ||
+      (activeOffering as any).gallery;
+
     if (Array.isArray(customMedia) && customMedia.length > 0) {
       customMedia.forEach((m: any, idx: number) => {
+        if (!m || (!m.url && !m.src)) return;
+        const url = m.url || m.src;
+        const isPdf = url.toLowerCase().includes(".pdf");
         const type: "photo" | "technical_drawing" | "video" =
-          m.type === "video" ? "video" : m.type === "drawing" || m.type === "technical_drawing" ? "technical_drawing" : "photo";
-        const typeLabel = type === "video" ? "Video" : type === "technical_drawing" ? "Technical Drawing" : "Photo";
+          m.type === "video"
+            ? "video"
+            : m.type === "drawing" || m.type === "technical_drawing" || isPdf
+            ? "technical_drawing"
+            : "photo";
+        const typeLabel =
+          type === "video"
+            ? "Video"
+            : isPdf
+            ? "PDF Blueprint"
+            : type === "technical_drawing"
+            ? "Technical Drawing"
+            : "Photo";
         items.push({
           id: m.id || `m-${idx}`,
           type,
           typeLabel,
-          title: m.title || m.caption || `${activeOffering.name} Media ${idx + 1}`,
-          url: m.url || m.src || "",
-          badgeTag: m.tag || typeLabel.toUpperCase(),
+          title: m.title || m.caption || `${activeOffering.name} Asset ${idx + 1}`,
+          url,
+          badgeTag: m.isCover ? "COVER IMAGE" : isPdf ? "PDF BLUEPRINT" : (m.type || typeLabel).toUpperCase(),
         });
       });
     }
 
     if (primaryCoverImg && !items.some((i) => i.url === primaryCoverImg)) {
+      const isPdf = primaryCoverImg.toLowerCase().includes(".pdf");
       items.unshift({
         id: "primary-photo",
-        type: "photo",
-        typeLabel: "Photo",
-        title: isService ? `${activeOffering.name} — Operating Facility` : `${activeOffering.name} — High-Resolution Equipment Photo`,
+        type: isPdf ? "technical_drawing" : "photo",
+        typeLabel: isPdf ? "PDF Blueprint" : "Cover Photo",
+        title: `${activeOffering.name} — Cover Asset`,
         url: primaryCoverImg,
-        badgeTag: "PRIMARY PHOTO",
+        badgeTag: "PRIMARY COVER",
       });
     }
 
-    // Default rich media set if list is short
-    if (items.length < 4) {
-      if (isService) {
-        if (!items.some((i) => i.id === "serv-photo-1")) {
-          items.push({
-            id: "serv-photo-1",
-            type: "photo",
-            typeLabel: "Photo",
-            title: "Shipyard & Deepwater Berth Operations",
-            url: "https://images.unsplash.com/photo-1586528116311-ad8ed7c50a92?auto=format&fit=crop&w=1200&q=80",
-            badgeTag: "FACILITY PHOTO",
-          });
-        }
-        if (!items.some((i) => i.type === "technical_drawing")) {
-          items.push({
-            id: "serv-drawing-1",
-            type: "technical_drawing",
-            typeLabel: "Technical Drawing",
-            title: "Drydock General Arrangement & Cradle Clearance Plan",
-            url: "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=1200&q=80",
-            badgeTag: "GA & BERTH PLAN",
-          });
-        }
-        if (!items.some((i) => i.id === "serv-photo-2")) {
-          items.push({
-            id: "serv-photo-2",
-            type: "photo",
-            typeLabel: "Photo",
-            title: "Class Survey Telemetry & Inspection Rig",
-            url: "https://images.unsplash.com/photo-1578575437130-527eed3abbec?auto=format&fit=crop&w=1200&q=80",
-            badgeTag: "OPERATIONAL PHOTO",
-          });
-        }
-        if (!items.some((i) => i.type === "video")) {
-          items.push({
-            id: "serv-video-1",
-            type: "video",
-            typeLabel: "Video",
-            title: "Sea-Trial Operational Execution & Field Demo (4K)",
-            url: "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=1200&q=80",
-            badgeTag: "OPERATIONAL VIDEO",
-          });
-        }
-      } else {
-        if (!items.some((i) => i.id === "prod-photo-1")) {
-          items.push({
-            id: "prod-photo-1",
-            type: "photo",
-            typeLabel: "Photo",
-            title: `${activeOffering.name} — Full System Assembly`,
-            url: primaryCoverImg || "https://images.unsplash.com/photo-1586528116311-ad8ed7c50a92?auto=format&fit=crop&w=1200&q=80",
-            badgeTag: "PRODUCT PHOTO",
-          });
-        }
-        if (!items.some((i) => i.type === "technical_drawing")) {
-          items.push({
-            id: "prod-drawing-1",
-            type: "technical_drawing",
-            typeLabel: "Technical Drawing",
-            title: "2D/3D CAD Blueprint & Mounting Dimension Envelope",
-            url: "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=1200&q=80",
-            badgeTag: "CAD BLUEPRINT",
-          });
-        }
-        if (!items.some((i) => i.id === "prod-photo-2")) {
-          items.push({
-            id: "prod-photo-2",
-            type: "photo",
-            typeLabel: "Photo",
-            title: "Shipyard Rigging & Test Bench Setup",
-            url: "https://images.unsplash.com/photo-1559136555-9303baea8ebd?auto=format&fit=crop&w=1200&q=80",
-            badgeTag: "INSTALLATION PHOTO",
-          });
-        }
-        if (!items.some((i) => i.type === "video")) {
-          items.push({
-            id: "prod-video-1",
-            type: "video",
-            typeLabel: "Video",
-            title: "Hydrodynamic Propulsion Test & Torque Telemetry Video",
-            url: "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=1200&q=80",
-            badgeTag: "TESTING VIDEO",
-          });
-        }
-      }
-    }
-
     return items;
-  }, [activeOffering, isService, primaryCoverImg]);
+  }, [activeOffering, primaryCoverImg]);
 
   // Fix 1: Helper to locate the first media item with non-empty URL and not failed
   const getFirstValidMediaIndex = (items: MediaItem[], failed: Record<string, boolean>) => {
@@ -561,73 +511,115 @@ export function ProductExperienceModal({
     };
   }, [isLightboxOpen, mediaGallery.length, onClose]);
 
-  // Derive Key Specifications
+  // Derive Key Specifications from actual offering specifications
   const keySpecs = useMemo(() => {
     const specs = activeOffering.specifications || {};
     const entries = Object.entries(specs);
     
-    if (entries.length > 0) {
-      return entries.slice(0, 4).map(([k, v]) => ({ label: k, value: String(v) }));
+    const list = entries.length > 0
+      ? entries.map(([k, v]) => ({ label: k, value: String(v) }))
+      : [];
+
+    const priceVal = activeOffering.price || activeOffering.commercialInformation?.price;
+    const currencyVal = activeOffering.currency || activeOffering.commercialInformation?.currency || "USD";
+    const symbol = currencyVal === "EUR" ? "€" : currencyVal === "TRY" ? "₺" : currencyVal === "GBP" ? "£" : "$";
+    const formattedPrice = priceVal
+      ? (priceVal.includes("$") || priceVal.includes("€") || priceVal.includes("₺") || priceVal.includes("£") ? priceVal : `${symbol}${priceVal}`)
+      : activeOffering.commercialInformation?.pricingGuidance;
+
+    if (formattedPrice) {
+      list.unshift({ label: "PRICE / GUIDANCE", value: formattedPrice });
     }
 
-    if (isService) {
-      return [
-        { label: "SERVICE SCOPE", value: activeOffering.category || "Comprehensive Engineering" },
-        { label: "STANDARD LEAD TIME", value: activeOffering.commercialInformation?.leadTime || "Immediate Dispatch" },
-        { label: "CLASS COMPLIANCE", value: (activeOffering.certifications && activeOffering.certifications[0]) || "DNV / Lloyd's Approved" },
-        { label: "DELIVERY BASIS", value: activeOffering.commercialInformation?.incoterms || "Global Port / Shipyard Gate" },
-      ];
+    if (list.length === 0 || (list.length === 1 && formattedPrice)) {
+      if (activeOffering.category) {
+        list.push({ label: "CATEGORY", value: activeOffering.category });
+      }
+      if (activeOffering.commercialInformation?.leadTime) {
+        list.push({ label: "LEAD TIME", value: activeOffering.commercialInformation.leadTime });
+      }
+      if (activeOffering.certifications && activeOffering.certifications.length > 0) {
+        list.push({ label: "CERTIFICATIONS", value: activeOffering.certifications.join(" • ") });
+      }
+      if (activeOffering.commercialInformation?.incoterms) {
+        list.push({ label: "INCOTERMS", value: activeOffering.commercialInformation.incoterms });
+      }
     }
-
-    return [
-      { label: "PRIMARY APPLICATION", value: (activeOffering.applications && activeOffering.applications[0]) || activeOffering.category || "Commercial Marine" },
-      { label: "LEAD TIME", value: activeOffering.commercialInformation?.leadTime || "12–16 Weeks Standard" },
-      { label: "CLASS SOCIETY", value: (activeOffering.certifications && activeOffering.certifications[0]) || "DNV • Lloyd's Register • ABS" },
-      { label: "INCOTERMS", value: activeOffering.commercialInformation?.incoterms || "EXW / FOB Shipyard Gate" },
-    ];
-  }, [activeOffering, isService]);
+    return list;
+  }, [activeOffering]);
 
   const allSpecEntries = useMemo(() => {
     return Object.entries(activeOffering.specifications || {});
   }, [activeOffering]);
 
-  // Certified Engineering Documents
+  // Certified Real Engineering Documents (Grounding Sources & Attached PDF Blueprints)
   const downloadDocs = useMemo(() => {
-    return [
-      {
-        id: "doc-1",
-        title: `${activeOffering.name} — Certified Technical Datasheet`,
-        type: "PDF SPEC",
-        size: "4.8 MB",
-        badge: "VERIFIED",
-        code: `DS-${offeringCode}`,
-      },
-      {
-        id: "doc-2",
-        title: `DNV & Lloyd's Register Type Approval Certificate`,
-        type: "CLASS CERT",
-        size: "2.1 MB",
-        badge: "AUDITED",
-        code: `CERT-LR-${offeringCode}`,
-      },
-      {
-        id: "doc-3",
-        title: `3D STEP CAD Blueprint & Spatial Envelope`,
-        type: "CAD / STEP",
-        size: "18.4 MB",
-        badge: "3D ASSET",
-        code: `CAD-${offeringCode}`,
-      },
-      {
-        id: "doc-4",
-        title: `Standard Incoterms EXW/FOB Milestone Billing Agreement`,
-        type: "LEGAL SPEC",
-        size: "1.3 MB",
-        badge: "BIMCO COMPLIANT",
-        code: `B2B-TERMS-${offeringCode}`,
-      },
-    ];
+    const docs: Array<{
+      id: string;
+      title: string;
+      type: string;
+      size: string;
+      badge: string;
+      code: string;
+      url?: string;
+    }> = [];
+
+    // Add Grounding Sources
+    if (Array.isArray(activeOffering.groundingSources)) {
+      activeOffering.groundingSources.forEach((src, idx) => {
+        docs.push({
+          id: src.id || `gsrc-${idx}`,
+          title: src.title || src.filename || `${activeOffering.name} Datasheet`,
+          type: (src.fileType || "PDF SPEC").toUpperCase(),
+          size: src.size || "1.5 MB",
+          badge: "VERIFIED",
+          code: src.filename || `DOC-${offeringCode}-${idx + 1}`,
+          url: src.url,
+        });
+      });
+    }
+
+    // Add PDF Blueprints from media references if not already in list
+    const mediaSources =
+      (activeOffering as any).mediaReferences ||
+      (activeOffering as any).media ||
+      [];
+    if (Array.isArray(mediaSources)) {
+      mediaSources.forEach((m: any, idx: number) => {
+        if (m.url?.toLowerCase().includes(".pdf") && !docs.some((d) => d.url === m.url)) {
+          docs.push({
+            id: m.id || `med-pdf-${idx}`,
+            title: m.title || `${activeOffering.name} — Technical Blueprint / Schematic`,
+            type: "PDF BLUEPRINT",
+            size: "Technical Doc",
+            badge: "CANONICAL",
+            code: `CAD-${offeringCode}-${idx + 1}`,
+            url: m.url,
+          });
+        }
+      });
+    }
+
+    return docs;
   }, [activeOffering, offeringCode]);
+
+  // Background pre-cache attached PDF documents to memory for instant AI responses
+  useEffect(() => {
+    if (!activeOffering) return;
+    const urlsToCache: string[] = [];
+    (activeOffering.groundingSources || []).forEach((g) => {
+      const u = (g as any).base64Data || g.url;
+      if (u) urlsToCache.push(u);
+    });
+    (activeOffering.mediaReferences || []).forEach((m) => {
+      if ((m.type === "drawing" || m.url?.toLowerCase().includes(".pdf")) && m.url) {
+        urlsToCache.push(m.url);
+      }
+    });
+    urlsToCache.slice(0, 2).forEach((url) => {
+      resolvePdfAsBase64(url).catch(() => {});
+    });
+  }, [activeOffering]);
 
   // Scroll chat
   useEffect(() => {
@@ -637,7 +629,7 @@ export function ProductExperienceModal({
   }, [chatMessages, isGenerating]);
 
   // Send message to AI Advisor
-  const handleSendMessage = (textToSend?: string) => {
+  const handleSendMessage = async (textToSend?: string) => {
     const q = (textToSend || advisorInput).trim();
     if (!q || isGenerating) return;
 
@@ -652,8 +644,8 @@ export function ProductExperienceModal({
     setAdvisorInput("");
     setIsGenerating(true);
 
-    setTimeout(() => {
-      const response = generateAdvisorAnswer(q, activeOffering, displayName);
+    try {
+      const response = await generateAdvisorAnswer(q, activeOffering, displayName, sectorCityLabel);
       
       const isSealed = q.toLowerCase().includes("official offer") || q.toLowerCase().includes("commercial offer") || q.toLowerCase().includes("package");
 
@@ -669,19 +661,22 @@ export function ProductExperienceModal({
           ? {
               referenceCode: offeringCode,
               issuingEntity: displayName,
-              incotermsRules: "EXW / FOB Shipyard Gate",
+              incotermsRules: activeOffering.commercialInformation?.incoterms || "EXW / FOB Shipyard Gate",
               jurisdiction: sectorCityLabel,
-              milestonePricing: "30% Advance Deposit / 70% Milestone Settlement",
-              leadTime: "12–16 Weeks Standard",
-              warranty: "24-Month Marine Guarantee",
+              milestonePricing: "30% Advance Deposit / 70% Milestone Settlement upon FAT",
+              leadTime: activeOffering.commercialInformation?.leadTime || "Standard production slot",
+              warranty: activeOffering.commercialInformation?.warranty || "24-Month Marine Guarantee",
             }
           : undefined,
         sources: response.sources,
         actionSuggestion: response.action,
       };
       setChatMessages((prev) => [...prev, advisorMsg]);
+    } catch (err) {
+      console.warn("[ProductExperienceModal] Advisor answer error:", err);
+    } finally {
       setIsGenerating(false);
-    }, 400);
+    }
   };
 
   // Consolidated Quick Prompt Chips (NO DUPLICATES, NO REDUNDANT RFQ CHIP)
@@ -693,28 +688,26 @@ export function ProductExperienceModal({
     { label: "Commercial Terms & Pricing", query: `What are the commercial milestone terms, pricing guidance, and Incoterms?` },
   ], [activeOffering]);
 
-  // File Download Handler
-  const handleDownloadDoc = (docTitle: string, docCode: string) => {
+  // File Download / Open Handler
+  const handleDownloadDoc = (docTitle: string, docCode: string, docUrl?: string) => {
+    if (docUrl) {
+      window.open(docUrl, "_blank", "noopener,noreferrer");
+      return;
+    }
+
     const content = `=================================================================\n` +
       `MARINEWORLD CANONICAL RECORD — OFFICIAL TECHNICAL SPECIFICATION\n` +
       `Entity: ${activeOffering.name}\n` +
       `Reference ID: ${docCode}\n` +
       `Issuing Node: ${displayName} (${sectorCityLabel})\n` +
       `Verification Timestamp: ${new Date().toISOString()}\n` +
-      `Class Societies: DNV / Lloyd's Register / Bureau Veritas / ABS\n` +
       `=================================================================\n\n` +
-      `EXECUTIVE SUMMARY:\n${activeOffering.shortDescription}\n\n` +
+      `EXECUTIVE SUMMARY:\n${activeOffering.shortDescription || activeOffering.description || ""}\n\n` +
       `SPECIFICATION PARAMETERS:\n` +
-      Object.entries(activeOffering.specifications || {
-        "Primary Application": "Commercial & High-End Marine Systems",
-        "Operating Jurisdiction": sectorCityLabel,
-        "Compliance Standard": "IMO Tier III / MARPOL Annex VI",
-        "Standard Lead Time": "12–16 Weeks",
-      }).map(([k, v]) => `• ${k}: ${v}`).join("\n") +
+      Object.entries(activeOffering.specifications || {}).map(([k, v]) => `• ${k}: ${v}`).join("\n") +
       `\n\nCOMMERCIAL & INCOTERMS RULES:\n` +
-      `• Delivery Basis: EXW / FOB Shipyard Gate\n` +
-      `• Settlement: 30% Contract Advance / 70% Milestone Settlement\n` +
-      `• Warranty: 24 Months Certified Marine Guarantee\n` +
+      `• Delivery Basis: ${activeOffering.commercialInformation?.incoterms || "EXW / FOB"}\n` +
+      `• Lead Time: ${activeOffering.commercialInformation?.leadTime || "Standard"}\n` +
       `\n=================================================================\n` +
       `Digitally Sealed by MarineWorld Network Protocol.\n`;
 
@@ -822,7 +815,7 @@ export function ProductExperienceModal({
               {[
                 { id: "overview", label: "OVERVIEW", icon: Info },
                 { id: "media", label: `MEDIA (${mediaGallery.length})`, icon: ImageIcon },
-                { id: "downloads", label: "DOCUMENTS", icon: FolderDown },
+                { id: "downloads", label: `DOCUMENTS (${downloadDocs.length})`, icon: FolderDown },
                 { id: "company", label: "COMPANY", icon: Building2 },
               ].map((tab) => {
                 const isSelected = activeTab === tab.id;
@@ -870,12 +863,30 @@ export function ProductExperienceModal({
                       <span className="font-mono text-slate-500">Ref {offeringCode}</span>
                     </div>
 
-                    <h1
-                      id="product-modal-title"
-                      className="text-xl sm:text-2xl font-extrabold text-graphite tracking-tight leading-snug uppercase font-sans"
-                    >
-                      {activeOffering.name}
-                    </h1>
+                    <div className="flex items-center justify-between gap-3 flex-wrap">
+                      <h1
+                        id="product-modal-title"
+                        className="text-xl sm:text-2xl font-extrabold text-graphite tracking-tight leading-snug uppercase font-sans"
+                      >
+                        {activeOffering.name}
+                      </h1>
+
+                      {(() => {
+                        const priceVal = activeOffering.price || activeOffering.commercialInformation?.price;
+                        const currencyVal = activeOffering.currency || activeOffering.commercialInformation?.currency || "USD";
+                        const symbol = currencyVal === "EUR" ? "€" : currencyVal === "TRY" ? "₺" : currencyVal === "GBP" ? "£" : "$";
+                        const formattedPrice = priceVal
+                          ? (priceVal.includes("$") || priceVal.includes("€") || priceVal.includes("₺") || priceVal.includes("£") ? priceVal : `${symbol}${priceVal}`)
+                          : activeOffering.commercialInformation?.pricingGuidance;
+                        if (!formattedPrice) return null;
+                        return (
+                          <span className="inline-flex items-center gap-1 px-3 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 font-mono font-bold text-sm shadow-2xs">
+                            <span className="text-[10px] text-emerald-600 font-medium">PRICE:</span>
+                            <span>{formattedPrice}</span>
+                          </span>
+                        );
+                      })()}
+                    </div>
 
                     {/* Elevated Company Identity Card matching Business Twin standard */}
                     <div className="flex items-center justify-between gap-3 p-3 rounded-card-md border border-line bg-canvas">
@@ -950,17 +961,39 @@ export function ProductExperienceModal({
                       onKeyDown={(e) => {
                         if (e.key === "Enter" || e.key === " ") {
                           e.preventDefault();
+                          if (mediaGallery.length > 0) {
+                            setLightboxIndex(activeMediaIndex);
+                            setIsLightboxOpen(true);
+                          }
+                        }
+                      }}
+                      onClick={() => {
+                        if (mediaGallery.length > 0) {
                           setLightboxIndex(activeMediaIndex);
                           setIsLightboxOpen(true);
                         }
                       }}
-                      onClick={() => {
-                        setLightboxIndex(activeMediaIndex);
-                        setIsLightboxOpen(true);
-                      }}
                       className="group relative w-full h-52 sm:h-60 rounded-card-md overflow-hidden bg-slate-950 border border-line shadow-xs cursor-pointer select-none focus-visible:ring-2 focus-visible:ring-royal focus-visible:outline-hidden"
                     >
-                      {!failedImages[mediaGallery[activeMediaIndex]?.url] ? (
+                      {mediaGallery.length === 0 ? (
+                        <div className="w-full h-full flex flex-col items-center justify-center p-6 text-center text-slate-400 bg-slate-900">
+                          <ImageIcon className="w-10 h-10 text-slate-600 mb-2" />
+                          <p className="text-xs font-bold text-slate-300 uppercase tracking-wide">No Visual Media Uploaded</p>
+                          <p className="text-[10.5px] text-slate-500 mt-1">Photos and technical drawings added in Studio will appear here</p>
+                        </div>
+                      ) : mediaGallery[activeMediaIndex]?.url?.toLowerCase().includes(".pdf") ? (
+                        <div className="w-full h-full flex flex-col items-center justify-center p-6 text-center bg-slate-900 text-white">
+                          <div className="w-14 h-14 rounded-2xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-400 mb-3 shadow-inner group-hover:scale-105 transition-transform">
+                            <FileText className="w-7 h-7" />
+                          </div>
+                          <p className="text-xs sm:text-sm font-bold text-white max-w-[85%] truncate mb-1">
+                            {mediaGallery[activeMediaIndex]?.title}
+                          </p>
+                          <span className="text-[9.5px] font-mono text-rose-400 font-extrabold uppercase tracking-wider bg-rose-950/60 px-2.5 py-1 rounded border border-rose-800/50">
+                            PDF BLUEPRINT / SCHEMATIC
+                          </span>
+                        </div>
+                      ) : !failedImages[mediaGallery[activeMediaIndex]?.url] ? (
                         <img
                           src={mediaGallery[activeMediaIndex]?.url}
                           alt={mediaGallery[activeMediaIndex]?.title}
@@ -970,40 +1003,44 @@ export function ProductExperienceModal({
                       ) : (
                         <div className="w-full h-full flex flex-col items-center justify-center p-6 text-center text-slate-400 bg-slate-900">
                           <ImageIcon className="w-10 h-10 text-slate-600 mb-2" />
-                          <p className="text-xs font-bold text-slate-300">No media uploaded yet</p>
-                          <p className="text-[10.5px] text-slate-500 mt-1">Image record currently unavailable</p>
+                          <p className="text-xs font-bold text-slate-300">Image Record Unavailable</p>
+                          <p className="text-[10.5px] text-slate-500 mt-1">{mediaGallery[activeMediaIndex]?.title}</p>
                         </div>
                       )}
 
                       <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-black/30 pointer-events-none" />
 
                       {/* Top Left Media Type Badge */}
-                      <div className="absolute top-3 left-3 flex items-center gap-1.5">
-                        <span className="inline-flex items-center gap-1.5 rounded-card-xs bg-royal text-white px-2.5 py-1 text-[9.5px] font-bold uppercase tracking-[0.12em] shadow-xs">
-                          {mediaGallery[activeMediaIndex]?.type === "video" ? (
-                            <Play className="w-3 h-3 fill-current" />
-                          ) : mediaGallery[activeMediaIndex]?.type === "technical_drawing" ? (
-                            <FileCode className="w-3 h-3" />
-                          ) : (
-                            <ImageIcon className="w-3 h-3" />
-                          )}
-                          <span>{mediaGallery[activeMediaIndex]?.typeLabel}</span>
-                        </span>
+                      {mediaGallery.length > 0 && (
+                        <div className="absolute top-3 left-3 flex items-center gap-1.5">
+                          <span className="inline-flex items-center gap-1.5 rounded-card-xs bg-royal text-white px-2.5 py-1 text-[9.5px] font-bold uppercase tracking-[0.12em] shadow-xs">
+                            {mediaGallery[activeMediaIndex]?.type === "video" ? (
+                              <Play className="w-3 h-3 fill-current" />
+                            ) : mediaGallery[activeMediaIndex]?.type === "technical_drawing" ? (
+                              <FileCode className="w-3 h-3" />
+                            ) : (
+                              <ImageIcon className="w-3 h-3" />
+                            )}
+                            <span>{mediaGallery[activeMediaIndex]?.typeLabel}</span>
+                          </span>
 
-                        <span className="inline-flex items-center rounded-card-xs bg-slate-900/80 backdrop-blur-md text-white/90 px-2 py-1 text-[9px] font-mono font-bold uppercase border border-white/10">
-                          {mediaGallery[activeMediaIndex]?.badgeTag}
-                        </span>
-                      </div>
+                          <span className="inline-flex items-center rounded-card-xs bg-slate-900/80 backdrop-blur-md text-white/90 px-2 py-1 text-[9px] font-mono font-bold uppercase border border-white/10">
+                            {mediaGallery[activeMediaIndex]?.badgeTag}
+                          </span>
+                        </div>
+                      )}
 
                       {/* Top Right Position Counter & Enlarge Hint */}
-                      <div className="absolute top-3 right-3 flex items-center gap-2">
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-card-xs bg-slate-950/80 backdrop-blur-md text-white text-[10.5px] font-mono font-bold border border-white/20 shadow-xs">
-                          {activeMediaIndex + 1} / {mediaGallery.length}
-                        </span>
-                        <div className="w-7 h-7 rounded-card-xs bg-slate-950/80 backdrop-blur-md text-white flex items-center justify-center border border-white/20 group-hover:bg-royal transition">
-                          <Maximize2 className="w-3.5 h-3.5" />
+                      {mediaGallery.length > 0 && (
+                        <div className="absolute top-3 right-3 flex items-center gap-2">
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-card-xs bg-slate-950/80 backdrop-blur-md text-white text-[10.5px] font-mono font-bold border border-white/20 shadow-xs">
+                            {activeMediaIndex + 1} / {mediaGallery.length}
+                          </span>
+                          <div className="w-7 h-7 rounded-card-xs bg-slate-950/80 backdrop-blur-md text-white flex items-center justify-center border border-white/20 group-hover:bg-royal transition">
+                            <Maximize2 className="w-3.5 h-3.5" />
+                          </div>
                         </div>
-                      </div>
+                      )}
 
                       {/* Video Play Button Overlay if Video */}
                       {mediaGallery[activeMediaIndex]?.type === "video" && !failedImages[mediaGallery[activeMediaIndex]?.url] && (
@@ -1033,6 +1070,7 @@ export function ProductExperienceModal({
                     >
                       {mediaGallery.map((m, idx) => {
                         const isActive = activeMediaIndex === idx;
+                        const isPdf = m.url?.toLowerCase().includes(".pdf") || m.type === "technical_drawing";
                         return (
                           <button
                             key={m.id}
@@ -1040,13 +1078,22 @@ export function ProductExperienceModal({
                             onClick={() => setActiveMediaIndex(idx)}
                             className={`group relative w-20 h-14 rounded-card-xs overflow-hidden border transition shrink-0 cursor-pointer text-left focus-visible:ring-2 focus-visible:ring-royal focus-visible:outline-hidden ${
                               isActive
-                                ? "border-royal ring-2 ring-royal/30 shadow-xs scale-105"
-                                : "border-line opacity-70 hover:opacity-100 hover:border-slate-400"
+                                ? "border-royal ring-2 ring-royal/40 shadow-sm scale-105"
+                                : "border-line opacity-75 hover:opacity-100 hover:border-slate-400"
                             }`}
                             title={m.title}
                             aria-label={`View thumbnail ${idx + 1} of ${mediaGallery.length}: ${m.title}`}
                           >
-                            {!failedImages[m.url] ? (
+                            {isPdf ? (
+                              <div className="w-full h-full bg-slate-900 flex flex-col items-center justify-center p-1 text-center group-hover:bg-slate-850 transition-colors">
+                                <div className="w-6 h-6 rounded-md bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-400 mb-0.5">
+                                  <FileText className="w-3.5 h-3.5" />
+                                </div>
+                                <span className="text-[7.5px] font-mono font-bold text-rose-300 uppercase tracking-tighter truncate max-w-[90%]">
+                                  PDF
+                                </span>
+                              </div>
+                            ) : !failedImages[m.url] ? (
                               <img src={m.url} alt={m.title} className="w-full h-full object-cover" />
                             ) : (
                               <div className="w-full h-full bg-slate-800 flex items-center justify-center text-slate-400">
@@ -1054,10 +1101,12 @@ export function ProductExperienceModal({
                               </div>
                             )}
 
-                            <div className="absolute inset-0 bg-black/20 group-hover:bg-transparent transition" />
+                            <div className="absolute inset-0 bg-black/15 group-hover:bg-transparent transition" />
 
-                            <span className="absolute bottom-0.5 left-0.5 px-1 py-0.2 rounded text-[7.5px] font-bold bg-slate-950/90 text-white uppercase tracking-tighter">
-                              {m.type === "technical_drawing" ? "DRAWING" : m.type === "video" ? "VIDEO" : "PHOTO"}
+                            <span className={`absolute bottom-0.5 left-0.5 px-1 py-0.2 rounded text-[7.5px] font-bold uppercase tracking-tighter ${
+                              isPdf ? "bg-rose-950/95 text-rose-300 border border-rose-800/60" : "bg-slate-950/90 text-white"
+                            }`}>
+                              {isPdf ? "PDF" : m.type === "video" ? "VIDEO" : "PHOTO"}
                             </span>
                           </button>
                         );
@@ -1272,44 +1321,54 @@ export function ProductExperienceModal({
                   <div className="flex items-center justify-between border-b border-line pb-2">
                     <h3 className="text-[10.5px] font-bold text-graphite uppercase tracking-[0.14em] flex items-center gap-2">
                       <FolderDown className="w-3.5 h-3.5 text-royal" />
-                      <span>Certified Engineering Documents</span>
+                      <span>Certified Engineering Documents ({downloadDocs.length})</span>
                     </h3>
                   </div>
 
-                  <div className="space-y-2.5">
-                    {downloadDocs.map((doc) => (
-                      <div
-                        key={doc.id}
-                        className="flex items-center justify-between p-3.5 rounded-card-sm border border-line bg-white hover:border-royal/60 hover:shadow-2xs transition"
-                      >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div className="w-9 h-9 rounded-card-xs bg-soft text-royal flex items-center justify-center shrink-0 border border-royal/20">
-                            <FileText className="w-4 h-4" />
-                          </div>
-                          <div className="min-w-0">
-                            <p className="text-[12px] font-bold text-graphite truncate uppercase">{doc.title}</p>
-                            <div className="flex items-center gap-2 text-[10px] text-stone font-medium mt-0.5">
-                              <span className="font-bold text-graphite">{doc.code}</span>
-                              <span>•</span>
-                              <span>{doc.size}</span>
-                              <span>•</span>
-                              <span className="text-emerald-600 font-bold uppercase">{doc.badge}</span>
+                  {downloadDocs.length === 0 ? (
+                    <div className="p-8 rounded-card-md border border-dashed border-slate-300 bg-slate-50 text-center space-y-2">
+                      <FolderDown className="w-8 h-8 mx-auto text-slate-400" />
+                      <p className="text-xs font-bold text-graphite uppercase">No Official Documents Attached</p>
+                      <p className="text-xs text-stone">
+                        Datasheets, certifications and blueprints uploaded in Studio will appear here for direct access.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2.5">
+                      {downloadDocs.map((doc) => (
+                        <div
+                          key={doc.id}
+                          className="flex items-center justify-between p-3.5 rounded-card-sm border border-line bg-white hover:border-royal/60 hover:shadow-2xs transition"
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="w-9 h-9 rounded-card-xs bg-soft text-royal flex items-center justify-center shrink-0 border border-royal/20">
+                              <FileText className="w-4 h-4" />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-[12px] font-bold text-graphite truncate uppercase">{doc.title}</p>
+                              <div className="flex items-center gap-2 text-[10px] text-stone font-medium mt-0.5">
+                                <span className="font-bold text-graphite">{doc.code}</span>
+                                <span>•</span>
+                                <span>{doc.size}</span>
+                                <span>•</span>
+                                <span className="text-emerald-600 font-bold uppercase">{doc.badge}</span>
+                              </div>
                             </div>
                           </div>
-                        </div>
 
-                        <button
-                          type="button"
-                          onClick={() => handleDownloadDoc(doc.title, doc.code)}
-                          className="inline-flex items-center gap-1.5 rounded-card-xs bg-canvas hover:bg-slate-950 hover:text-white text-graphite px-3 py-1.5 text-xs font-bold transition cursor-pointer shrink-0 ml-3 border border-line focus-visible:ring-2 focus-visible:ring-royal focus-visible:outline-hidden"
-                          aria-label={`Download ${doc.title} (${doc.code})`}
-                        >
-                          <Download className="w-3.5 h-3.5" />
-                          <span className="hidden sm:inline uppercase tracking-wider">Download</span>
-                        </button>
-                      </div>
-                    ))}
-                  </div>
+                          <button
+                            type="button"
+                            onClick={() => handleDownloadDoc(doc.title, doc.code, doc.url)}
+                            className="inline-flex items-center gap-1.5 rounded-card-xs bg-canvas hover:bg-slate-950 hover:text-white text-graphite px-3 py-1.5 text-xs font-bold transition cursor-pointer shrink-0 ml-3 border border-line focus-visible:ring-2 focus-visible:ring-royal focus-visible:outline-hidden"
+                            aria-label={`Download ${doc.title} (${doc.code})`}
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                            <span className="hidden sm:inline uppercase tracking-wider">{doc.url ? "Open / View" : "Download"}</span>
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1552,8 +1611,8 @@ export function ProductExperienceModal({
                           </div>
                         ) : (
                           <div className="space-y-2.5">
-                            {/* Exact Answer */}
-                            <p className="leading-relaxed whitespace-pre-wrap text-graphite font-medium">{msg.text}</p>
+                            {/* Exact Answer Rendered with clean Markdown / Bullet Points */}
+                            {renderAdvisorMessageText(msg.text)}
 
                             {/* Expandable Deeper Context / Notes */}
                             {msg.detailedNotes && (
@@ -1737,9 +1796,16 @@ export function ProductExperienceModal({
           >
             {allOfferings.map((item) => {
               const isCurrent = item.id === activeOffering.id || item.name === activeOffering.name;
-              const itemImage = (item as any).coverImage ||
+              const rawImage =
+                (item as any).coverImage ||
                 (item as any).primaryImage ||
-                `https://images.unsplash.com/photo-1586528116311-ad8ed7c50a92?auto=format&fit=crop&w=300&q=80`;
+                (item as any).imageUrl ||
+                item.mediaReferences?.find((m: any) => m.isCover)?.url ||
+                item.mediaReferences?.[0]?.url ||
+                (item as any).media?.[0]?.url ||
+                (item as any).gallery?.[0]?.url ||
+                "";
+              const isPdf = Boolean(rawImage && rawImage.toLowerCase().includes(".pdf"));
 
               return (
                 <button
@@ -1749,19 +1815,33 @@ export function ProductExperienceModal({
                     setActiveOfferingRaw(item);
                     if (onSelectOffering) onSelectOffering(item);
                   }}
-                  className={`flex items-center gap-2 p-1 pr-3 rounded-card-sm border transition-all shrink-0 cursor-pointer text-left focus-visible:ring-2 focus-visible:ring-royal focus-visible:outline-hidden ${
+                  className={`flex items-center gap-2 p-1.5 pr-3 rounded-card-sm border transition-all shrink-0 cursor-pointer text-left focus-visible:ring-2 focus-visible:ring-royal focus-visible:outline-hidden ${
                     isCurrent
                       ? "bg-white border-royal ring-1 ring-royal/30 shadow-xs"
                       : "bg-white/80 border-line hover:border-slate-300 hover:bg-white"
                   }`}
                   aria-label={`View offering: ${item.name}`}
                 >
-                  <div className="w-9 h-7 rounded-card-xs overflow-hidden bg-slate-200 shrink-0">
-                    <img
-                      src={itemImage}
-                      alt={item.name}
-                      className="w-full h-full object-cover"
-                    />
+                  <div className="w-9 h-7 rounded-card-xs overflow-hidden bg-slate-100 border border-line flex items-center justify-center shrink-0">
+                    {isPdf ? (
+                      <div className="w-full h-full bg-slate-900 text-rose-400 flex items-center justify-center">
+                        <FileText className="w-3.5 h-3.5" />
+                      </div>
+                    ) : rawImage ? (
+                      <img
+                        src={rawImage}
+                        alt={item.name}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full bg-slate-100 text-stone flex items-center justify-center">
+                        {item.type === "service" ? (
+                          <Wrench className="w-3.5 h-3.5" />
+                        ) : (
+                          <Package className="w-3.5 h-3.5" />
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   <div className="min-w-0 max-w-[130px] sm:max-w-[160px]">
@@ -1837,8 +1917,28 @@ export function ProductExperienceModal({
                 <ChevronLeft className="w-5 h-5" />
               </button>
 
-              <div className="flex-1 flex flex-col items-center justify-center p-2 max-h-[62vh] min-h-0 bg-canvas/50 rounded-card-md border border-line/60 mx-2">
-                {!failedImages[mediaGallery[lightboxIndex]?.url] ? (
+              <div className="flex-1 flex flex-col items-center justify-center p-2 max-h-[62vh] min-h-0 bg-canvas/50 rounded-card-md border border-line/60 mx-2 overflow-auto">
+                {mediaGallery[lightboxIndex]?.url?.toLowerCase().includes(".pdf") ? (
+                  <div className="w-full h-full flex flex-col items-center justify-center space-y-3 p-4">
+                    <iframe
+                      src={`https://docs.google.com/viewer?url=${encodeURIComponent(mediaGallery[lightboxIndex]?.url)}&embedded=true`}
+                      title={mediaGallery[lightboxIndex]?.title || "PDF Document"}
+                      className="w-full h-[55vh] rounded-xl border border-slate-300 bg-white shadow-sm"
+                    />
+                    <div className="flex items-center justify-between w-full px-2 text-xs text-stone">
+                      <span>Official PDF Blueprint Document</span>
+                      <a
+                        href={mediaGallery[lightboxIndex]?.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-3.5 py-1.5 rounded-lg bg-royal text-white font-bold flex items-center gap-1.5 hover:bg-royal/90 transition shadow-2xs text-xs"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        <span>Open in New Tab</span>
+                      </a>
+                    </div>
+                  </div>
+                ) : !failedImages[mediaGallery[lightboxIndex]?.url] ? (
                   <div className="relative max-h-full max-w-full flex items-center justify-center">
                     <img
                       src={mediaGallery[lightboxIndex]?.url}
@@ -1885,19 +1985,28 @@ export function ProductExperienceModal({
                 aria-label="Lightbox thumbnails"
                 className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1 w-full max-w-full flex-nowrap"
               >
-                {mediaGallery.map((m, idx) => (
-                  <button
-                    key={m.id}
-                    type="button"
-                    onClick={() => setLightboxIndex(idx)}
-                    className={`w-14 h-10 rounded-card-xs overflow-hidden border transition cursor-pointer shrink-0 relative focus-visible:ring-2 focus-visible:ring-royal focus-visible:outline-hidden ${
-                      lightboxIndex === idx ? "border-royal ring-2 ring-royal/30 shadow-xs" : "border-line opacity-60 hover:opacity-100"
-                    }`}
-                    aria-label={`Jump to media ${idx + 1}: ${m.title}`}
-                  >
-                    <img src={m.url} alt={m.title} className="w-full h-full object-cover" />
-                  </button>
-                ))}
+                {mediaGallery.map((m, idx) => {
+                  const isPdf = m.url?.toLowerCase().includes(".pdf") || m.type === "technical_drawing";
+                  return (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => setLightboxIndex(idx)}
+                      className={`w-14 h-10 rounded-card-xs overflow-hidden border transition cursor-pointer shrink-0 relative focus-visible:ring-2 focus-visible:ring-royal focus-visible:outline-hidden ${
+                        lightboxIndex === idx ? "border-royal ring-2 ring-royal/30 shadow-xs" : "border-line opacity-60 hover:opacity-100"
+                      }`}
+                      aria-label={`Jump to media ${idx + 1}: ${m.title}`}
+                    >
+                      {isPdf ? (
+                        <div className="w-full h-full bg-slate-900 flex items-center justify-center text-rose-400">
+                          <FileText className="w-4 h-4" />
+                        </div>
+                      ) : (
+                        <img src={m.url} alt={m.title} className="w-full h-full object-cover" />
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -1937,17 +2046,18 @@ export function ProductExperienceModal({
 /**
  * Intelligent Grounded Response Generator for Product/Service AI Advisor
  */
-function generateAdvisorAnswer(
+async function generateAdvisorAnswer(
   query: string,
   offering: CompanyOffering,
-  companyName: string
-): {
+  companyName: string,
+  sectorCity?: string
+): Promise<{
   text: string;
   detailedNotes?: string;
   sources: string[];
   action?: { label: string; type: "DOWNLOAD_PDF" | "RFQ" | "SPECS" | "AVAILABILITY" };
-} {
-  const result = answerOfferingAdvisorQuery(offering, query, companyName);
+}> {
+  const result = await answerOfferingAdvisorQueryAsync(offering, query, companyName, sectorCity);
   
   let action: { label: string; type: "DOWNLOAD_PDF" | "RFQ" | "SPECS" | "AVAILABILITY" } | undefined;
   if (result.suggestedAction === "REQUEST_OFFER" || result.suggestedAction === "COMMERCIAL_RFQ") {
@@ -1964,4 +2074,84 @@ function generateAdvisorAnswer(
     sources: result.sourcesUsed,
     action,
   };
+}
+
+/**
+ * Text renderer helper to parse markdown bold, italic, code, and bullet lists cleanly without raw asterisks
+ */
+function renderAdvisorMessageText(text: string) {
+  if (!text) return null;
+
+  const lines = text.split("\n");
+  return (
+    <div className="space-y-2 text-[12.5px] leading-relaxed text-slate-800">
+      {lines.map((rawLine, idx) => {
+        const trimmed = rawLine.trim();
+        if (!trimmed) {
+          return <div key={idx} className="h-1" />;
+        }
+
+        // Detect if line is a bullet item (e.g., "* ", "- ", "• ", "  * ", "* *", etc.)
+        const isSubBullet = rawLine.startsWith("    ") || rawLine.startsWith("\t") || rawLine.startsWith("  *") || rawLine.startsWith("  -");
+        const isBullet = isSubBullet || trimmed.startsWith("* ") || trimmed.startsWith("- ") || trimmed.startsWith("• ") || trimmed.startsWith("* *");
+
+        // Clean out leading bullet symbols from text content
+        let contentLine = trimmed;
+        if (isBullet) {
+          contentLine = contentLine.replace(/^(\*\s*|\-\s*|•\s*)+/, "").trim();
+        }
+
+        // Parse inline markdown: **bold**, `code`, *italic*
+        const parts = contentLine.split(/(\*\*.*?\*\*|\*.*?\*|`.*?`)/g);
+
+        const parsedContent = parts.map((part, pIdx) => {
+          if (part.startsWith("**") && part.endsWith("**")) {
+            const inner = part.slice(2, -2).trim();
+            const cleanedInner = inner.replace(/^\*+|\*+$/g, "");
+            return (
+              <strong key={pIdx} className="font-bold text-graphite">
+                {cleanedInner}
+              </strong>
+            );
+          }
+          if (part.startsWith("*") && part.endsWith("*") && part.length > 2) {
+            return (
+              <span key={pIdx} className="font-medium text-graphite">
+                {part.slice(1, -1)}
+              </span>
+            );
+          }
+          if (part.startsWith("`") && part.endsWith("`")) {
+            return (
+              <code key={pIdx} className="font-mono text-royal bg-canvas border border-line px-1 py-0.5 rounded text-[11px]">
+                {part.slice(1, -1)}
+              </code>
+            );
+          }
+          // Clean stray asterisks from text parts
+          const cleanedText = part.replace(/\*\*\*/g, "").replace(/\*\*/g, "");
+          return <span key={pIdx}>{cleanedText}</span>;
+        });
+
+        if (isBullet) {
+          return (
+            <div key={idx} className={`flex items-start gap-2 ${isSubBullet ? "pl-4 text-slate-700" : "pl-0.5 text-slate-800"}`}>
+              <span className="text-royal font-bold select-none text-[13px] leading-tight">
+                {isSubBullet ? "›" : "•"}
+              </span>
+              <div className="flex-1 leading-relaxed">
+                {parsedContent}
+              </div>
+            </div>
+          );
+        }
+
+        return (
+          <p key={idx} className="leading-relaxed text-slate-800">
+            {parsedContent}
+          </p>
+        );
+      })}
+    </div>
+  );
 }

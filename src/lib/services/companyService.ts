@@ -22,6 +22,7 @@ import { registerCompanyMember } from "@/lib/services/securityService";
 import {
   saveCompanyRecordSync,
   getCompanyRecordSync,
+  getCompanyRecord,
   findAllCompaniesSync,
 } from "@/lib/repositories/companyRepository";
 import { saveNode as saveNodeRepo, deleteNodeRecord as deleteNodeRepo } from "@/lib/repositories/nodeRepository";
@@ -385,7 +386,7 @@ function initializeCompanyFacilities(companyId: string): PhysicalFacility[] {
   const compCountry = company?.country || "Netherlands";
 
   // Check if company already has physicalFacilities saved in Firestore
-  if (company?.physicalFacilities && Array.isArray(company.physicalFacilities) && company.physicalFacilities.length > 0) {
+  if (company?.physicalFacilities && Array.isArray(company.physicalFacilities)) {
     companyFacilitiesMap.set(companyId, company.physicalFacilities);
     return company.physicalFacilities;
   }
@@ -419,44 +420,7 @@ function initializeCompanyFacilities(companyId: string): PhysicalFacility[] {
         website: "https://argento-marine.marineworld.city",
         openingHours: "Mon - Fri: 08:00 - 18:00 CET",
         yearEstablished: "2018",
-        media: [
-          {
-            id: "m-am-1",
-            type: "image",
-            source: "url",
-            url: "https://images.unsplash.com/photo-1544551763-46a013bb70d5?auto=format&fit=crop&w=1200&q=80",
-            image: "https://images.unsplash.com/photo-1544551763-46a013bb70d5?auto=format&fit=crop&w=1200&q=80",
-            title: "Rotterdam Waterfront Quayside HQ",
-            caption: "Main technical office and quayside engineering facility in Waalhaven",
-            category: "EXTERIOR",
-            isCover: true,
-            sortOrder: 0,
-          },
-          {
-            id: "m-am-2",
-            type: "image",
-            source: "url",
-            url: "https://images.unsplash.com/photo-1586528116311-ad8ed7c50a92?auto=format&fit=crop&w=1200&q=80",
-            image: "https://images.unsplash.com/photo-1586528116311-ad8ed7c50a92?auto=format&fit=crop&w=1200&q=80",
-            title: "Naval Architecture CAD Studio",
-            caption: "High-performance simulation workstations for hull optimization",
-            category: "OFFICE",
-            isCover: false,
-            sortOrder: 1,
-          },
-          {
-            id: "m-am-3",
-            type: "image",
-            source: "url",
-            url: "https://images.unsplash.com/photo-1578575437130-527eed3abbec?auto=format&fit=crop&w=1200&q=80",
-            image: "https://images.unsplash.com/photo-1578575437130-527eed3abbec?auto=format&fit=crop&w=1200&q=80",
-            title: "Subsea Robotics Testing Tank",
-            caption: "Controlled hydrostatic pressure test basin for autonomous drones",
-            category: "WORKSHOP",
-            isCover: false,
-            sortOrder: 2,
-          },
-        ],
+        media: [],
       },
       {
         id: `fac-${companyId}-yard`,
@@ -476,20 +440,7 @@ function initializeCompanyFacilities(companyId: string): PhysicalFacility[] {
         verificationStatus: "VERIFIED",
         openingHours: "24/7 Drydock Operations",
         yearEstablished: "2020",
-        media: [
-          {
-            id: "m-am-4",
-            type: "image",
-            source: "url",
-            url: "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=1200&q=80",
-            image: "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=1200&q=80",
-            title: "Drydock Berth & Heavy Lift Cranes",
-            caption: "Heavy crane lifting and pod drivetrain installation bay",
-            category: "PRODUCTION",
-            isCover: true,
-            sortOrder: 0,
-          },
-        ],
+        media: [],
       },
       {
         id: `fac-${companyId}-hub`,
@@ -509,20 +460,7 @@ function initializeCompanyFacilities(companyId: string): PhysicalFacility[] {
         verificationStatus: "VERIFIED",
         openingHours: "Mon - Sat: 08:30 - 17:30 SGT",
         yearEstablished: "2022",
-        media: [
-          {
-            id: "m-am-5",
-            type: "image",
-            source: "url",
-            url: "https://images.unsplash.com/photo-1559136555-9303baea8ebd?auto=format&fit=crop&w=1200&q=80",
-            image: "https://images.unsplash.com/photo-1559136555-9303baea8ebd?auto=format&fit=crop&w=1200&q=80",
-            title: "Singapore Distribution Center",
-            caption: "Critical marine propulsion spares warehouse",
-            category: "INFRASTRUCTURE",
-            isCover: true,
-            sortOrder: 0,
-          },
-        ],
+        media: [],
       },
     ];
   } else {
@@ -544,20 +482,7 @@ function initializeCompanyFacilities(companyId: string): PhysicalFacility[] {
         visibility: "PUBLIC",
         isHeadquarters: true,
         verificationStatus: "VERIFIED",
-        media: [
-          {
-            id: `m-${companyId}-1`,
-            type: "image",
-            source: "url",
-            url: "https://images.unsplash.com/photo-1544551763-46a013bb70d5?auto=format&fit=crop&w=1200&q=80",
-            image: "https://images.unsplash.com/photo-1544551763-46a013bb70d5?auto=format&fit=crop&w=1200&q=80",
-            title: `${compName} Main Facility`,
-            caption: "Headquarters office and primary operations center",
-            category: "EXTERIOR",
-            isCover: true,
-            sortOrder: 0,
-          },
-        ],
+        media: [],
       },
     ];
   }
@@ -570,7 +495,32 @@ function initializeCompanyFacilities(companyId: string): PhysicalFacility[] {
  * Get all physical operating facilities for a company
  */
 export function getPhysicalFacilities(companyId: string): PhysicalFacility[] {
+  const comp = getCompanyById(companyId) || getCompanyBySlug(companyId);
+  if (comp?.physicalFacilities && Array.isArray(comp.physicalFacilities)) {
+    companyFacilitiesMap.set(companyId, comp.physicalFacilities);
+    return comp.physicalFacilities;
+  }
+  if (companyFacilitiesMap.has(companyId)) {
+    return companyFacilitiesMap.get(companyId)!;
+  }
   return initializeCompanyFacilities(companyId);
+}
+
+/**
+ * Asynchronously fetch physical operating facilities directly from Firestore company record
+ */
+export async function fetchPhysicalFacilitiesAsync(companyId: string): Promise<PhysicalFacility[]> {
+  if (!companyId) return [];
+  try {
+    const comp = await getCompanyRecord(companyId);
+    if (comp?.physicalFacilities && Array.isArray(comp.physicalFacilities)) {
+      companyFacilitiesMap.set(companyId, comp.physicalFacilities);
+      return comp.physicalFacilities;
+    }
+  } catch (err) {
+    console.warn(`[CompanyService] fetchPhysicalFacilitiesAsync error for ${companyId}:`, err);
+  }
+  return getPhysicalFacilities(companyId);
 }
 
 /**

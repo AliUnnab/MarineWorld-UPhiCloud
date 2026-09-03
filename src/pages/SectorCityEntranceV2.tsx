@@ -239,29 +239,31 @@ export function SectorCityEntranceV2({
     return data;
   }, [
     config,
-    city.id,
+    city?.id,
     activeRegionEdition.regionCode,
     previewCreativeOverride,
   ]);
 
   const countryPavilions = useMemo(
-    () => getCountryPavilions(config, city.id, activeRegionEdition.regionCode),
-    [config, city.id, activeRegionEdition.regionCode]
+    () => (city ? getCountryPavilions(config, city.id, activeRegionEdition.regionCode) : []),
+    [config, city?.id, activeRegionEdition.regionCode]
   );
 
   const allCityCompanies = useMemo(
-    () => getCompaniesInCity(config, city.id),
-    [config, city.id]
+    () => (city ? getCompaniesInCity(config, city.id) : []),
+    [config, city?.id]
   );
 
   const breadcrumbs = [
     { label: "MarineWorld.City", href: "/" },
     { label: "Sector Cities", href: "/cities" },
     { label: parentDomainName, href: `/industries/${parentDomain?.slug || "maritime-services"}` },
-    { label: city.domain.toUpperCase() },
+    { label: city ? city.domain.toUpperCase() : "" },
   ];
 
-  const { landmark, flagships, presence } = propertyData;
+  const landmark = propertyData?.landmark;
+  const flagships = propertyData?.flagships || [];
+  const presence = propertyData?.presence || [];
 
   const passesSearch = (name: string, region: string, industry: string = "") => {
     if (!searchQuery.trim()) return true;
@@ -289,12 +291,13 @@ export function SectorCityEntranceV2({
 
   // Authoritative commercial presence inventory for this Sector City and Region
   const commercialPresenceInventory = useMemo(() => {
+    if (!city) return [];
     return getAllCommercialInventory({
       cityId: city.id,
       regionCode: activeRegionEdition.regionCode,
       tier: "PRESENCE",
     });
-  }, [city.id, activeRegionEdition.regionCode]);
+  }, [city?.id, activeRegionEdition.regionCode]);
 
   // Active/Occupied commercial company placements based on real commercial property data
   const occupiedPresenceSlots = useMemo(() => {
@@ -393,8 +396,8 @@ export function SectorCityEntranceV2({
     return (
       <div className="min-h-screen bg-canvas flex flex-col items-center justify-center p-6 text-center font-sans">
         <Globe className="w-10 h-10 text-royal animate-pulse mb-3" />
-        <h2 className="text-lg font-bold text-graphite">Sektör Şehri Yükleniyor...</h2>
-        <p className="text-xs text-stone mt-1">Dijital düğüm verileri Firestore üzerinden doğrulanıyor.</p>
+        <h2 className="text-lg font-bold text-graphite">Loading Sector City...</h2>
+        <p className="text-xs text-stone mt-1">Verifying digital node data via Firestore.</p>
       </div>
     );
   }
@@ -405,15 +408,15 @@ export function SectorCityEntranceV2({
         <div className="w-16 h-16 rounded-full bg-soft text-royal flex items-center justify-center mb-4">
           <Globe className="w-8 h-8" />
         </div>
-        <h1 className="text-2xl font-extrabold text-graphite tracking-tight">Sektör Şehri Bulunamadı</h1>
+        <h1 className="text-2xl font-extrabold text-graphite tracking-tight">Sector City Not Found</h1>
         <p className="text-sm text-stone max-w-md mt-2">
-          Talep edilen &apos;{citySlug}&apos; sektör şehri henüz aktif edilmemiş veya veritabanında kayıtlı değil.
+          The requested sector city &apos;{citySlug}&apos; is not yet active or registered in the database.
         </p>
         <a
           href="/cities"
           className="mt-6 px-6 py-2.5 rounded-card-sm bg-slate-900 text-white text-xs font-bold uppercase tracking-wider hover:bg-slate-800 transition-colors"
         >
-          Tüm Sektör Şehirlerine Dön &rarr;
+          Return to All Sector Cities &rarr;
         </a>
       </div>
     );

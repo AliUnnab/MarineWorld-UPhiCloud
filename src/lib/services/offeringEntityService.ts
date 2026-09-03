@@ -191,26 +191,142 @@ export function evaluateOfferingPublishReadiness(
   };
 }
 
-import { findProductsByCompany } from "@/lib/repositories/productRepository";
-import { findServicesByCompany } from "@/lib/repositories/serviceRepository";
-import { getCompanyRecord } from "@/lib/repositories/companyRepository";
+import { db } from "@/lib/firebase";
+import { collection, doc, deleteDoc, setDoc, getDocs } from "firebase/firestore";
+import { findProductsByCompany, deleteProductRecord } from "@/lib/repositories/productRepository";
+import { findServicesByCompany, deleteServiceRecord } from "@/lib/repositories/serviceRepository";
+import { getCompanyRecord, getCompanyRecordSync } from "@/lib/repositories/companyRepository";
+import { getCompanyProducts, deleteProduct } from "@/lib/services/productService";
+import { getCompanyServices, deleteService } from "@/lib/services/serviceService";
+import { deleteFileFromStorage } from "@/lib/services/storageService";
+import { recordOfferingAudit } from "@/lib/services/auditService";
+import type { ProductEntity, ServiceEntity } from "@/lib/types";
+
+function convertProductToOffering(p: any, company?: any): CompanyOffering {
+  const priceVal = p.price || p.commercialInformation?.price || undefined;
+  const currencyVal = p.currency || p.commercialInformation?.currency || "USD";
+  return {
+    id: p.id,
+    entityId: p.id,
+    offeringId: p.id,
+    companyId: p.companyId || company?.id || "",
+    type: "product",
+    entityType: "PRODUCT",
+    name: p.name || "Product",
+    category: p.category || "Products",
+    shortDescription: p.shortDescription || p.description || "",
+    status: (p.status === "ACTIVE" || p.status === "AVAILABLE" || p.status === "DRAFT" || p.status === "ARCHIVED") ? p.status : "AVAILABLE",
+    visibility: p.visibility || "PUBLIC",
+    availability: p.availability || "AVAILABLE",
+    specifications: p.specifications || p.specs || {},
+    groundingSources: p.groundingSources || p.sources || [],
+    mediaReferences: p.mediaReferences || p.media || [],
+    media: p.media || p.mediaReferences || [],
+    price: priceVal,
+    currency: currencyVal,
+    commercialInformation: p.commercialInformation || (priceVal ? { price: priceVal, currency: currencyVal } : undefined),
+    certifications: p.certifications
+      ? p.certifications.map((c: any) => (typeof c === "string" ? c : c.name || c.authority || String(c)))
+      : [],
+    tags: p.tags || [],
+    createdAt: p.createdAt || new Date().toISOString(),
+    updatedAt: p.updatedAt || new Date().toISOString(),
+  };
+}
+
+function convertServiceToOffering(s: any, company?: any): CompanyOffering {
+  const priceVal = s.price || s.commercialInformation?.price || undefined;
+  const currencyVal = s.currency || s.commercialInformation?.currency || "USD";
+  return {
+    id: s.id,
+    entityId: s.id,
+    offeringId: s.id,
+    companyId: s.companyId || company?.id || "",
+    type: "service",
+    entityType: "SERVICE",
+    name: s.name || "Service",
+    category: s.category || "Services",
+    shortDescription: s.shortDescription || s.description || "",
+    status: (s.status === "ACTIVE" || s.status === "AVAILABLE" || s.status === "DRAFT" || s.status === "ARCHIVED") ? s.status : "ACTIVE",
+    visibility: s.visibility || "PUBLIC",
+    availability: s.availability || "AVAILABLE",
+    specifications: s.specifications || s.specs || {},
+    groundingSources: s.groundingSources || s.sources || [],
+    mediaReferences: s.mediaReferences || s.media || [],
+    media: s.media || s.mediaReferences || [],
+    price: priceVal,
+    currency: currencyVal,
+    commercialInformation: s.commercialInformation || (priceVal ? { price: priceVal, currency: currencyVal } : undefined),
+    certifications: s.certifications
+      ? s.certifications.map((c: any) => (typeof c === "string" ? c : c.name || c.authority || String(c)))
+      : [],
+    tags: s.tags || [],
+    createdAt: s.createdAt || new Date().toISOString(),
+    updatedAt: s.updatedAt || new Date().toISOString(),
+  };
+}
 
 /**
  * Get all canonical offerings for a company
  */
 export function getCompanyOfferings(companyId: string): CompanyOffering[] {
+  if (!companyId) return [];
+
   // Check store first
   const existing = canonicalOfferingsStore.get(companyId);
   if (existing && existing.length > 0) {
     return existing;
   }
 
-  // Fallback to company profile
-  const company = getCompanyById(companyId) || getCompanyBySlug(companyId);
-  if (company && company.offerings && company.offerings.length > 0) {
-    const initialized = company.offerings.map((offering) => initializeCanonicalOfferingDefaults(offering, company));
-    canonicalOfferingsStore.set(companyId, initialized);
-    return initialized;
+  // Fallback to company profile & sync repositories
+  const company = getCompanyById(companyId) || getCompanyBySlug(companyId) || (getCompanyRecordSync(companyId) as unknown as CompanyProfile);
+  const mergedMap = new Map<string, CompanyOffering>();
+
+  if (company) {
+    if (company.offerings && Array.isArray(company.offerings)) {
+      company.offerings.forEach((o) => {
+        if (o && o.id) mergedMap.set(o.id, initializeCanonicalOfferingDefaults(o, company));
+      });
+    }
+    if ((company as any).products && Array.isArray((company as any).products)) {
+      (company as any).products.forEach((p: any) => {
+        if (p && p.id && !mergedMap.has(p.id)) {
+          mergedMap.set(p.id, initializeCanonicalOfferingDefaults(convertProductToOffering(p, company), company));
+        }
+      });
+    }
+    if ((company as any).services && Array.isArray((company as any).services)) {
+      (company as any).services.forEach((s: any) => {
+        if (s && s.id && !mergedMap.has(s.id)) {
+          mergedMap.set(s.id, initializeCanonicalOfferingDefaults(convertServiceToOffering(s, company), company));
+        }
+      });
+    }
+  }
+
+  // Also query canonical domain services (products & services)
+  try {
+    const prods = getCompanyProducts(companyId);
+    prods.forEach((p) => {
+      if (p && p.id && !mergedMap.has(p.id)) {
+        mergedMap.set(p.id, initializeCanonicalOfferingDefaults(convertProductToOffering(p, company), company));
+      }
+    });
+
+    const servs = getCompanyServices(companyId);
+    servs.forEach((s) => {
+      if (s && s.id && !mergedMap.has(s.id)) {
+        mergedMap.set(s.id, initializeCanonicalOfferingDefaults(convertServiceToOffering(s, company), company));
+      }
+    });
+  } catch {
+    // ignore
+  }
+
+  const result = Array.from(mergedMap.values());
+  if (result.length > 0) {
+    canonicalOfferingsStore.set(companyId, result);
+    return result;
   }
 
   return [];
@@ -222,57 +338,52 @@ export function getCompanyOfferings(companyId: string): CompanyOffering[] {
 export async function fetchCompanyOfferingsAsync(companyId: string): Promise<CompanyOffering[]> {
   if (!companyId) return [];
   try {
-    const comp = await getCompanyRecord(companyId);
+    const comp = (await getCompanyRecord(companyId)) || getCompanyById(companyId) || getCompanyBySlug(companyId);
     const [fbProds, fbServs] = await Promise.all([
-      findProductsByCompany(companyId),
-      findServicesByCompany(companyId),
+      findProductsByCompany(companyId).catch(() => []),
+      findServicesByCompany(companyId).catch(() => []),
     ]);
 
     const mergedMap = new Map<string, CompanyOffering>();
-    if (comp?.offerings) {
+
+    // 1. Seed existing synchronous offerings first
+    const syncOfferings = getCompanyOfferings(companyId);
+    syncOfferings.forEach((o) => {
+      if (o && o.id) mergedMap.set(o.id, o);
+    });
+
+    // 2. Company document offerings & embedded products/services
+    if (comp?.offerings && Array.isArray(comp.offerings)) {
       comp.offerings.forEach((o) => {
         if (o && o.id) mergedMap.set(o.id, initializeCanonicalOfferingDefaults(o, comp));
       });
     }
+    if ((comp as any)?.products && Array.isArray((comp as any).products)) {
+      (comp as any).products.forEach((p: any) => {
+        if (p && p.id && !mergedMap.has(p.id)) {
+          mergedMap.set(p.id, initializeCanonicalOfferingDefaults(convertProductToOffering(p, comp), comp));
+        }
+      });
+    }
+    if ((comp as any)?.services && Array.isArray((comp as any).services)) {
+      (comp as any).services.forEach((s: any) => {
+        if (s && s.id && !mergedMap.has(s.id)) {
+          mergedMap.set(s.id, initializeCanonicalOfferingDefaults(convertServiceToOffering(s, comp), comp));
+        }
+      });
+    }
 
+    // 3. Firestore subcollections
     fbProds.forEach((p: any) => {
-      const off: CompanyOffering = {
-        ...p,
-        id: p.id,
-        entityId: p.id,
-        offeringId: p.id,
-        companyId,
-        type: "product",
-        entityType: "PRODUCT",
-        name: p.name,
-        category: p.category || "Products",
-        shortDescription: p.shortDescription || p.description || "",
-        status: (p.status === "ACTIVE" || p.status === "AVAILABLE" || p.status === "DRAFT") ? p.status : "AVAILABLE",
-        certifications: p.certifications
-          ? p.certifications.map((c: any) => (typeof c === "string" ? c : c.name || c.authority || String(c)))
-          : undefined,
-      };
-      mergedMap.set(p.id, initializeCanonicalOfferingDefaults(off, comp));
+      const existing = mergedMap.get(p.id);
+      const off = initializeCanonicalOfferingDefaults(convertProductToOffering({ ...(existing || {}), ...p }, comp), comp);
+      mergedMap.set(p.id, off);
     });
 
     fbServs.forEach((s: any) => {
-      const off: CompanyOffering = {
-        ...s,
-        id: s.id,
-        entityId: s.id,
-        offeringId: s.id,
-        companyId,
-        type: "service",
-        entityType: "SERVICE",
-        name: s.name,
-        category: s.category || "Services",
-        shortDescription: s.shortDescription || s.description || "",
-        status: (s.status === "ACTIVE" || s.status === "AVAILABLE" || s.status === "DRAFT") ? s.status : "ACTIVE",
-        certifications: s.certifications
-          ? s.certifications.map((c: any) => (typeof c === "string" ? c : c.name || c.authority || String(c)))
-          : undefined,
-      };
-      mergedMap.set(s.id, initializeCanonicalOfferingDefaults(off, comp));
+      const existing = mergedMap.get(s.id);
+      const off = initializeCanonicalOfferingDefaults(convertServiceToOffering({ ...(existing || {}), ...s }, comp), comp);
+      mergedMap.set(s.id, off);
     });
 
     const result = Array.from(mergedMap.values());
@@ -578,9 +689,160 @@ export function archiveOffering(
 }
 
 /**
+ * Asynchronously and permanently delete an offering, including:
+ * 1. Firestore product / service subcollection documents
+ * 2. Associated images, media files, and attachments from Firebase Storage
+ * 3. Linked documents and files from Firestore (/companies/{id}/documents & /companies/{id}/files)
+ * 4. Company document offerings/products/services arrays in Firestore
+ * 5. In-memory runtime stores and Twin listeners
+ */
+export async function deleteOfferingAsync(companyId: string, offeringId: string): Promise<boolean> {
+  if (!companyId || !offeringId) return false;
+
+  const offerings = getCompanyOfferings(companyId);
+  const targetOffering = offerings.find((o) => o.id === offeringId || o.slug === offeringId);
+
+  // 1. Collect all storage paths and URLs to delete
+  const mediaUrlsToDelete: string[] = [];
+
+  if (targetOffering) {
+    if (targetOffering.mediaReferences && Array.isArray(targetOffering.mediaReferences)) {
+      targetOffering.mediaReferences.forEach((m: any) => {
+        if (typeof m === "string" && m) mediaUrlsToDelete.push(m);
+        else if (m?.url) mediaUrlsToDelete.push(m.url);
+        else if (m?.storagePath) mediaUrlsToDelete.push(m.storagePath);
+      });
+    }
+
+    if (targetOffering.media && Array.isArray(targetOffering.media)) {
+      targetOffering.media.forEach((m: any) => {
+        if (typeof m === "string" && m) mediaUrlsToDelete.push(m);
+        else if (m?.url) mediaUrlsToDelete.push(m.url);
+        else if (m?.storagePath) mediaUrlsToDelete.push(m.storagePath);
+      });
+    }
+
+    if ((targetOffering as any).coverImage) {
+      const cover = (targetOffering as any).coverImage;
+      if (typeof cover === "string" && cover) mediaUrlsToDelete.push(cover);
+      else if (cover?.url) mediaUrlsToDelete.push(cover.url);
+    }
+
+    if (targetOffering.groundingSources && Array.isArray(targetOffering.groundingSources)) {
+      targetOffering.groundingSources.forEach((g: any) => {
+        if (g?.url) mediaUrlsToDelete.push(g.url);
+        if (g?.storagePath) mediaUrlsToDelete.push(g.storagePath);
+      });
+    }
+  }
+
+  // 2. Delete storage files
+  const uniqueUrls = Array.from(new Set(mediaUrlsToDelete.filter(Boolean)));
+  await Promise.allSettled(uniqueUrls.map((url) => deleteFileFromStorage(url)));
+
+  // 3. Delete from Firestore products & services subcollections
+  await Promise.allSettled([
+    deleteProductRecord(companyId, offeringId),
+    deleteServiceRecord(companyId, offeringId),
+    deleteProduct(companyId, offeringId).catch(() => {}),
+    deleteService(companyId, offeringId).catch(() => {}),
+  ]);
+
+  // 4. Delete linked documents and files from Firestore
+  try {
+    const docsColRef = collection(db, "companies", companyId, "documents");
+    const docsSnap = await getDocs(docsColRef);
+    const docDeletePromises: Promise<any>[] = [];
+
+    docsSnap.docs.forEach((docSnap) => {
+      const data = docSnap.data();
+      if (
+        data.productId === offeringId ||
+        data.serviceId === offeringId ||
+        data.offeringId === offeringId ||
+        (targetOffering?.slug && (data.productId === targetOffering.slug || data.serviceId === targetOffering.slug))
+      ) {
+        docDeletePromises.push(deleteDoc(docSnap.ref));
+        if (data.storageReference) {
+          deleteFileFromStorage(data.storageReference).catch(() => {});
+        }
+      }
+    });
+
+    const filesColRef = collection(db, "companies", companyId, "files");
+    const filesSnap = await getDocs(filesColRef);
+    filesSnap.docs.forEach((fileSnap) => {
+      const data = fileSnap.data();
+      if (
+        data.productId === offeringId ||
+        data.serviceId === offeringId ||
+        data.offeringId === offeringId ||
+        (targetOffering?.slug && (data.productId === targetOffering.slug || data.serviceId === targetOffering.slug))
+      ) {
+        docDeletePromises.push(deleteDoc(fileSnap.ref));
+        if (data.storageReference) {
+          deleteFileFromStorage(data.storageReference).catch(() => {});
+        }
+      }
+    });
+
+    await Promise.allSettled(docDeletePromises);
+  } catch (err) {
+    console.warn("[OfferingEntityService] Error cleaning up linked documents/files in Firestore:", err);
+  }
+
+  // 5. Update Company document in Firestore and memory
+  const filtered = offerings.filter((o) => o.id !== offeringId && o.slug !== offeringId);
+  canonicalOfferingsStore.set(companyId, filtered);
+
+  const company = (await getCompanyRecord(companyId)) || getCompanyById(companyId) || getCompanyBySlug(companyId);
+  if (company) {
+    const updatedOfferings = (company.offerings || []).filter((o: any) => o.id !== offeringId && o.slug !== offeringId);
+    const updatedProducts = ((company as any).products || []).filter((p: any) => p.id !== offeringId && p.slug !== offeringId);
+    const updatedServices = ((company as any).services || []).filter((s: any) => s.id !== offeringId && s.slug !== offeringId);
+
+    const updatedCompany: CompanyEntity = {
+      ...company,
+      offerings: updatedOfferings,
+      products: updatedProducts,
+      services: updatedServices,
+      updatedAt: new Date().toISOString(),
+    } as any;
+
+    await saveCompany(updatedCompany);
+
+    try {
+      const compDocRef = doc(db, "companies", companyId);
+      await setDoc(compDocRef, {
+        offerings: updatedOfferings,
+        products: updatedProducts,
+        services: updatedServices,
+        updatedAt: new Date().toISOString(),
+      }, { merge: true });
+    } catch (err) {
+      console.warn("[OfferingEntityService] Firestore company doc update error on deleteOffering:", err);
+    }
+  }
+
+  notifyTwinListeners();
+
+  recordOfferingAudit(
+    companyId,
+    "OFFERING_DELETED",
+    targetOffering?.type === "service" ? "SERVICE" : "PRODUCT",
+    offeringId,
+    { previous: targetOffering ? { name: targetOffering.name } : undefined },
+    { reason: "Offering, associated media and documents permanently deleted from Firebase" }
+  );
+
+  return true;
+}
+
+/**
  * Delete an offering
  */
 export function deleteOffering(companyId: string, offeringId: string): boolean {
+  // Synchronously update in-memory stores and trigger async cleanup in Firestore/Storage
   const offerings = getCompanyOfferings(companyId);
   const filtered = offerings.filter((o) => o.id !== offeringId && o.slug !== offeringId);
   canonicalOfferingsStore.set(companyId, filtered);
@@ -590,10 +852,16 @@ export function deleteOffering(companyId: string, offeringId: string): boolean {
     const updatedCompany: CompanyEntity = {
       ...company,
       offerings: filtered,
+      products: ((company as any).products || []).filter((p: any) => p.id !== offeringId && p.slug !== offeringId),
+      services: ((company as any).services || []).filter((s: any) => s.id !== offeringId && s.slug !== offeringId),
       updatedAt: new Date().toISOString(),
-    };
+    } as any;
     saveCompany(updatedCompany);
   }
+
+  deleteOfferingAsync(companyId, offeringId).catch((err) => {
+    console.warn("[OfferingEntityService] deleteOffering async cleanup error:", err);
+  });
 
   notifyTwinListeners();
   return true;

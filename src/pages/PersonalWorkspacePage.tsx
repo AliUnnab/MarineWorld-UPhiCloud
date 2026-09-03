@@ -364,7 +364,11 @@ export function PersonalWorkspacePage({
   };
 
   const accessCtx = resolveAccessContext(authSession);
-  const isPersonalUser = accessCtx.isAuthenticated && accessCtx.personalUser !== null;
+  const isCompanyUser =
+    accessCtx.contextType === "COMPANY" ||
+    accessCtx.activeOrganization?.organizationType === "COMPANY" ||
+    Boolean(authSession.uid && getUserMemberships(authSession.uid).some((m) => m.organizationType === "COMPANY"));
+  const isPersonalUser = accessCtx.isAuthenticated && accessCtx.personalUser !== null && !isCompanyUser;
 
   const navigateTo = (path: string) => {
     if (onNavigate) {
@@ -374,6 +378,18 @@ export function PersonalWorkspacePage({
       window.dispatchEvent(new PopStateEvent("popstate"));
     }
   };
+
+  // STRICT GUARD: Company accounts must NEVER view visitor workspace, immediately route to Studio
+  useEffect(() => {
+    if (isCompanyUser) {
+      if (onNavigate) {
+        onNavigate("/studio");
+      } else {
+        window.history.replaceState({}, "", "/studio");
+        window.dispatchEvent(new PopStateEvent("popstate"));
+      }
+    }
+  }, [isCompanyUser, onNavigate]);
 
   const reloadData = async () => {
     const current = getCurrentAuthSession();
@@ -567,6 +583,21 @@ export function PersonalWorkspacePage({
     setUserMenuOpen(false);
     navigateTo("/gateway");
   };
+
+  // STRICT GUARD: Company users are directed to Studio
+  if (isCompanyUser) {
+    return (
+      <div className="min-h-screen bg-canvas flex items-center justify-center p-6 text-center font-sans">
+        <div className="max-w-md w-full bg-white border border-line rounded-2xl p-8 space-y-4 shadow-sm">
+          <div className="w-12 h-12 rounded-full bg-royal/10 text-royal flex items-center justify-center mx-auto">
+            <Building2 className="w-6 h-6" />
+          </div>
+          <h2 className="text-base font-bold text-graphite">Opening Company Studio...</h2>
+          <p className="text-xs text-stone">Company accounts are directed to their Sovereign Company Workspace.</p>
+        </div>
+      </div>
+    );
+  }
 
   // Guard for non-authenticated guests
   if (!isPersonalUser || !authSession.uid) {

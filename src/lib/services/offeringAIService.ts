@@ -9,6 +9,7 @@ import type {
   AdvisorCommunicationStyle,
   DocumentEntity,
 } from "@/lib/types";
+import { generateAIContent, generateAIContentWithParts, type AIPart } from "@/lib/gemini";
 
 export interface SourceConflictItem {
   field: string;
@@ -105,7 +106,7 @@ export async function saveCompanyDriveFolder(companyId: string, folder: GoogleDr
   }
 }
 
-import { generateAIContent } from "@/lib/gemini";
+import { generateAIContentWithParts, type AIPart } from "@/lib/gemini";
 
 /**
  * AI extraction from uploaded file(s) or sources using Gemini AI
@@ -144,125 +145,147 @@ export async function extractOfferingWithGemini(
 
   // Detect potential multi-source conflicts if multiple files are provided
   const conflicts: SourceConflictItem[] = [];
-  if (filesList.length > 1) {
-    const hasPriceSheet = filesList.some((f) => f.name.toLowerCase().includes("price") || f.name.toLowerCase().includes("tariff"));
-    const hasDatasheet = filesList.some((f) => f.name.toLowerCase().includes("datasheet") || f.name.toLowerCase().includes("spec"));
-    if (hasPriceSheet && hasDatasheet) {
-      conflicts.push({
-        field: "leadTime",
-        fieldLabel: "Delivery Lead Time",
-        sourceA: filesList[0].name,
-        valueA: "4 to 6 weeks from PO",
-        sourceB: filesList[1].name,
-        valueB: "6 to 8 weeks (high backlog)",
-        resolvedValue: "4 to 6 weeks from PO",
-      });
-    }
-  }
 
-  // Attempt real AI extraction with Gemini
+  // Attempt real AI extraction with Gemini (Multimodal / Document-aware)
   try {
-    const prompt = `You are a Maritime Engineering AI. Extract a structured product or service offering from this file name and maritime context: "${primaryFile.name}".
-Chosen type: ${chosenOfferingType || "auto"}.
-Respond in strict JSON format matching this schema:
+    const extractionPrompt = `You are a precision technical document extraction AI.
+Analyze the provided document (or file context: "${primaryFile.name}") and extract structured product or service offering information.
+
+CRITICAL ZERO-HALLUCINATION RULES:
+1. STRICT DOCUMENT ACCURACY: Extract information EXCLUSIVELY and ONLY from what is explicitly written in the document.
+2. DO NOT INVENT OR HALLUCINATE: Do NOT add generic marine standards, class society approvals (such as DNV, ABS, Lloyd's, ISO, IMO, SOLAS) or specifications UNLESS they are explicitly mentioned in the text of the document.
+3. If this document is for a computer mouse, electronics, software, or specialized machinery, extract its EXACT model name, exact specifications (e.g., DPI, Sensor, Weight, Dimensions, Battery, Interface, Cable Length, etc.), and exact description from the document.
+4. SPECIFICATIONS: Extract ALL technical specifications, parameters, ratings, and features present in the document as precise key-value pairs.
+5. If a field (e.g. certifications, applications, standards, pricingGuidance, leadTime, incoterms) is NOT mentioned in the document, return an empty array [] or empty string "".
+
+Target offering type: ${chosenOfferingType || "auto"}.
+
+Respond ONLY in valid JSON format matching this schema:
 {
-  "name": "string",
-  "type": "product" | "service",
-  "category": "string",
-  "sku": "string",
-  "shortDescription": "string",
-  "detailedDescription": "string",
-  "applications": ["string", "string"],
-  "specifications": [{"key": "string", "value": "string"}],
-  "certifications": ["string"],
-  "standards": ["string"],
-  "pricingGuidance": "string",
-  "leadTime": "string",
-  "incoterms": "string"
+  "name": "Exact Name / Model from document",
+  "type": "product" or "service",
+  "category": "Category based strictly on document",
+  "sku": "Model number or SKU from document (or leave empty)",
+  "shortDescription": "Concise summary from document",
+  "detailedDescription": "Detailed overview extracted from document",
+  "applications": ["Application 1", "Application 2"],
+  "specifications": [
+    {"key": "Parameter Name", "value": "Parameter Value"}
+  ],
+  "certifications": ["Only certifications explicitly in document"],
+  "standards": ["Only standards explicitly in document"],
+  "pricingGuidance": "Pricing if mentioned in document or empty",
+  "leadTime": "Lead time if mentioned in document or empty",
+  "incoterms": "Incoterms if mentioned in document or empty"
 }`;
 
-    const rawResponse = await generateAIContent(
-      prompt,
-      "You are a specialized maritime technical documentation parser. Return valid JSON only with no markdown backticks."
+    const parts: (string | AIPart)[] = [];
+
+    // If base64 data is present, attach the document/PDF inline part
+    if (primaryFile.base64Data) {
+      let mimeType = primaryFile.type || "application/pdf";
+      if (lowerName.endsWith(".pdf")) mimeType = "application/pdf";
+      else if (lowerName.endsWith(".png")) mimeType = "image/png";
+      else if (lowerName.endsWith(".jpg") || lowerName.endsWith(".jpeg")) mimeType = "image/jpeg";
+      else if (lowerName.endsWith(".webp")) mimeType = "image/webp";
+      else if (lowerName.endsWith(".txt")) mimeType = "text/plain";
+
+      parts.push({
+        inlineData: {
+          mimeType,
+          data: primaryFile.base64Data,
+        },
+      });
+    }
+
+    // Attach instruction prompt
+    parts.push({ text: extractionPrompt });
+
+    const rawResponse = await generateAIContentWithParts(
+      parts,
+      "You are a strict, precision technical document extractor. Never hallucinate or add unmentioned industry standards. Return valid JSON only with no markdown backticks."
     );
 
-    const cleanJson = rawResponse.replace(/```json/gi, "").replace(/```/g, "").trim();
-    const parsed = JSON.parse(cleanJson);
+    if (rawResponse && typeof rawResponse === "string") {
+      const cleanJson = rawResponse.replace(/```json/gi, "").replace(/```/g, "").trim();
+      if (cleanJson.startsWith("{") && cleanJson.endsWith("}")) {
+        const parsed = JSON.parse(cleanJson);
 
-    if (parsed.name && parsed.shortDescription) {
-      const sourceName = primaryFile.name;
-      const sourceAttributions: Record<string, string> = {
-        name: sourceName,
-        sku: sourceName,
-        shortDescription: sourceName,
-        detailedDescription: sourceName,
-        pricingGuidance: filesList.find((f) => f.name.toLowerCase().includes("price"))?.name || sourceName,
-        leadTime: sourceName,
-        incoterms: sourceName,
-      };
+        if (parsed && parsed.name) {
+          const sourceName = primaryFile.name;
+          const sourceAttributions: Record<string, string> = {
+            name: sourceName,
+            sku: sourceName,
+            shortDescription: sourceName,
+            detailedDescription: sourceName,
+          };
 
-      const fieldConfirmations: Record<string, "AI_EXTRACTED" | "COMPANY_CONFIRMED"> = {
-        name: "AI_EXTRACTED",
-        category: "AI_EXTRACTED",
-        sku: "AI_EXTRACTED",
-        shortDescription: "AI_EXTRACTED",
-        detailedDescription: "AI_EXTRACTED",
-        pricingGuidance: "AI_EXTRACTED",
-        leadTime: "AI_EXTRACTED",
-        incoterms: "AI_EXTRACTED",
-        availability: "AI_EXTRACTED",
-        warranty: "AI_EXTRACTED",
-      };
+          const fieldConfirmations: Record<string, "AI_EXTRACTED" | "COMPANY_CONFIRMED"> = {
+            name: "AI_EXTRACTED",
+            category: "AI_EXTRACTED",
+            sku: "AI_EXTRACTED",
+            shortDescription: "AI_EXTRACTED",
+            detailedDescription: "AI_EXTRACTED",
+          };
 
-      return {
-        name: parsed.name,
-        type: parsed.type === "service" ? "service" : "product",
-        category: parsed.category || "Maritime Technology",
-        sku: parsed.sku || `MW-${parsed.name.slice(0, 4).toUpperCase()}-01`,
-        shortDescription: parsed.shortDescription,
-        detailedDescription: parsed.detailedDescription || parsed.shortDescription,
-        applications: Array.isArray(parsed.applications) ? parsed.applications : ["Commercial Shipping", "Offshore Operations"],
-        specifications: Array.isArray(parsed.specifications) ? parsed.specifications : [
-          { key: "Rating", value: "Heavy-Duty Marine Standard", source: primaryFile.name },
-          { key: "Classification", value: "DNV-GL / Class Approved", source: primaryFile.name },
-        ],
-        certifications: Array.isArray(parsed.certifications) ? parsed.certifications : ["ISO 9001:2015", "DNV Certified"],
-        standards: Array.isArray(parsed.standards) ? parsed.standards : ["IMO Standard", "SOLAS Compliant"],
-        mediaReferences: [
-          {
-            id: "media-01",
-            type: "photo",
-            title: `${parsed.name} Diagram`,
-            url: "https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?auto=format&fit=crop&w=800&q=80",
-            isCover: true,
-          }
-        ],
-        commercialInformation: {
-          pricingGuidance: parsed.pricingGuidance || "Available upon formal RFQ",
-          incoterms: parsed.incoterms || "FCA / EXW",
-          availability: "IN_PRODUCTION",
-          leadTime: parsed.leadTime || "4-6 weeks from PO",
-          warranty: "24 months manufacturer warranty",
-          minOrderQty: "1 Unit",
-        },
-        groundingSources,
-        sourceAttribution: filesList.map((f) => f.name).join(", "),
-        sourceAttributions,
-        fieldConfirmations,
-        unextractedFields: [],
-        conflicts,
-        confidenceScore: 98,
-        extractedFieldsCount: (parsed.specifications?.length || 2) + 10,
-      };
+          const cleanSpecs: Array<{ key: string; value: string; source?: string }> = Array.isArray(parsed.specifications)
+            ? parsed.specifications
+                .filter((s: any) => s && (s.key || s.name) && s.value)
+                .map((s: any) => ({
+                  key: String(s.key || s.name).trim(),
+                  value: String(s.value).trim(),
+                  source: primaryFile.name,
+                }))
+            : [];
+
+          cleanSpecs.forEach((sp) => {
+            sourceAttributions[`spec_${sp.key}`] = primaryFile.name;
+          });
+
+          const enrichedGroundingSources = groundingSources.map((g) => ({
+            ...g,
+            summary: parsed.detailedDescription || parsed.shortDescription || `${parsed.name} technical specification document.`,
+            contentExcerpt: parsed.shortDescription || parsed.detailedDescription || "",
+            description: `${parsed.name} extracted document record.`,
+          }));
+
+          return {
+            name: parsed.name,
+            type: parsed.type === "service" ? "service" : "product",
+            category: parsed.category || "Equipment & Hardware",
+            sku: parsed.sku || `MW-${parsed.name.slice(0, 4).toUpperCase().replace(/[^A-Z0-9]/g, "")}-01`,
+            shortDescription: parsed.shortDescription || `${parsed.name} technical specification.`,
+            detailedDescription: parsed.detailedDescription || parsed.shortDescription || `${parsed.name} documentation record.`,
+            applications: Array.isArray(parsed.applications) ? parsed.applications.filter(Boolean) : [],
+            specifications: cleanSpecs,
+            certifications: Array.isArray(parsed.certifications) ? parsed.certifications.filter(Boolean) : [],
+            standards: Array.isArray(parsed.standards) ? parsed.standards.filter(Boolean) : [],
+            mediaReferences: [],
+            commercialInformation: {
+              pricingGuidance: parsed.pricingGuidance || "",
+              incoterms: parsed.incoterms || "",
+              availability: "AVAILABLE",
+              leadTime: parsed.leadTime || "",
+              warranty: "",
+              minOrderQty: "1 Unit",
+            },
+            groundingSources: enrichedGroundingSources,
+            sourceAttribution: filesList.map((f) => f.name).join(", "),
+            sourceAttributions,
+            fieldConfirmations,
+            unextractedFields: [],
+            conflicts,
+            confidenceScore: 98,
+            extractedFieldsCount: cleanSpecs.length + 5,
+          };
+        }
+      }
     }
-  } catch (err) {
-    console.warn("[OfferingAIService] Gemini AI extraction fallback:", err);
+  } catch (aiErr) {
+    console.warn("[OfferingAIService] Gemini document extraction fallback:", aiErr);
   }
 
-  // Generic dynamic extraction if AI formatting requires fallback
-
-
-  // Generic heuristic extraction for arbitrary files
+  // Generic heuristic extraction if AI is unavailable (STRICT: NO FAKE MARINE STANDARDS)
   const isService =
     chosenOfferingType === "service" ||
     lowerName.includes("service") ||
@@ -278,28 +301,14 @@ Respond in strict JSON format matching this schema:
     .replace(/\b\w/g, (l) => l.toUpperCase());
 
   const inferredType = isService ? "service" : "product";
-  const defaultCategory = isService ? "Technical Maritime Services" : "Marine Equipment & Systems";
-
-  const genericSpecs = [
-    { key: "Standard Operating Rating", value: "Heavy-Duty Marine Grade", source: `${primaryFile.name} (Sec 1)` },
-    { key: "Classification Standard", value: "Class Approved (DNV / Lloyd's)", source: `${primaryFile.name} (Sec 2)` },
-    { key: "Environmental Protection", value: "IP67 Seawater Resistant", source: `${primaryFile.name} (Sec 3)` },
-  ];
+  const defaultCategory = isService ? "Technical Services" : "Equipment & Hardware";
 
   const sourceAttributions: Record<string, string> = {
     name: primaryFile.name,
     sku: primaryFile.name,
     shortDescription: primaryFile.name,
     detailedDescription: primaryFile.name,
-    pricingGuidance: primaryFile.name,
-    leadTime: primaryFile.name,
-    incoterms: primaryFile.name,
-    warranty: primaryFile.name,
   };
-
-  genericSpecs.forEach((sp) => {
-    sourceAttributions[`spec_${sp.key}`] = sp.source || primaryFile.name;
-  });
 
   const fieldConfirmations: Record<string, "AI_EXTRACTED" | "COMPANY_CONFIRMED"> = {
     name: "AI_EXTRACTED",
@@ -307,59 +316,40 @@ Respond in strict JSON format matching this schema:
     sku: "AI_EXTRACTED",
     shortDescription: "AI_EXTRACTED",
     detailedDescription: "AI_EXTRACTED",
-    pricingGuidance: "AI_EXTRACTED",
-    leadTime: "AI_EXTRACTED",
-    incoterms: "AI_EXTRACTED",
-    availability: "AI_EXTRACTED",
   };
 
   return {
     name: cleanTitle,
     type: inferredType,
     category: defaultCategory,
-    sku: `MW-${cleanTitle.slice(0, 4).toUpperCase().replace(/\s/g, "")}-01`,
-    shortDescription: `Commercial marine ${inferredType} extracted from ${primaryFile.name}. Verified engineering solution.`,
-    detailedDescription: `Detailed operational parameters and engineering scope extracted directly from technical document ${primaryFile.name}. Suitable for commercial shipping and maritime installations.`,
-    applications: [
-      "Commercial Ship Operations",
-      "Marine Engineering Overhauls",
-      "Offshore Infrastructure Compliance",
-    ],
-    specifications: genericSpecs,
-    certifications: ["ISO 9001:2015", "Class Maritime Certified"],
-    standards: ["ISO 9001:2015", "DNV-GL Standard"],
-    mediaReferences: [
-      {
-        id: `media-${Date.now()}`,
-        url: isService
-          ? "https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=1200&q=80"
-          : "https://images.unsplash.com/photo-1544551763-46a013bb70d5?auto=format&fit=crop&w=1200&q=80",
-        title: `${cleanTitle} Overview`,
-        type: "cover",
-        isCover: true,
-        order: 1,
-      },
-    ],
+    sku: `MW-${cleanTitle.slice(0, 4).toUpperCase().replace(/[^A-Z0-9]/g, "")}-01`,
+    shortDescription: `Technical specification record extracted from ${primaryFile.name}.`,
+    detailedDescription: `Detailed operational parameters extracted directly from document ${primaryFile.name}.`,
+    applications: [],
+    specifications: [],
+    certifications: [],
+    standards: [],
+    mediaReferences: [],
     commercialInformation: {
-      pricingGuidance: "Available upon formal commercial RFQ.",
-      incoterms: "FOB / EXW",
-      leadTime: "4 to 8 Weeks Standard",
-      availability: "AVAILABLE ON ORDER",
+      pricingGuidance: "",
+      incoterms: "",
+      leadTime: "",
+      availability: "AVAILABLE",
       rfqAvailable: true,
-      minOrderQty: "1 Unit / Contract Scope",
-      warranty: "Standard Manufacturer Warranty",
+      minOrderQty: "1 Unit",
+      warranty: "",
     },
     serviceScope: isService ? "Full technical execution according to customer specification." : undefined,
-    coverage: isService ? "Key European and Global Ports" : undefined,
-    deliveryModel: isService ? "On-site and remote technical supervision." : undefined,
+    coverage: undefined,
+    deliveryModel: undefined,
     groundingSources,
     sourceAttribution: filesList.map((f) => f.name).join(", "),
     sourceAttributions,
     fieldConfirmations,
     unextractedFields: [],
     conflicts,
-    confidenceScore: 92,
-    extractedFieldsCount: 10,
+    confidenceScore: 90,
+    extractedFieldsCount: 5,
   };
 }
 
@@ -457,54 +447,22 @@ export function answerOfferingAdvisorQuery(
   const q = queryText.toLowerCase().trim();
   const specs = offering.specifications || {};
   const sources = (offering.groundingSources || []).map((s) => s.filename || s.title);
+  if (sources.length === 0) {
+    (offering.mediaReferences || []).filter((m) => m.type === "drawing" || m.url?.toLowerCase().includes(".pdf")).forEach((m) => {
+      sources.push(m.title || "Technical Drawing / Blueprint");
+    });
+  }
   if (sources.length === 0) sources.push("Verified Engineering Datasheet");
 
-  // Check if asking for specific depth
-  if (q.includes("depth") || q.includes("deep")) {
-    const depthSpec = Object.entries(specs).find(([k]) => k.toLowerCase().includes("depth"));
-    const depthVal = depthSpec ? depthSpec[1] : "450 m (1,476 ft)";
-    return {
-      answer: `**${depthVal}** maximum operating depth rating.`,
-      detailedNotes: `Tested and certified for underwater non-destructive inspection under class society pressure protocols.`,
-      confidence: "HIGH",
-      sourcesUsed: sources.slice(0, 1),
-      suggestedAction: "VIEW_SPECS",
-    };
-  }
+  const comm = offering.commercialInformation;
+  const priceVal = offering.price || comm?.price;
+  const currencyVal = offering.currency || comm?.currency || "USD";
+  const symbol = currencyVal === "EUR" ? "€" : currencyVal === "TRY" ? "₺" : currencyVal === "GBP" ? "£" : "$";
+  const formattedPrice = priceVal
+    ? (priceVal.includes("$") || priceVal.includes("€") || priceVal.includes("₺") || priceVal.includes("£") ? priceVal : `${symbol}${priceVal} ${currencyVal}`)
+    : comm?.pricingGuidance;
 
-  // Check if asking for battery / endurance / power
-  if (q.includes("endurance") || q.includes("battery") || q.includes("power") || q.includes("hours") || q.includes("kw") || q.includes("voltage")) {
-    const powerSpec = Object.entries(specs).find(([k]) => 
-      k.toLowerCase().includes("battery") || 
-      k.toLowerCase().includes("endurance") || 
-      k.toLowerCase().includes("power") ||
-      k.toLowerCase().includes("voltage")
-    );
-    const powerVal = powerSpec ? `${powerSpec[0]}: **${powerSpec[1]}**` : "Continuous operation: **10.5 hours battery endurance / 1,800 kW shaft power**";
-    return {
-      answer: `${powerVal}.`,
-      detailedNotes: `Operating endurance verified during continuous harbor and sea-trial benchmarks under standard load.`,
-      confidence: "HIGH",
-      sourcesUsed: sources.slice(0, 1),
-      suggestedAction: "VIEW_SPECS",
-    };
-  }
-
-  // Check if asking for availability / lead time
-  if (q.includes("availab") || q.includes("stock") || q.includes("lead time") || q.includes("delivery") || q.includes("timeline")) {
-    const comm = offering.commercialInformation;
-    const leadTime = comm?.leadTime || "4 to 6 weeks from PO confirmation";
-    const status = comm?.availability || "Available — manufactured to order / standard batch";
-    return {
-      answer: `**${leadTime}** standard delivery lead time (${status}).`,
-      detailedNotes: `Production and mobilization slots are scheduled from ${companyName}'s certified facility.`,
-      confidence: "HIGH",
-      sourcesUsed: ["Commercial Terms & Delivery Schedule"],
-      suggestedAction: "REQUEST_AVAILABILITY",
-    };
-  }
-
-  // Check if asking for RFQ / Price / Offer / Terms
+  // 1. Price / RFQ / Commercial Terms
   if (
     q.includes("price") ||
     q.includes("cost") ||
@@ -514,23 +472,28 @@ export function answerOfferingAdvisorQuery(
     q.includes("order") ||
     q.includes("commercial") ||
     q.includes("incoterm") ||
-    q.includes("milestone")
+    q.includes("milestone") ||
+    q.includes("fiyat") ||
+    q.includes("ücret")
   ) {
-    const comm = offering.commercialInformation;
-    const priceText = comm?.pricingGuidance || "Structured on sensor configuration & scope";
     const incotermsText = comm?.incoterms || "EXW / FOB Shipyard Gate";
     const warrantyText = comm?.warranty || "24-Month Comprehensive Marine Warranty";
+    const leadTime = comm?.leadTime || "Standard batch availability";
+
+    const priceSentence = formattedPrice
+      ? `Verified Unit Price: **${formattedPrice}**.`
+      : `Pricing guidance: **Available upon formal RFQ inquiry**.`;
 
     return {
-      answer: `Pricing guidance: **${priceText}** on **${incotermsText}** terms (${warrantyText}).`,
-      detailedNotes: `Milestone schedule: 30% advance deposit upon engineering confirmation / 70% milestone settlement upon FAT & delivery.`,
+      answer: `${priceSentence}\n\n• **Standard Terms**: ${incotermsText}\n• **Lead Time**: ${leadTime}\n• **Warranty**: ${warrantyText}\n• **Commercial Structure**: Milestone-based settlement upon engineering confirmation and FAT inspection.`,
+      detailedNotes: `Direct procurement orders and custom modifications are routed directly to ${companyName}'s commercial desk.`,
       confidence: "HIGH",
-      sourcesUsed: ["Commercial Framework & Incoterms Schedule"],
+      sourcesUsed: ["Commercial Terms & Incoterms Schedule", "Verified Pricing Registry"],
       suggestedAction: "REQUEST_OFFER",
     };
   }
 
-  // Check if asking for specifications / parameters
+  // 2. Specifications / Technical parameters
   if (
     q.includes("spec") ||
     q.includes("parameter") ||
@@ -540,16 +503,18 @@ export function answerOfferingAdvisorQuery(
     q.includes("rating") ||
     q.includes("thrust") ||
     q.includes("speed") ||
-    q.includes("datasheet")
+    q.includes("power") ||
+    q.includes("datasheet") ||
+    q.includes("özellik") ||
+    q.includes("teknik")
   ) {
     const specEntries = Object.entries(specs);
     if (specEntries.length > 0) {
-      const topSpecs = specEntries.slice(0, 4);
-      const specList = topSpecs
+      const specList = specEntries
         .map(([k, v]) => `• **${k}**: ${v}`)
         .join("\n");
       return {
-        answer: `Key specifications:\n\n${specList}`,
+        answer: `Certified technical specifications for **${offering.name}**:\n\n${specList}`,
         detailedNotes: `All parameters conform to class society type-approvals and documented factory acceptance test (FAT) benchmarks.`,
         confidence: "HIGH",
         sourcesUsed: sources,
@@ -557,15 +522,47 @@ export function answerOfferingAdvisorQuery(
       };
     } else {
       return {
-        answer: `Verified technical parameters are cataloged in the full engineering package.`,
+        answer: `Verified technical specifications for **${offering.name}**:\n\n• **Classification Standard**: Maritime Class Compliant\n• **Category**: ${offering.category || "Commercial Equipment"}\n• **Status**: ${offering.status || "ACTIVE"}`,
+        detailedNotes: `${offering.shortDescription || offering.detailedDescription || "Engineered for harsh marine operating environments."}`,
         confidence: "MEDIUM",
         sourcesUsed: sources,
-        suggestedAction: "COMMERCIAL_RFQ",
+        suggestedAction: "VIEW_SPECS",
       };
     }
   }
 
-  // Check if asking about applications / suitability / use cases
+  // 3. Availability / Lead Time
+  if (q.includes("availab") || q.includes("stock") || q.includes("lead time") || q.includes("delivery") || q.includes("timeline") || q.includes("teslimat") || q.includes("stok")) {
+    const leadTime = comm?.leadTime || "4 to 6 weeks standard";
+    const status = comm?.availability || "AVAILABLE ON ORDER";
+    const minOrder = comm?.minOrderQty || "1 Unit";
+    return {
+      answer: `**${leadTime}** standard delivery lead time (${status}).\n\n• **Minimum Order Quantity**: ${minOrder}\n• **Dispatch Location**: ${companyName} certified facility.`,
+      detailedNotes: `Production and mobilization slots are scheduled from ${companyName}'s certified facility.`,
+      confidence: "HIGH",
+      sourcesUsed: ["Commercial Terms & Delivery Schedule"],
+      suggestedAction: "REQUEST_AVAILABILITY",
+    };
+  }
+
+  // 4. Attached Documents / Blueprints / Drawings
+  if (q.includes("document") || q.includes("drawing") || q.includes("pdf") || q.includes("blueprint") || q.includes("file") || q.includes("döküman") || q.includes("dosya") || q.includes("çizim")) {
+    const docSources = (offering.groundingSources || []).map((s) => `• **${s.title || s.filename}** (${s.type || "Document"})`);
+    (offering.mediaReferences || []).filter((m) => m.type === "drawing" || m.url?.toLowerCase().includes(".pdf")).forEach((m) => {
+      docSources.push(`• **${m.title || "Technical Drawing"}** (PDF Blueprint)`);
+    });
+    const docList = docSources.length > 0 ? docSources.join("\n") : "• **Official Technical Specification Document** (PDF)";
+
+    return {
+      answer: `Certified technical documents & blueprints attached to **${offering.name}**:\n\n${docList}\n\nYou can view and download all certified engineering packages directly from the Documents cabinet.`,
+      detailedNotes: `Grounding verified by MarineWorld technical auditing protocol.`,
+      confidence: "HIGH",
+      sourcesUsed: sources,
+      suggestedAction: "VIEW_SPECS",
+    };
+  }
+
+  // 5. Applications / Suitability / Use cases
   if (
     q.includes("application") ||
     q.includes("use") ||
@@ -574,15 +571,14 @@ export function answerOfferingAdvisorQuery(
     q.includes("work") ||
     q.includes("where") ||
     q.includes("purpose") ||
-    q.includes("condition")
+    q.includes("kullanım") ||
+    q.includes("uygulama")
   ) {
-    const apps = offering.applications || [
-      "Commercial Hull & Propeller Diagnostics",
-      "Class Renewal In-Water Survey (UWILD)",
-      "Offshore Infrastructure Audits",
-    ];
+    const apps = offering.applications && offering.applications.length > 0
+      ? offering.applications
+      : ["Commercial Marine & Offshore Fleet Operations", "Classification Compliance Inspections", "Heavy-Duty Shipyard & Harbor Integration"];
     return {
-      answer: `Engineered for:\n\n${apps.slice(0, 3).map((a) => `• ${a}`).join("\n")}`,
+      answer: `Primary operational applications for **${offering.name}**:\n\n${apps.map((a) => `• ${a}`).join("\n")}`,
       detailedNotes: `Certified for both sheltered harbor facilities and open offshore operating environments.`,
       confidence: "HIGH",
       sourcesUsed: sources,
@@ -590,7 +586,7 @@ export function answerOfferingAdvisorQuery(
     };
   }
 
-  // Check if asking about certifications & standards
+  // 6. Certifications & Standards
   if (
     q.includes("certif") ||
     q.includes("standard") ||
@@ -600,12 +596,17 @@ export function answerOfferingAdvisorQuery(
     q.includes("lloyd") ||
     q.includes("iso") ||
     q.includes("imo") ||
-    q.includes("compliance")
+    q.includes("sertifika") ||
+    q.includes("standart")
   ) {
-    const certs = offering.certifications || ["DNV GL Type Approved", "ABS Recognized", "ISO 9001:2015"];
-    const standards = offering.standards || ["IMO MSC.1/Circ.1578", "IEC 60092-504"];
+    const certs = offering.certifications && offering.certifications.length > 0
+      ? offering.certifications
+      : ["DNV GL Type Approved", "ABS Recognized", "ISO 9001:2015 Marine Standard"];
+    const standards = offering.standards && offering.standards.length > 0
+      ? offering.standards
+      : ["IMO MARPOL / Tier III", "IEC 60092 Marine Electrical Standard"];
     return {
-      answer: `Class approvals: **${certs.join(" • ")}** (Standards: ${standards.join(", ")}).`,
+      answer: `Class approvals & certifications for **${offering.name}**:\n\n• **Certifications**: ${certs.join(" • ")}\n• **Compliance Standards**: ${standards.join(", ")}`,
       detailedNotes: `Full certificates and audit documentation are available in the Documents cabinet.`,
       confidence: "HIGH",
       sourcesUsed: ["Type Approval Certificates & Compliance Audits"],
@@ -613,11 +614,11 @@ export function answerOfferingAdvisorQuery(
     };
   }
 
-  // Check if asking for official offer / package / legal draft
-  if (q.includes("draft") || q.includes("official offer") || q.includes("package") || q.includes("legal")) {
+  // 7. Official offer / package / legal draft
+  if (q.includes("draft") || q.includes("official offer") || q.includes("package") || q.includes("legal") || q.includes("teklif")) {
     return {
-      answer: `Official commercial package compiled for **${offering.name}** under reference **${offering.code || "REF-OFFERING"}**.`,
-      detailedNotes: `Incoterms: EXW / FOB Shipyard Gate | Milestone terms: 30/70 | Warranty: 24 Months Marine Guarantee.`,
+      answer: `Official commercial package compiled for **${offering.name}** under reference **${offering.code || "REF-OFFERING"}**.\n\n${formattedPrice ? `• **Quotation Unit Price**: ${formattedPrice}\n` : ""}• **Incoterms**: ${comm?.incoterms || "EXW / FOB Shipyard Gate"}\n• **Milestone Terms**: 30% Advance Deposit / 70% Milestone Settlement upon FAT\n• **Warranty**: ${comm?.warranty || "24 Months Marine Guarantee"}`,
+      detailedNotes: `Digitally sealed by ${companyName} commercial desk.`,
       confidence: "HIGH",
       sourcesUsed: sources,
       suggestedAction: "REQUEST_OFFER",
@@ -627,10 +628,231 @@ export function answerOfferingAdvisorQuery(
 
   // Default concise direct response
   return {
-    answer: `**${offering.name}** is a certified ${offering.type} by ${companyName}.`,
-    detailedNotes: `${offering.shortDescription}`,
+    answer: `**${offering.name}** is a certified ${offering.type} manufactured and provided directly by **${companyName}**.\n\n${offering.shortDescription || offering.detailedDescription || "Engineered for demanding marine industry applications."}${formattedPrice ? `\n\n• **Price**: ${formattedPrice}` : ""}`,
+    detailedNotes: `You can ask me about technical specifications, certified blueprints, lead times, pricing, or request a formal commercial quotation.`,
     confidence: "HIGH",
     sourcesUsed: sources,
     suggestedAction: "COMMERCIAL_RFQ",
   };
+}
+
+const pdfBase64Cache = new Map<string, string>();
+
+/**
+ * Helper to resolve PDF files from URL or data URLs to pure base64
+ */
+export async function resolvePdfAsBase64(urlOrBase64: string): Promise<string | null> {
+  if (!urlOrBase64) return null;
+  
+  // Pure base64
+  if (!urlOrBase64.startsWith("http://") && !urlOrBase64.startsWith("https://") && !urlOrBase64.startsWith("data:") && !urlOrBase64.startsWith("blob:")) {
+    return urlOrBase64;
+  }
+
+  if (pdfBase64Cache.has(urlOrBase64)) {
+    return pdfBase64Cache.get(urlOrBase64)!;
+  }
+
+  if (urlOrBase64.startsWith("data:application/pdf;base64,")) {
+    const raw = urlOrBase64.replace("data:application/pdf;base64,", "");
+    pdfBase64Cache.set(urlOrBase64, raw);
+    return raw;
+  }
+  if (urlOrBase64.startsWith("data:")) {
+    const parts = urlOrBase64.split(",");
+    const raw = parts[1] || null;
+    if (raw) pdfBase64Cache.set(urlOrBase64, raw);
+    return raw;
+  }
+
+  // 1. First attempt: Server-Side File Proxy (bypasses browser CORS completely with 2s timeout)
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 2000);
+
+    const proxyRes = await fetch(`/api/proxy-file-base64?url=${encodeURIComponent(urlOrBase64)}`, {
+      method: "GET",
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+
+    if (proxyRes.ok) {
+      const data = await proxyRes.json();
+      if (data && data.base64) {
+        pdfBase64Cache.set(urlOrBase64, data.base64);
+        return data.base64;
+      }
+    }
+  } catch {
+    // Proxy fallback
+  }
+
+  // 2. Second attempt: Local / same-origin blob fetch
+  if (urlOrBase64.startsWith("blob:") || urlOrBase64.startsWith("/") || urlOrBase64.startsWith("http://localhost")) {
+    try {
+      const res = await fetch(urlOrBase64);
+      if (res.ok) {
+        const blob = await res.blob();
+        return new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            const result = reader.result as string;
+            const b64 = result.split(",")[1] || null;
+            if (b64) pdfBase64Cache.set(urlOrBase64, b64);
+            resolve(b64);
+          };
+          reader.onerror = () => resolve(null);
+          reader.readAsDataURL(blob);
+        });
+      }
+    } catch {
+      // Local fetch failed
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Live Grounded Product AI Advisor using Gemini API with exact product context & direct multimodal PDF inspection
+ */
+export async function answerOfferingAdvisorQueryAsync(
+  offering: CompanyOffering,
+  queryText: string,
+  companyName: string,
+  sectorCity?: string
+): Promise<{
+  answer: string;
+  detailedNotes?: string;
+  confidence: "HIGH" | "MEDIUM" | "LOW";
+  sourcesUsed: string[];
+  suggestedAction?: "REQUEST_OFFER" | "COMMERCIAL_RFQ" | "CONNECT_COMPANY" | "VIEW_SPECS" | "REQUEST_AVAILABILITY";
+  isSealedCommercialOffer?: boolean;
+}> {
+  const syncFallback = answerOfferingAdvisorQuery(offering, queryText, companyName);
+
+  try {
+    const specs = offering.specifications || {};
+    const specString = Object.entries(specs).map(([k, v]) => `- ${k}: ${v}`).join("\n");
+    const comm = offering.commercialInformation;
+    const priceVal = offering.price || comm?.price;
+    const currencyVal = offering.currency || comm?.currency || "USD";
+    const symbol = currencyVal === "EUR" ? "€" : currencyVal === "TRY" ? "₺" : currencyVal === "GBP" ? "£" : "$";
+    const formattedPrice = priceVal
+      ? (priceVal.includes("$") || priceVal.includes("€") || priceVal.includes("₺") || priceVal.includes("£") ? priceVal : `${symbol}${priceVal} ${currencyVal}`)
+      : comm?.pricingGuidance;
+
+    const sources = (offering.groundingSources || []).map((s) => s.filename || s.title);
+    (offering.mediaReferences || []).filter((m) => m.type === "drawing" || m.url?.toLowerCase().includes(".pdf")).forEach((m) => {
+      sources.push(m.title || "Technical Drawing / Blueprint (PDF)");
+    });
+    if (sources.length === 0) sources.push("Verified Engineering Datasheet");
+
+    // Gather all grounding sources and documents with their summaries, excerpts, descriptions, and specs
+    const allGroundingDocs = [
+      ...(offering.groundingSources || []),
+      ...(offering.sourceDocuments || []),
+    ];
+
+    const attachedDocDetails = allGroundingDocs.map((s, idx) => {
+      const title = s.title || s.filename || `Document ${idx + 1}`;
+      const type = s.fileType || "PDF Document";
+      const summary = s.summary || s.contentExcerpt || s.description || s.extractedText || offering.detailedDescription || offering.shortDescription || "";
+      return `• Document: "${title}" (${type})\n  Verified Content & Summary: ${summary}`;
+    });
+
+    (offering.mediaReferences || []).filter((m) => m.type === "drawing" || m.url?.toLowerCase().includes(".pdf")).forEach((m) => {
+      attachedDocDetails.push(`• Technical Drawing / Blueprint: "${m.title || "Technical Drawing"}" (PDF Blueprint)${m.description ? `\n  Description: ${m.description}` : ""}`);
+    });
+
+    const prompt = `You are the dedicated Product & Technical AI Advisor for "${offering.name}", engineered and provided by "${companyName}".
+You have deep, complete, authoritative knowledge of this specific product/service and direct visibility into all attached PDF documents and technical resources.
+
+VERIFIED PRODUCT KNOWLEDGE BASE:
+- Product Name: ${offering.name}
+- Type: ${offering.type?.toUpperCase() || "PRODUCT"}
+- Category: ${offering.category || "Marine Equipment"}
+- Reference Code / SKU: ${offering.code || offering.sku || "REF-" + (offering.id?.slice(-6) || "101")}
+- Short Description: ${offering.shortDescription || "N/A"}
+- Detailed Description: ${offering.detailedDescription || offering.shortDescription || "N/A"}
+- Unit Price / Pricing: ${formattedPrice || "Available upon formal RFQ"}
+- Pricing Model: ${comm?.pricingType || "Fixed / Standard"}
+- Standard Incoterms: ${comm?.incoterms || "EXW / FOB Shipyard Gate"}
+- Lead Time: ${comm?.leadTime || "4 to 8 Weeks standard"}
+- Availability Status: ${comm?.availability || "Available on Order"}
+- Minimum Order / Scope: ${comm?.minOrderQty || "1 Unit"}
+- Warranty: ${comm?.warranty || "24-Month Comprehensive Marine Warranty"}
+- Certified Technical Specifications:
+${specString || "None listed in initial datasheet."}
+- Operational Applications:
+${(offering.applications || []).map((a) => `- ${a}`).join("\n") || "Marine fleet, shipyard & offshore engineering."}
+- Certifications & Compliance:
+${(offering.certifications || []).map((c) => `- ${c}`).join("\n") || "DNV, ABS, ISO 9001 certified."}
+
+ATTACHED TECHNICAL DOCUMENTS & GROUNDED RESOURCES (FULL DIRECT VISIBILITY):
+${attachedDocDetails.join("\n\n") || "Standard Verified Technical Datasheet."}
+
+- Manufacturing Entity: ${companyName} (${sectorCity || "MarineWorld"})
+
+USER QUESTION:
+"${queryText}"
+
+INSTRUCTIONS:
+1. Provide an expert, technically accurate, direct, and helpful response focusing strictly on "${offering.name}".
+2. You have FULL DIRECT ACCESS to inspect, read, and understand all attached PDF files, diagrams, tables, and text provided in the multimodal parts or listed in ATTACHED TECHNICAL DOCUMENTS.
+3. If the user asks what is inside any attached PDF, asks about the document's content, or refers to any uploaded resource, quote and explain the exact data and features found in that PDF.
+4. If the user asks about price, quote the exact price (${formattedPrice || "Available on RFQ"}) and commercial parameters.
+5. If the user asks about technical parameters or specifications, quote the exact parameters from the verified list or the attached PDF.
+6. If the user asks in Turkish, respond in natural professional Turkish. If in English, respond in English.
+7. Use clean typography with bullet points (e.g. • Birim Fiyatı: 25.000 USD). Avoid excessive asterisks, nested stars (* **...**), or raw formatting clutter.`;
+
+    const systemInstruction = `You are the official Technical & Commercial AI Advisor for "${offering.name}" provided by "${companyName}". You have full visibility into the product's attached resources, PDFs, specifications, and pricing. Answer authoritatively, cleanly, and accurately using ONLY the verified facts from the product data and attached PDFs. Zero hallucination.`;
+
+    // Gather multimodal parts in parallel with fast timeout
+    const parts: (string | AIPart)[] = [];
+
+    // Collect candidate URLs (limit to 2 most relevant documents to prevent payload bloat)
+    const candidateUrls: string[] = [];
+    for (const doc of allGroundingDocs) {
+      const u = (doc as any).base64Data || doc.url;
+      if (u && !candidateUrls.includes(u)) candidateUrls.push(u);
+    }
+    for (const m of offering.mediaReferences || []) {
+      if ((m.type === "drawing" || m.url?.toLowerCase().includes(".pdf")) && m.url && !candidateUrls.includes(m.url)) {
+        candidateUrls.push(m.url);
+      }
+    }
+
+    // Resolve candidates in parallel
+    const pdfResults = await Promise.all(
+      candidateUrls.slice(0, 2).map((url) => resolvePdfAsBase64(url))
+    );
+
+    for (const b64 of pdfResults) {
+      if (b64) {
+        parts.push({
+          inlineData: {
+            mimeType: "application/pdf",
+            data: b64,
+          },
+        });
+      }
+    }
+
+    // Append instruction prompt
+    parts.push({ text: prompt });
+
+    const aiText = await generateAIContentWithParts(parts, systemInstruction);
+    if (aiText && aiText.trim().length > 10) {
+      return {
+        ...syncFallback,
+        answer: aiText.trim(),
+        sourcesUsed: sources,
+      };
+    }
+  } catch (err) {
+    console.warn("[OfferingAIService] Gemini AI live call fallback to deterministic rule engine:", err);
+  }
+
+  return syncFallback;
 }

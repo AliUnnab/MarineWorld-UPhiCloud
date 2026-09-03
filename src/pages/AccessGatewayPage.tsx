@@ -48,7 +48,15 @@ export function AccessGatewayPage({ onNavigate }: AccessGatewayPageProps) {
 
   const handleCompanyStudioAccess = () => {
     const access = resolveAccessContext();
-    if (access.isAuthenticated && (access.contextType === "COMPANY" || access.activeOrganization?.companyId)) {
+    if (access.isAuthenticated && access.contextType === "ECOSYSTEM_ORGANIZATION") {
+      navigateTo("/ecosystem/dashboard");
+      return;
+    }
+    if (
+      access.isAuthenticated &&
+      (access.contextType === "COMPANY" ||
+        (access.activeOrganization?.organizationType === "COMPANY" && access.activeOrganization?.companyId))
+    ) {
       navigateTo("/studio");
     } else {
       navigateTo("/login");

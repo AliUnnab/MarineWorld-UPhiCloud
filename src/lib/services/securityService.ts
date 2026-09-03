@@ -12,7 +12,7 @@ import {
 } from "@/lib/repositories/membershipRepository";
 import { resetAllTrustStates } from "@/lib/services/personalTrustService";
 import { hashPassword } from "@/lib/crypto";
-import { findAllCompaniesSync } from "@/lib/repositories/companyRepository";
+import { findAllCompaniesSync, findCompaniesByOwnerOrEmailSync } from "@/lib/repositories/companyRepository";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { registerOrganizationalMembership, setActiveOrganizationContext } from "@/lib/services/accessContextService";
@@ -33,20 +33,22 @@ export function getActiveAuthProvider(): AuthProviderInterface {
   return activeAuthProvider;
 }
 
-export function setAuthProvider(provider: AuthProviderInterface): void {
+export function setActiveAuthProvider(provider: AuthProviderInterface): void {
   activeAuthProvider = provider;
 }
+
+export const setAuthProvider = setActiveAuthProvider;
 
 export function setAuthProviderType(type: "FIREBASE"): void {
   activeAuthProvider = firebaseAuthProvider;
 }
 
 /**
- * Maps known corporate seed identities to their initial company memberships if matching email authenticates via Firebase
+ * Maps known corporate seed identities and dynamically discovered company ownerships to company memberships
  */
 export function resolveAndLinkSeedMemberships(auth: AuthContext): void {
-  if (!auth.uid || !auth.email) return;
-  const email = auth.email.toLowerCase().trim();
+  if (!auth.uid) return;
+  const email = (auth.email || "").toLowerCase().trim();
   const existingMemberships = findMembersByUserId(auth.uid);
   if (existingMemberships.length > 0) return;
 
@@ -117,6 +119,33 @@ export function resolveAndLinkSeedMemberships(auth: AuthContext): void {
       createdAt: now,
       updatedAt: now,
     });
+  } else {
+    // Dynamically check any registered companies for this user
+    const userCompanies = findCompaniesByOwnerOrEmailSync(auth.uid, email || undefined);
+    if (userCompanies.length > 0) {
+      for (const comp of userCompanies) {
+        saveMember({
+          userId: auth.uid,
+          companyId: comp.id,
+          role: "OWNER",
+          status: "ACTIVE",
+          createdAt: comp.createdAt || now,
+          updatedAt: now,
+        });
+        registerOrganizationalMembership(auth.uid, {
+          organizationId: comp.id,
+          companyId: comp.id,
+          businessId: comp.businessId || `MW-BUS-${(comp.slug || comp.id).toUpperCase()}`,
+          organizationName: comp.displayName || comp.legalName || (comp as any).name || comp.id,
+          organizationType: "COMPANY",
+          role: "OWNER",
+          memberStatus: "ACTIVE",
+          verificationStatus: comp.verificationStatus === "VERIFIED" ? "VERIFIED" : "PENDING",
+          authorityState: "ACTIVE",
+        });
+        setActiveOrganizationContext(auth.uid, comp.id);
+      }
+    }
   }
 }
 

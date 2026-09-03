@@ -32,8 +32,10 @@ import type {
   CompanyEntity,
   Subscription,
   Entitlement,
+  InquiryEntity,
 } from "@/lib/types";
 import { getCompanyById } from "@/lib/services/companyService";
+import { getCompanyRecord } from "@/lib/repositories/companyRepository";
 import {
   getCompanySubscription,
   getCompanyEntitlements,
@@ -50,9 +52,17 @@ import {
 } from "@/lib/services/dataSpaceService";
 import { getCompanyProducts } from "@/lib/services/productService";
 import { getCompanyServices } from "@/lib/services/serviceService";
+import {
+  getCompanyOfferings,
+  fetchCompanyOfferingsAsync,
+} from "@/lib/services/offeringEntityService";
 import { getCompanyConnectRecords } from "@/lib/services/connectService";
-import { getCompanyInquiries, subscribeInquiries } from "@/lib/connectStore";
-import { getCompanyContacts } from "@/lib/services/companyContactService";
+import { subscribeToCompanyInquiries } from "@/services/inquiryService";
+import {
+  getCompanyContacts,
+  subscribeCompanyContacts,
+  fetchCompanyContactsAsync,
+} from "@/lib/services/companyContactService";
 import { getCompanyVerificationStatus } from "@/lib/services/governanceService";
 import {
   getStudioBusinessTwinSummary,
@@ -86,7 +96,7 @@ export const CompanyStudioDashboardView: React.FC<CompanyStudioDashboardViewProp
   const [services, setServices] = useState<ServiceEntity[]>([]);
   const [documents, setDocuments] = useState<DocumentEntity[]>([]);
   const [files, setFiles] = useState<FileEntity[]>([]);
-  const [connectRecords, setConnectRecords] = useState<ConnectEntity[]>([]);
+  const [inquiries, setInquiries] = useState<InquiryEntity[]>([]);
   const [subscription, setSubscription] = useState<Subscription | null>(null);
   const [entitlements, setEntitlements] = useState<Entitlement[]>([]);
   const [twinSummary, setTwinSummary] = useState<ReturnType<typeof getStudioBusinessTwinSummary>>(null);
@@ -111,19 +121,42 @@ export const CompanyStudioDashboardView: React.FC<CompanyStudioDashboardViewProp
 
       // Canonical resolution
       const comp = getCompanyById(companyId);
-      if (!comp) {
-        setViewState("ERROR");
-        setErrorMessage(`Company entity '${companyId}' not found in canonical repository.`);
-        return;
+      if (comp) {
+        setCompany(comp);
       }
 
-      setCompany(comp);
+      // Initial synchronous reads from memory/registry
+      const syncOfferings = getCompanyOfferings(companyId);
+      const syncProds = syncOfferings
+        .filter((o) => o.type === "product" && o.status !== "ARCHIVED")
+        .map((o) => ({
+          id: o.id || o.entityId || "prod",
+          companyId,
+          name: o.name,
+          category: o.category || "General Products",
+          shortDescription: o.shortDescription || "",
+          status: o.status || "ACTIVE",
+          slug: o.slug,
+        } as ProductEntity));
+      const syncServs = syncOfferings
+        .filter((o) => o.type === "service" && o.status !== "ARCHIVED")
+        .map((o) => ({
+          id: o.id || o.entityId || "serv",
+          companyId,
+          name: o.name,
+          category: o.category || "General Services",
+          shortDescription: o.shortDescription || "",
+          status: o.status || "ACTIVE",
+          slug: o.slug,
+        } as ServiceEntity));
 
-      const prods = getCompanyProducts(companyId);
-      const servs = getCompanyServices(companyId);
+      const fallbackProds = getCompanyProducts(companyId);
+      const fallbackServs = getCompanyServices(companyId);
+      setProducts(syncProds.length > 0 ? syncProds : fallbackProds);
+      setServices(syncServs.length > 0 ? syncServs : fallbackServs);
+
       const docs = getCompanyDocuments(companyId, currentAuth);
       const fls = getCompanyFiles(companyId, currentAuth);
-      const conns = getCompanyConnectRecords(companyId);
       const sub = getCompanySubscription(companyId);
       const ents = getCompanyEntitlements(companyId);
       const twin = getStudioBusinessTwinSummary(companyId);
@@ -132,17 +165,18 @@ export const CompanyStudioDashboardView: React.FC<CompanyStudioDashboardViewProp
       const aiCap = evaluateEffectiveCapability(companyId, currentAuth.uid || "anon", "AI_ADVISOR", currentAuth);
       const contactsPkg = getCompanyContacts(comp as any);
 
-      setProducts(prods);
-      setServices(servs);
       setDocuments(docs);
       setFiles(fls);
-      setConnectRecords(conns);
       setSubscription(sub || null);
       setEntitlements(ents);
       setTwinSummary(twin);
       setVerificationStatus(verif);
       setDataSpace(ds);
-      setDirectReachCount(contactsPkg?.teamMembers?.length || 0);
+      setDirectReachCount(
+        (contactsPkg?.teamMembers?.length || 0) +
+        (contactsPkg?.generalContacts?.phone ? 1 : 0) +
+        (contactsPkg?.generalContacts?.email ? 1 : 0)
+      );
       setAiAdvisorCapability({
         isAllowed: aiCap.isAllowed,
         companyHasEntitlement: aiCap.companyHasEntitlement,
@@ -150,10 +184,58 @@ export const CompanyStudioDashboardView: React.FC<CompanyStudioDashboardViewProp
 
       setViewState("READY");
 
-      // Warm and sync from Firestore
+      // 1. Fetch live Company from Firestore
+      getCompanyRecord(companyId).then((liveComp) => {
+        if (liveComp) {
+          setCompany(liveComp);
+        }
+      }).catch(() => {});
+
+      // 2. Fetch live Offerings (Products & Services) from Firestore
+      fetchCompanyOfferingsAsync(companyId).then((allOfferings) => {
+        if (allOfferings) {
+          const liveProds = allOfferings
+            .filter((o) => o.type === "product" && o.status !== "ARCHIVED")
+            .map((o) => ({
+              id: o.id || o.entityId || "prod",
+              companyId,
+              name: o.name,
+              category: o.category || "General Products",
+              shortDescription: o.shortDescription || "",
+              status: o.status || "ACTIVE",
+              slug: o.slug,
+            } as ProductEntity));
+          const liveServs = allOfferings
+            .filter((o) => o.type === "service" && o.status !== "ARCHIVED")
+            .map((o) => ({
+              id: o.id || o.entityId || "serv",
+              companyId,
+              name: o.name,
+              category: o.category || "General Services",
+              shortDescription: o.shortDescription || "",
+              status: o.status || "ACTIVE",
+              slug: o.slug,
+            } as ServiceEntity));
+          setProducts(liveProds);
+          setServices(liveServs);
+        }
+      }).catch(() => {});
+
+      // 3. Warm and sync Documents from Firestore
       getCloudCompanyDocuments(companyId).then((cloudDocs) => {
         if (cloudDocs && cloudDocs.length > 0) {
           setDocuments(cloudDocs);
+        }
+      }).catch(() => {});
+
+      // 4. Fetch live Contacts from Firestore
+      fetchCompanyContactsAsync(companyId).then((pkg) => {
+        if (pkg) {
+          setDirectReachCount(
+            (pkg.teamMembers?.length || 0) +
+            (pkg.generalContacts?.phone ? 1 : 0) +
+            (pkg.generalContacts?.email ? 1 : 0)
+          );
         }
       }).catch(() => {});
     } catch (err: unknown) {
@@ -161,14 +243,33 @@ export const CompanyStudioDashboardView: React.FC<CompanyStudioDashboardViewProp
       setErrorMessage(err instanceof Error ? err.message : "Failed to resolve Company Studio Dashboard data.");
     }
 
+    // Realtime Subscriptions
     const unsubDocs = subscribeToCompanyDocuments(companyId, (liveDocs) => {
       if (liveDocs) {
         setDocuments(liveDocs);
       }
     });
 
+    const unsubInquiries = subscribeToCompanyInquiries(companyId, (fetchedInquiries) => {
+      if (fetchedInquiries) {
+        setInquiries(fetchedInquiries);
+      }
+    });
+
+    const unsubContacts = subscribeCompanyContacts(companyId, (pkg) => {
+      if (pkg) {
+        setDirectReachCount(
+          (pkg.teamMembers?.length || 0) +
+          (pkg.generalContacts?.phone ? 1 : 0) +
+          (pkg.generalContacts?.email ? 1 : 0)
+        );
+      }
+    });
+
     return () => {
       unsubDocs();
+      unsubInquiries();
+      unsubContacts();
     };
   }, [companyId, currentAuth.uid]);
 
@@ -200,11 +301,10 @@ export const CompanyStudioDashboardView: React.FC<CompanyStudioDashboardViewProp
   const planDetails = subscription ? AVAILABLE_PLANS[subscription.planCode] : AVAILABLE_PLANS.GROWTH;
   const groundedDocsCount = documents.filter((d) => d.groundingStatus === "GROUNDED").length;
 
-  const canonicalInquiries = getCompanyInquiries(companyId);
-  const newInquiriesCount = canonicalInquiries.filter((i) => i.status === "NEW").length;
-  const waitingForCompanyCount = canonicalInquiries.filter((i) => i.status === "WAITING_FOR_COMPANY" || i.status === "OPEN" || i.status === "IN_PROGRESS").length;
-  const waitingForRequesterCount = canonicalInquiries.filter((i) => i.status === "WAITING_FOR_REQUESTER").length;
-  const openInquiriesCount = newInquiriesCount + waitingForCompanyCount + waitingForRequesterCount;
+  const newInquiriesCount = inquiries.filter((i) => i.status === "NEW").length;
+  const waitingForCompanyCount = inquiries.filter((i) => i.status === "WAITING_FOR_COMPANY" || i.status === "OPEN" || i.status === "IN_PROGRESS").length;
+  const waitingForRequesterCount = inquiries.filter((i) => i.status === "WAITING_FOR_REQUESTER").length;
+  const openInquiriesCount = inquiries.filter((i) => i.status !== "RESOLVED" && i.status !== "CLOSED").length;
 
   return (
     <div className="space-y-6">
@@ -364,7 +464,7 @@ export const CompanyStudioDashboardView: React.FC<CompanyStudioDashboardViewProp
               <MessageSquare className="w-4 h-4" />
             </div>
           </div>
-          <div className="text-3xl font-bold text-graphite">{connectRecords.length}</div>
+          <div className="text-3xl font-bold text-graphite">{inquiries.length}</div>
           <div className="flex items-center justify-between text-[11px] text-stone mt-3 pt-3 border-t border-line">
             <span className="text-amber-800 font-bold">{openInquiriesCount} Open Inquiries</span>
             <span className="flex items-center gap-1 font-semibold group-hover:text-royal transition">
@@ -496,13 +596,13 @@ export const CompanyStudioDashboardView: React.FC<CompanyStudioDashboardViewProp
 
           <div className="space-y-2.5">
             <div className="text-xs font-bold text-stone uppercase tracking-wider">Recent Commercial Inquiries</div>
-            {canonicalInquiries.length === 0 ? (
+            {inquiries.length === 0 ? (
               <div className="p-6 rounded-xl bg-mist/50 border border-line text-xs text-stone text-center">
                 No inquiries or RFQs received yet.
               </div>
             ) : (
               <div className="space-y-2">
-                {canonicalInquiries.slice(0, 3).map((inq) => (
+                {inquiries.slice(0, 3).map((inq) => (
                   <div
                     key={inq.id}
                     className="p-3.5 rounded-xl bg-slate-50 border border-line text-xs space-y-1 hover:bg-slate-100 transition"

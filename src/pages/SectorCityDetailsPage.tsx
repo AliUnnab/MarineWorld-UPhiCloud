@@ -62,8 +62,8 @@ export function SectorCityDetailsPage({
     return (
       <div className="min-h-screen bg-canvas flex flex-col items-center justify-center p-6 text-center font-sans">
         <Globe className="w-10 h-10 text-royal animate-pulse mb-3" />
-        <h2 className="text-lg font-bold text-graphite">Sektör Şehri Yükleniyor...</h2>
-        <p className="text-xs text-stone mt-1">Dijital mimari verileri doğrulanıyor.</p>
+        <h2 className="text-lg font-bold text-graphite">Loading Sector City...</h2>
+        <p className="text-xs text-stone mt-1">Verifying digital architecture data.</p>
       </div>
     );
   }
@@ -74,15 +74,15 @@ export function SectorCityDetailsPage({
         <div className="w-16 h-16 rounded-full bg-soft text-royal flex items-center justify-center mb-4">
           <Globe className="w-8 h-8" />
         </div>
-        <h1 className="text-2xl font-extrabold text-graphite tracking-tight">Sektör Şehri Bulunamadı</h1>
+        <h1 className="text-2xl font-extrabold text-graphite tracking-tight">Sector City Not Found</h1>
         <p className="text-sm text-stone max-w-md mt-2">
-          Talep edilen &apos;{citySlug}&apos; sektör şehri veritabanında bulunamadı.
+          The requested sector city &apos;{citySlug}&apos; could not be found in the database.
         </p>
         <a
           href="/cities"
           className="mt-6 px-6 py-2.5 rounded-card-sm bg-slate-900 text-white text-xs font-bold uppercase tracking-wider hover:bg-slate-800 transition-colors"
         >
-          Tüm Sektör Şehirlerine Dön &rarr;
+          Return to All Sector Cities &rarr;
         </a>
       </div>
     );

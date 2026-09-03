@@ -273,7 +273,7 @@ export function Header({
                   <ArrowRight className="w-3.5 h-3.5 text-white/80" />
                 </a>
               </div>
-            ) : isPersonal || !activeOrg ? (
+            ) : !activeOrg && accessContext.contextType === "VISITOR" && (!accessContext.availableMemberships || accessContext.availableMemberships.length === 0) ? (
               /* Personal Visitor User Menu (<displayName> ▾) */
               <div className="relative" ref={dropdownRef}>
                 <button

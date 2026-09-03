@@ -21,7 +21,7 @@ import {
   recordServiceView,
 } from "@/lib/services/personalWorkspaceService";
 import { buildCanonicalCompanyUrl } from "@/lib/services/companyIdentityService";
-import { buildCanonicalOfferingUrl } from "@/lib/services/offeringEntityService";
+import { buildCanonicalOfferingUrl, fetchCompanyOfferingsAsync } from "@/lib/services/offeringEntityService";
 import {
   buildCompanySchema,
   buildProductSchema,
@@ -88,6 +88,7 @@ export function CompanyPage({
           (await getFirestoreCompanyById(resolvedSlug!));
         if (isMounted && found) {
           setLiveCompany(found);
+          fetchCompanyOfferingsAsync(found.id).catch(() => {});
         }
       } catch (err: any) {
         if (isMounted) {
@@ -209,8 +210,8 @@ export function CompanyPage({
         <div className="w-12 h-12 rounded-full bg-soft flex items-center justify-center text-royal mb-3 animate-pulse">
           <Icon name="building" className="w-6 h-6" />
         </div>
-        <h2 className="text-lg font-bold text-graphite">İşletme Profili Yükleniyor...</h2>
-        <p className="text-xs text-stone mt-1">Sovereign Business Twin verileri Firestore üzerinden doğrulanıyor.</p>
+        <h2 className="text-lg font-bold text-graphite">Loading Company Profile...</h2>
+        <p className="text-xs text-stone mt-1">Verifying Sovereign Business Twin data via Firestore.</p>
       </div>
     );
   }

@@ -65,6 +65,8 @@ export async function deleteProduct(companyId: string, productId: string): Promi
   return true;
 }
 
+import { getCompanyRecordSync } from "@/lib/repositories/companyRepository";
+
 /**
  * Get all canonical products for a company
  */
@@ -73,8 +75,12 @@ export function getCompanyProducts(companyId: string): ProductEntity[] {
   if (existing && existing.length > 0) {
     return existing;
   }
-  const company = getCompanyById(companyId) || getCompanyBySlug(companyId);
+  const company = getCompanyById(companyId) || getCompanyBySlug(companyId) || (getCompanyRecordSync(companyId) as unknown as CompanyProfile);
   if (company) {
+    if ((company as any).products && (company as any).products.length > 0) {
+      productsRepository.set(companyId, (company as any).products);
+      return (company as any).products;
+    }
     const products = getCompanyProductsFromRegistry(company as unknown as CompanyProfile);
     if (products.length > 0) {
       productsRepository.set(companyId, products);

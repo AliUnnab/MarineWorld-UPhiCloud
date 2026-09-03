@@ -167,6 +167,11 @@ export interface OfferingGroundingSource {
   syncEnabled?: boolean;
   isDownloadableDocument?: boolean;
   isGroundingSource?: boolean;
+  summary?: string;
+  contentExcerpt?: string;
+  extractedText?: string;
+  description?: string;
+  base64Data?: string;
   hasConflict?: boolean;
   conflictDescription?: string;
 }
@@ -206,6 +211,10 @@ export interface OfferingAIAdvisorConfig {
 }
 
 export interface OfferingCommercialInfo {
+  price?: string;
+  currency?: string;
+  priceAmount?: number;
+  pricingType?: "FIXED" | "STARTING_FROM" | "RFQ_ONLY" | "UPON_REQUEST" | string;
   pricingGuidance?: string;
   incoterms?: string;
   leadTime?: string;
@@ -254,6 +263,8 @@ export interface CompanyOffering {
   standards?: string[];
   mediaReferences?: OfferingMediaItem[];
   media?: OfferingMediaItem[];
+  price?: string;
+  currency?: string;
   commercialInformation?: OfferingCommercialInfo;
   serviceScope?: string;
   coverage?: string;

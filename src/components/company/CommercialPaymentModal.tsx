@@ -151,12 +151,6 @@ export function CommercialPaymentModal({
     const targetIntent = ensureTargetIntent();
     updateSubscriptionIntentCommercialRoute(targetIntent.id, "STRIPE");
 
-    if (!isStripeConfigured()) {
-      setIsProcessing(false);
-      setFeedbackNotice("Stripe is not configured in this environment.");
-      return;
-    }
-
     try {
       let checkoutSessionUrl: string | null = null;
 
@@ -171,13 +165,15 @@ export function CommercialPaymentModal({
           }),
         });
         const data = await res.json();
-        if (data.success && data.url) {
+        if (data.success && (data.url || data.sessionId)) {
           checkoutSessionUrl = data.url;
         } else if (data.error) {
+          setIsProcessing(false);
           setFeedbackNotice(data.error);
+          return;
         }
       } catch {
-        // Fallback to direct client-side Stripe session creation
+        // Fallback to direct client-side Stripe session creation if server route unavailable
       }
 
       if (!checkoutSessionUrl) {

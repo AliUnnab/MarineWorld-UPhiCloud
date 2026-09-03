@@ -205,7 +205,7 @@ export function SectorCityTopChrome({
                   <ArrowRight className="w-2.5 h-2.5 text-white/80" />
                 </a>
               </div>
-            ) : accessContext.contextType === "VISITOR" || !activeOrg ? (
+            ) : !activeOrg && accessContext.contextType === "VISITOR" && (!accessContext.availableMemberships || accessContext.availableMemberships.length === 0) ? (
               /* Personal Visitor Dropdown */
               <div className="relative" ref={dropdownRef}>
                 <button

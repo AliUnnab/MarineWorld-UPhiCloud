@@ -650,7 +650,7 @@ export function CanonicalCompanyProfileModal({
                       value={formData.legalName}
                       onChange={(e) => setFormData({ ...formData, legalName: e.target.value })}
                       className="w-full bg-white border border-line rounded-xl px-3.5 py-2 text-xs text-graphite focus:outline-none focus:border-royal"
-                      placeholder="e.g. Argento Marine Yatçılık A.Ş."
+                      placeholder="e.g. Argento Marine Yachting Ltd."
                     />
                   </div>
 

@@ -65,6 +65,8 @@ export async function deleteService(companyId: string, serviceId: string): Promi
   return true;
 }
 
+import { getCompanyRecordSync } from "@/lib/repositories/companyRepository";
+
 /**
  * Get all canonical services for a company
  */
@@ -73,8 +75,12 @@ export function getCompanyServices(companyId: string): ServiceEntity[] {
   if (existing && existing.length > 0) {
     return existing;
   }
-  const company = getCompanyById(companyId) || getCompanyBySlug(companyId);
+  const company = getCompanyById(companyId) || getCompanyBySlug(companyId) || (getCompanyRecordSync(companyId) as unknown as CompanyProfile);
   if (company) {
+    if ((company as any).services && (company as any).services.length > 0) {
+      servicesRepository.set(companyId, (company as any).services);
+      return (company as any).services;
+    }
     const services = getCompanyServicesFromRegistry(company as unknown as CompanyProfile);
     if (services.length > 0) {
       servicesRepository.set(companyId, services);

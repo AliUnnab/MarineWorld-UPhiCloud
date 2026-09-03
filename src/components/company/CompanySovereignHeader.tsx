@@ -343,7 +343,103 @@ export function CompanySovereignHeader({
                     <ArrowRight className="w-2.5 h-2.5 text-white/80" />
                   </a>
                 </div>
-              ) : accessContext.contextType === "VISITOR" || !activeOrg ? (
+              ) : accessContext.contextType === "COMPANY" ||
+                activeOrg ||
+                (accessContext.availableMemberships && accessContext.availableMemberships.length > 0) ||
+                (company.ownerId && accessContext.authenticatedUserId && company.ownerId === accessContext.authenticatedUserId) ? (
+                /* Authenticated Org / Company Member */
+                <div className="relative" ref={dropdownRef}>
+                  <button
+                    type="button"
+                    id="btn-sovereign-org-switcher"
+                    onClick={() => setDropdownOpen((v) => !v)}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-royal/30 bg-royal/5 hover:bg-royal/10 px-2.5 py-1 text-[11px] font-bold text-royal shadow-2xs transition"
+                  >
+                    <Building2 className="w-3 h-3 text-royal shrink-0" />
+                    <span className="truncate max-w-[110px] sm:max-w-[150px]">
+                      {activeOrg?.organizationName ||
+                        (activeOrg as any)?.displayName ||
+                        company.displayName ||
+                        company.name ||
+                        "Company"}
+                    </span>
+                    <ChevronDown className="w-2.5 h-2.5 text-royal/60 shrink-0" />
+                  </button>
+
+                  {dropdownOpen && (
+                    <div
+                      id="dropdown-sovereign-org-menu"
+                      className="absolute right-0 top-full mt-1.5 w-72 rounded-xl border border-line bg-white p-3 shadow-xl z-50 space-y-2 animate-in fade-in slide-in-from-top-1 duration-150"
+                    >
+                      <div className="p-2.5 bg-slate-50 rounded-lg space-y-1 font-sans">
+                        <div className="text-xs font-bold text-graphite">
+                          {activeOrg?.organizationName ||
+                            (activeOrg as any)?.displayName ||
+                            company.displayName ||
+                            company.name ||
+                            "Company"}
+                        </div>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-royal text-white">
+                            {activeOrg?.role || "OWNER"}
+                          </span>
+                          <span className="text-[11px] font-sans text-stone">
+                            {accessContext.contextType === "ECOSYSTEM_ORGANIZATION"
+                              ? "Ecosystem Context"
+                              : "Company Account"}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="pt-2 border-t border-line/60 space-y-1">
+                        {(accessContext.contextType === "ECOSYSTEM_ORGANIZATION" ||
+                          (activeOrg &&
+                            ["ASSOCIATION", "CHAMBER", "FEDERATION", "INSTITUTION", "PUBLIC_ORGANIZATION"].includes(
+                              (activeOrg as any).organizationType
+                            ))) && (
+                          <a
+                            href="/ecosystem/dashboard?tab=members"
+                            onClick={() => setDropdownOpen(false)}
+                            className="w-full text-left px-2.5 py-2 rounded-lg text-xs font-bold text-royal bg-royal/5 hover:bg-royal/10 flex items-center justify-between transition"
+                          >
+                            <span>Return to Ecosystem Hub</span>
+                            <ArrowRight className="w-3.5 h-3.5 text-royal" />
+                          </a>
+                        )}
+                        <a
+                          href="/studio"
+                          id="btn-open-studio-workspace"
+                          onClick={() => {
+                            setDropdownOpen(false);
+                            const targetCompanyId = activeOrg?.companyId || company.slug || company.id;
+                            if (targetCompanyId) {
+                              setActiveOrganizationContext(targetCompanyId);
+                            }
+                          }}
+                          className="w-full text-left px-2.5 py-2 rounded-lg text-xs font-bold text-royal bg-royal/5 hover:bg-royal/10 flex items-center justify-between transition cursor-pointer"
+                        >
+                          <div className="flex items-center gap-2">
+                            <LayoutDashboard className="w-3.5 h-3.5 text-royal" />
+                            <span>Company Studio / Workspace</span>
+                          </div>
+                          <ArrowRight className="w-3.5 h-3.5" />
+                        </a>
+                      </div>
+
+                      <div className="pt-2 border-t border-line/60">
+                        <button
+                          type="button"
+                          onClick={handleSignOut}
+                          className="w-full text-left px-2.5 py-2 rounded-lg text-xs font-medium text-rose-600 hover:bg-rose-50 flex items-center gap-2 transition"
+                        >
+                          <LogOut className="w-3.5 h-3.5 text-rose-500" />
+                          <span>Sign Out</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
                 /* Personal Visitor Dropdown */
                 <div className="relative" ref={dropdownRef}>
                   <button
@@ -404,82 +500,6 @@ export function CompanySovereignHeader({
                         >
                           <Package className="w-3.5 h-3.5 text-slate-500" />
                           <span>My Inquiries</span>
-                        </a>
-                      </div>
-
-                      <div className="pt-2 border-t border-line/60">
-                        <button
-                          type="button"
-                          onClick={handleSignOut}
-                          className="w-full text-left px-2.5 py-2 rounded-lg text-xs font-medium text-rose-600 hover:bg-rose-50 flex items-center gap-2 transition"
-                        >
-                          <LogOut className="w-3.5 h-3.5 text-rose-500" />
-                          <span>Sign Out</span>
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                /* Authenticated Org / Company Member */
-                <div className="relative" ref={dropdownRef}>
-                  <button
-                    type="button"
-                    id="btn-sovereign-org-switcher"
-                    onClick={() => setDropdownOpen((v) => !v)}
-                    className="inline-flex items-center gap-1.5 rounded-full border border-royal/30 bg-royal/5 hover:bg-royal/10 px-2.5 py-1 text-[11px] font-bold text-royal shadow-2xs transition"
-                  >
-                    <Building2 className="w-3 h-3 text-royal shrink-0" />
-                    <span className="truncate max-w-[110px] sm:max-w-[150px]">
-                      {(activeOrg as any)?.displayName || (activeOrg as any)?.name || (activeOrg as any)?.orgName || "Company"}
-                    </span>
-                    <ChevronDown className="w-2.5 h-2.5 text-royal/60 shrink-0" />
-                  </button>
-
-                  {dropdownOpen && (
-                    <div
-                      id="dropdown-sovereign-org-menu"
-                      className="absolute right-0 top-full mt-1.5 w-72 rounded-xl border border-line bg-white p-3 shadow-xl z-50 space-y-2 animate-in fade-in slide-in-from-top-1 duration-150"
-                    >
-                      <div className="p-2.5 bg-slate-50 rounded-lg space-y-1 font-sans">
-                        <div className="text-xs font-bold text-graphite">{(activeOrg as any)?.displayName || (activeOrg as any)?.name || (activeOrg as any)?.orgName || "Company"}</div>
-                        <div className="text-[11px] font-sans text-stone">
-                          {accessContext.contextType === "COMPANY" ? "Company Context" : "Ecosystem Context"}
-                        </div>
-                      </div>
-
-                      <div className="pt-2 border-t border-line/60 space-y-1">
-                        {(accessContext.contextType === "ECOSYSTEM_ORGANIZATION" ||
-                          (activeOrg &&
-                            ["ASSOCIATION", "CHAMBER", "FEDERATION", "INSTITUTION", "PUBLIC_ORGANIZATION"].includes(
-                              (activeOrg as any).organizationType
-                            ))) && (
-                          <a
-                            href="/ecosystem/dashboard?tab=members"
-                            onClick={() => setDropdownOpen(false)}
-                            className="w-full text-left px-2.5 py-2 rounded-lg text-xs font-bold text-royal bg-royal/5 hover:bg-royal/10 flex items-center justify-between transition"
-                          >
-                            <span>Return to Ecosystem Hub</span>
-                            <ArrowRight className="w-3.5 h-3.5 text-royal" />
-                          </a>
-                        )}
-                        <a
-                          href="/studio"
-                          id="btn-open-studio-workspace"
-                          onClick={() => {
-                            setDropdownOpen(false);
-                            const targetCompanyId = company.slug || company.id;
-                            if (targetCompanyId) {
-                              setActiveOrganizationContext(targetCompanyId);
-                            }
-                          }}
-                          className="w-full text-left px-2.5 py-2 rounded-lg text-xs font-semibold text-royal hover:bg-royal/5 flex items-center justify-between transition cursor-pointer"
-                        >
-                          <div className="flex items-center gap-2">
-                            <LayoutDashboard className="w-3.5 h-3.5 text-royal" />
-                            <span>Open Studio Workspace</span>
-                          </div>
-                          <ArrowRight className="w-3.5 h-3.5" />
                         </a>
                       </div>
 

@@ -1085,7 +1085,7 @@ export function CompanyOnboardingPage({ config, onEnterStudio }: CompanyOnboardi
                 className="text-xs font-bold text-royal bg-royal/10 hover:bg-royal/20 px-3.5 py-1.5 rounded-lg transition flex items-center gap-1.5 cursor-pointer"
               >
                 <LogIn className="w-3.5 h-3.5" />
-                <span>Giriş Yap / Devam Et</span>
+                <span>Sign In / Resume</span>
               </button>
               <a
                 href="/"
@@ -2135,7 +2135,6 @@ export function CompanyOnboardingPage({ config, onEnterStudio }: CompanyOnboardi
               {/* STEP 05 — SUBSCRIPTION */}
               {currentStep === 5 && (() => {
                 const currentSub = activeCompanyId ? getCompanySubscription(activeCompanyId) : null;
-                const isSubActive = currentSub?.status === "ACTIVE" || subscriptionIntent?.paymentState === "SUCCEEDED";
                 const currentPlanCode: PlanCode = (currentSub?.planId as PlanCode) || (subscriptionIntent?.planCode || selectedPlanCode || (companyEntity?.requestedPlanCode as PlanCode) || "STARTER") as PlanCode;
                 const currentPlan = getPlanByCode(currentPlanCode) || AVAILABLE_PLANS[currentPlanCode] || AVAILABLE_PLANS.STARTER;
 
@@ -2143,94 +2142,97 @@ export function CompanyOnboardingPage({ config, onEnterStudio }: CompanyOnboardi
                 <div className="bg-white border border-line rounded-2xl p-6 md:p-8 min-h-[560px] flex flex-col justify-between space-y-6 shadow-sm">
                   <div>
                     <div className="text-xs font-mono text-royal font-bold uppercase tracking-wider">
-                      STEP 05 — PAYMENT &amp; SUBSCRIPTION
+                      STEP 05 — SUBSCRIPTION DETAILS
                     </div>
                     <h2 className="text-xl font-bold text-graphite mt-1">
-                      Subscription &amp; Commercial Entitlement Overview
+                      Purchased Plan &amp; Commercial Entitlements
                     </h2>
                     <p className="text-xs text-stone mt-0.5">
-                      {isSubActive
-                        ? "Your commercial subscription is active. Review active plan entitlements and proceed to company verification."
-                        : "Authorize subscription activation for your company workspace via your preferred enterprise commercial channel."}
+                      Your subscription payment was authorized in Step 04. Review your active plan details and proceed to company verification.
                     </p>
                   </div>
 
                   <div className="p-6 rounded-2xl bg-slate-50 border border-line space-y-5">
+                    {/* Active Subscription Status Banner */}
+                    <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-lg bg-emerald-600 text-white flex items-center justify-center shrink-0">
+                          <CheckCircle2 className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <div className="text-xs font-bold font-mono text-emerald-950 uppercase tracking-wider">
+                            ✓ PLAN PAYMENT COMPLETE &amp; SUBSCRIPTION ACTIVE
+                          </div>
+                          <div className="text-xs text-emerald-800 font-medium mt-0.5">
+                            Payment for <strong>{currentPlan.name}</strong> was successfully completed in Step 04 (Plan Selection).
+                          </div>
+                        </div>
+                      </div>
+                      <span className="px-3 py-1 rounded-full bg-emerald-600 text-white font-mono text-[11px] font-bold shrink-0 self-start sm:self-center">
+                        ACTIVE &amp; VERIFIED
+                      </span>
+                    </div>
+
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-line pb-4">
                       <div>
                         <div className="text-xs font-mono text-stone uppercase font-bold tracking-wider">
-                          SUBSCRIPTION PLAN &amp; BILLING
+                          ACTIVE PLAN &amp; BILLING
                         </div>
-                        <div className="text-base font-bold text-graphite mt-0.5 flex items-center gap-2">
+                        <div className="text-lg font-extrabold text-graphite mt-0.5 flex items-center gap-2">
                           <span>{currentPlan.name}</span>
-                          <span className="text-royal font-mono font-bold">(${currentPlan.price}/month)</span>
+                          <span className="text-royal font-mono font-bold text-base">(${currentPlan.price} / {currentPlan.billingInterval.toLowerCase()})</span>
                         </div>
                         <div className="text-xs text-stone font-mono mt-1">
-                          Company ID: <strong className="text-graphite">{activeCompanyId || "argento-marine"}</strong> | Business ID: <code className="text-royal font-bold">{companyEntity?.businessId || "MW-BUS-ARGENTO-MARITIME"}</code>
+                          Company ID: <strong className="text-graphite">{activeCompanyId || companyEntity?.id || "argento-marine"}</strong> | Business ID: <code className="text-royal font-bold">{companyEntity?.businessId || "MW-BUS-ARGENTO-MARITIME"}</code>
                         </div>
                       </div>
 
                       <div className="shrink-0 flex items-center gap-2">
-                        {isSubActive ? (
-                          <span className="px-3 py-1 rounded-lg bg-emerald-100 text-emerald-800 font-mono text-xs font-bold flex items-center gap-1.5 border border-emerald-300">
-                            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                            <span>SUBSCRIPTION ACTIVE</span>
-                          </span>
-                        ) : (
-                          <span className="px-3 py-1 rounded-lg bg-amber-100 text-amber-800 font-mono text-xs font-bold border border-amber-300">
-                            PAYMENT PENDING
-                          </span>
-                        )}
+                        <span className="px-3 py-1.5 rounded-lg bg-royal/10 text-royal font-mono text-xs font-bold border border-royal/20 flex items-center gap-1.5">
+                          <ShieldCheck className="w-4 h-4" />
+                          <span>COMMERCIAL PROTOCOL ACTIVE</span>
+                        </span>
                       </div>
                     </div>
 
                     <div className="p-4 rounded-xl bg-white border border-line space-y-3">
                       <div className="flex items-center justify-between">
                         <div className="text-xs font-mono font-bold text-graphite uppercase">
-                          Commercial Route Status
+                          Payment Settlement &amp; Route
                         </div>
-                        <span className={`px-2.5 py-0.5 rounded text-xs font-mono font-bold border ${
-                          isSubActive
-                            ? "bg-emerald-50 text-emerald-800 border-emerald-200"
-                            : "bg-amber-50 text-amber-800 border-amber-200"
-                        }`}>
-                          {isSubActive ? "PAYMENT_AUTHORIZED" : (subscriptionIntent?.paymentState || "PAYMENT_REQUIRED")}
+                        <span className="px-2.5 py-0.5 rounded text-xs font-mono font-bold border bg-emerald-50 text-emerald-800 border-emerald-200">
+                          PAYMENT_CONFIRMED (STRIPE)
                         </span>
                       </div>
 
-                      <p className="text-xs text-stone leading-relaxed">
-                        {isSubActive
-                          ? `Payment authorized and confirmed via ${subscriptionIntent?.paymentMethod || "STRIPE"}. All enterprise entitlements and digital twin capabilities for ${currentPlan.name} are active.`
-                          : `Selected Commercial Method: ${subscriptionIntent?.paymentMethod || "Not Selected Yet"}. Click below to authorize payment via Stripe Checkout.`}
-                      </p>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-2 text-xs">
-                        <div className="p-2.5 rounded-lg bg-slate-50 border border-line">
-                          <span className="text-[10px] font-mono text-stone block">TIER LEVEL</span>
-                          <span className="font-bold text-graphite">{currentPlan.code}</span>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-2 text-xs">
+                        <div className="p-3 rounded-xl bg-slate-50 border border-line">
+                          <span className="text-[10px] font-mono text-stone uppercase tracking-wider block">TIER LEVEL</span>
+                          <span className="font-bold text-graphite text-sm mt-0.5 block">{currentPlan.code}</span>
                         </div>
-                        <div className="p-2.5 rounded-lg bg-slate-50 border border-line">
-                          <span className="text-[10px] font-mono text-stone block">BILLING INTERVAL</span>
-                          <span className="font-bold text-graphite uppercase">{currentPlan.billingInterval}</span>
+                        <div className="p-3 rounded-xl bg-slate-50 border border-line">
+                          <span className="text-[10px] font-mono text-stone uppercase tracking-wider block">BILLING INTERVAL</span>
+                          <span className="font-bold text-graphite text-sm uppercase mt-0.5 block">{currentPlan.billingInterval}</span>
                         </div>
-                        <div className="p-2.5 rounded-lg bg-slate-50 border border-line">
-                          <span className="text-[10px] font-mono text-stone block">CAPABILITIES GRANTED</span>
-                          <span className="font-bold text-emerald-700">{currentPlan.includedCapabilities.length} Active Modules</span>
+                        <div className="p-3 rounded-xl bg-slate-50 border border-line">
+                          <span className="text-[10px] font-mono text-stone uppercase tracking-wider block">ENTITLEMENTS GRANTED</span>
+                          <span className="font-bold text-emerald-700 text-sm mt-0.5 block">{currentPlan.includedCapabilities.length} Active Modules</span>
                         </div>
                       </div>
 
-                      {!isSubActive && (
-                        <div className="flex flex-wrap gap-3 pt-2">
-                          <button
-                            type="button"
-                            onClick={() => setIsPaymentModalOpen(true)}
-                            className="px-6 py-3 rounded-xl bg-royal text-white font-bold text-xs hover:bg-blue-600 transition-all flex items-center gap-2 shadow-sm cursor-pointer"
-                          >
-                            <CreditCard className="w-4 h-4" />
-                            <span>CHOOSE COMMERCIAL ROUTE &amp; PAY NOW</span>
-                          </button>
+                      <div className="pt-2 border-t border-line/60">
+                        <div className="text-[11px] font-bold text-stone uppercase tracking-wider mb-2 font-mono">
+                          Included Tier Capabilities:
                         </div>
-                      )}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                          {currentPlan.includedCapabilities.map((cap) => (
+                            <div key={cap} className="flex items-center gap-2 p-2 rounded-lg bg-slate-50 border border-line/60 text-graphite">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                              <span className="font-medium">{cap.replace(/_/g, " ")}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
                     </div>
                   </div>
 
@@ -2510,9 +2512,23 @@ export function CompanyOnboardingPage({ config, onEnterStudio }: CompanyOnboardi
         legalName={legalName}
         displayName={displayName}
         subscriptionIntent={subscriptionIntent}
-        onIntentUpdated={(updated) => setSubscriptionIntent(updated)}
+        onIntentUpdated={(updated) => {
+          setSubscriptionIntent(updated);
+          if (updated.paymentState === "SUCCEEDED" || updated.status === "SUCCEEDED") {
+            const compId = activeCompanyId || updated.companyId;
+            const sub = getCompanySubscription(compId);
+            if (companyEntity) {
+              hydrateCompanyIntoState(companyEntity, sub, 5);
+            }
+          }
+        }}
         onProceedToVerification={() => {
           setIsPaymentModalOpen(false);
+          const compId = activeCompanyId || "argento-marine";
+          const sub = getCompanySubscription(compId);
+          if (companyEntity) {
+            hydrateCompanyIntoState(companyEntity, sub, 5);
+          }
           goToStep(5);
         }}
       />

@@ -48,9 +48,93 @@ export const OfferingCardItem: React.FC<OfferingCardItemProps> = ({
   const TypeIcon = isProduct ? Package : isService ? Wrench : Layers;
   
   const groundingStatus = offering.groundingStatus || computeOfferingGroundingStatus(offering);
-  const specsCount = offering.specifications ? Object.keys(offering.specifications).length : 0;
-  const sourcesCount = offering.groundingSources ? offering.groundingSources.length : 0;
-  const mediaCount = (offering.mediaReferences?.length || 0) + (offering.media?.length || 0);
+
+  // Accurate, deduplicated Specifications count
+  const specsCount = React.useMemo(() => {
+    const rawSpecs = offering.specifications || (offering as any).specs;
+    if (!rawSpecs) return 0;
+    if (Array.isArray(rawSpecs)) {
+      return rawSpecs.filter((s: any) => (s?.key || s?.name) && String(s?.value ?? "").trim().length > 0).length;
+    }
+    if (typeof rawSpecs === "object") {
+      return Object.entries(rawSpecs).filter(([k, v]) => k.trim().length > 0 && String(v ?? "").trim().length > 0).length;
+    }
+    return 0;
+  }, [offering.specifications, (offering as any).specs]);
+
+  // Accurate, deduplicated Sources count (Grounding documents, attached PDF blueprints & datasheets)
+  const sourcesCount = React.useMemo(() => {
+    const sourcesSet = new Set<string>();
+    if (Array.isArray(offering.groundingSources)) {
+      offering.groundingSources.forEach((s) => {
+        const id = s.id || s.filename || s.title || s.url;
+        if (id) sourcesSet.add(id);
+      });
+    }
+    if (Array.isArray((offering as any).sources)) {
+      (offering as any).sources.forEach((s: any) => {
+        const id = s.id || s.filename || s.title || s.url || String(s);
+        if (id) sourcesSet.add(id);
+      });
+    }
+    if (Array.isArray((offering as any).documents)) {
+      (offering as any).documents.forEach((d: any) => {
+        const id = d.id || d.filename || d.title || d.url || String(d);
+        if (id) sourcesSet.add(id);
+      });
+    }
+    // Technical drawings and PDF blueprints in mediaReferences
+    if (Array.isArray(offering.mediaReferences)) {
+      offering.mediaReferences.forEach((m: any) => {
+        if (m.type === "drawing" || m.type === "technical_drawing" || m.url?.toLowerCase().includes(".pdf")) {
+          const id = m.id || m.filename || m.title || m.url;
+          if (id) sourcesSet.add(id);
+        }
+      });
+    }
+    return sourcesSet.size;
+  }, [offering.groundingSources, (offering as any).sources, (offering as any).documents, offering.mediaReferences]);
+
+  // Accurate, deduplicated Media count (Photos, Videos, Image Gallery)
+  const mediaCount = React.useMemo(() => {
+    const mediaSet = new Set<string>();
+    const allMediaItems = [
+      ...(offering.mediaReferences || []),
+      ...(offering.media || []),
+      ...(Array.isArray((offering as any).gallery) ? (offering as any).gallery : []),
+      ...(Array.isArray((offering as any).images) ? (offering as any).images : []),
+    ];
+
+    allMediaItems.forEach((m: any) => {
+      if (!m) return;
+      const urlStr = (typeof m === "string" ? m : m.url || "").toLowerCase();
+      const isPdf = urlStr.includes(".pdf");
+      const isDrawing = !isPdf && (m.type === "drawing" || m.type === "technical_drawing");
+      // Visual photo/video media items
+      if (!isPdf && !isDrawing) {
+        const key = typeof m === "string" ? m : m.url || m.id || m.title;
+        if (key && key.trim().length > 0) {
+          mediaSet.add(key.trim());
+        }
+      }
+    });
+
+    // If no media array entries but single coverImage / primaryImage is defined (and not a PDF)
+    const singleImg = (offering as any).coverImage || (offering as any).primaryImage || (offering as any).imageUrl;
+    if (mediaSet.size === 0 && singleImg && !singleImg.toLowerCase().includes(".pdf")) {
+      return 1;
+    }
+
+    return mediaSet.size;
+  }, [
+    offering.mediaReferences,
+    offering.media,
+    (offering as any).gallery,
+    (offering as any).images,
+    (offering as any).coverImage,
+    (offering as any).primaryImage,
+    (offering as any).imageUrl,
+  ]);
 
   const conflicts = getOfferingDocumentConflicts(offering.companyId, offering.id);
   const openConflicts = conflicts.filter((c) => c.status === "OPEN");

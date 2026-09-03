@@ -57,7 +57,8 @@ export function EcosystemOverviewView({
     setTimeout(() => setCopiedLink(false), 2000);
   };
 
-  const activationPercentage = Math.round((funnelMetrics.active / (funnelMetrics.issued || 1)) * 100);
+  const totalCount = recentMembers.length;
+  const activationPercentage = totalCount > 0 ? Math.round((funnelMetrics.active / totalCount) * 100) : 0;
 
   return (
     <div className="space-y-8 animate-in fade-in duration-200">
@@ -104,7 +105,7 @@ export function EcosystemOverviewView({
             <Users className="w-4 h-4 text-slate-400" />
           </div>
           <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
-            {organization.totalMembersCount.toLocaleString()}
+            {totalCount.toLocaleString()}
           </div>
           <p className="text-[11px] font-semibold text-slate-500 mt-1">
             Accredited entities
@@ -380,81 +381,111 @@ export function EcosystemOverviewView({
             onClick={() => onNavigateTab("members")}
             className="text-xs font-bold text-royal hover:text-royal-dark flex items-center gap-1 cursor-pointer"
           >
-            <span>View All Members ({organization.totalMembersCount})</span>
+            <span>View All Members ({recentMembers.length})</span>
             <ArrowRight className="w-3.5 h-3.5" />
           </button>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead>
-              <tr className="border-b border-slate-200 text-[10px] font-bold uppercase tracking-wider text-slate-500 bg-slate-50/70">
-                <th className="py-3 px-4 rounded-l-xl">Member Company</th>
-                <th className="py-3 px-4">Location</th>
-                <th className="py-3 px-4">Sector City</th>
-                <th className="py-3 px-4">Status</th>
-                <th className="py-3 px-4">Verification</th>
-                <th className="py-3 px-4 text-right rounded-r-xl">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {recentMembers.slice(0, 6).map((member) => (
-                <tr key={member.memberId} className="hover:bg-slate-50/80 transition-colors">
-                  <td className="py-3.5 px-4 font-bold text-slate-900">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center font-bold text-slate-700 text-xs shrink-0">
-                        {member.companyName.substring(0, 2).toUpperCase()}
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-bold text-slate-900">{member.companyName}</span>
-                        </div>
-                        <span className="block text-[10px] font-medium text-slate-500">{member.contactEmail}</span>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="py-3.5 px-4 text-slate-600 font-medium">
-                    {member.city}, {member.country}
-                  </td>
-                  <td className="py-3.5 px-4 font-mono text-[11px] text-royal font-bold">
-                    {member.sectorCityId}.city
-                  </td>
-                  <td className="py-3.5 px-4">
-                    <span
-                      className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                        member.status === "ACTIVE"
-                          ? "bg-emerald-50 text-emerald-800 border border-emerald-200/80"
-                          : "bg-royal/5 text-royal-dark border border-royal/20"
-                      }`}
-                    >
-                      <span className="w-1.5 h-1.5 rounded-full bg-current" />
-                      {member.status.replace(/_/g, " ")}
-                    </span>
-                  </td>
-                  <td className="py-3.5 px-4">
-                    <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700">
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                      <span>{member.verificationStatus === "ACTION_REQUIRED" ? "Action Required" : member.verificationStatus.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, c => c.toUpperCase())}</span>
-                    </span>
-                  </td>
-                  <td className="py-3.5 px-4 text-right">
-                    <button
-                      onClick={() => {
-                        if (onNavigateUrl) {
-                          onNavigateUrl(`/companies/${member.companyId}?fromHub=true&returnTab=overview&orgId=${organization.id}`);
-                        }
-                      }}
-                      className="px-3 py-1.5 bg-slate-100 hover:bg-slate-900 hover:text-white rounded-lg text-[11px] font-bold text-slate-700 transition-all cursor-pointer inline-flex items-center gap-1"
-                    >
-                      <span>VIEW COMPANY</span>
-                      <ExternalLink className="w-3 h-3" />
-                    </button>
-                  </td>
+        {recentMembers.length === 0 ? (
+          <div className="text-center py-10 px-4 bg-slate-50/70 border border-slate-200/80 rounded-2xl space-y-3">
+            <div className="w-10 h-10 rounded-full bg-slate-100 border border-slate-200 text-slate-400 mx-auto flex items-center justify-center">
+              <Users className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-slate-800">No Enrolled Member Companies Yet</p>
+              <p className="text-[11px] text-slate-500 max-w-md mx-auto mt-1">
+                Share your organization's enrollment code (<span className="font-mono font-bold text-royal">{organization.enrollmentCode}</span>) or invitation link with member enterprises to onboard them to your Ecosystem Hub.
+              </p>
+            </div>
+            <div className="flex items-center justify-center gap-2 pt-2">
+              <button
+                onClick={handleCopyLink}
+                className="px-3.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+              >
+                {copiedLink ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                <span>{copiedLink ? "Link Copied" : "Copy Invite Link"}</span>
+              </button>
+              <button
+                onClick={onInviteModalOpen}
+                className="px-3.5 py-1.5 rounded-xl bg-royal hover:bg-royal-dark text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <Send className="w-3.5 h-3.5" />
+                <span>Invite Members</span>
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="border-b border-slate-200 text-[10px] font-bold uppercase tracking-wider text-slate-500 bg-slate-50/70">
+                  <th className="py-3 px-4 rounded-l-xl">Member Company</th>
+                  <th className="py-3 px-4">Location</th>
+                  <th className="py-3 px-4">Sector City</th>
+                  <th className="py-3 px-4">Status</th>
+                  <th className="py-3 px-4">Verification</th>
+                  <th className="py-3 px-4 text-right rounded-r-xl">Action</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {recentMembers.slice(0, 6).map((member) => (
+                  <tr key={member.memberId} className="hover:bg-slate-50/80 transition-colors">
+                    <td className="py-3.5 px-4 font-bold text-slate-900">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center font-bold text-slate-700 text-xs shrink-0">
+                          {member.companyName.substring(0, 2).toUpperCase()}
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-bold text-slate-900">{member.companyName}</span>
+                          </div>
+                          <span className="block text-[10px] font-medium text-slate-500">{member.contactEmail}</span>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="py-3.5 px-4 text-slate-600 font-medium">
+                      {member.city}, {member.country}
+                    </td>
+                    <td className="py-3.5 px-4 font-mono text-[11px] text-royal font-bold">
+                      {member.sectorCityId}.city
+                    </td>
+                    <td className="py-3.5 px-4">
+                      <span
+                        className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                          member.status === "ACTIVE"
+                            ? "bg-emerald-50 text-emerald-800 border border-emerald-200/80"
+                            : "bg-royal/5 text-royal-dark border border-royal/20"
+                        }`}
+                      >
+                        <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                        {member.status.replace(/_/g, " ")}
+                      </span>
+                    </td>
+                    <td className="py-3.5 px-4">
+                      <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>{member.verificationStatus === "ACTION_REQUIRED" ? "Action Required" : member.verificationStatus.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, c => c.toUpperCase())}</span>
+                      </span>
+                    </td>
+                    <td className="py-3.5 px-4 text-right">
+                      <button
+                        onClick={() => {
+                          if (onNavigateUrl) {
+                            onNavigateUrl(`/companies/${member.companyId}?fromHub=true&returnTab=overview&orgId=${organization.id}`);
+                          }
+                        }}
+                        className="px-3 py-1.5 bg-slate-100 hover:bg-slate-900 hover:text-white rounded-lg text-[11px] font-bold text-slate-700 transition-all cursor-pointer inline-flex items-center gap-1"
+                      >
+                        <span>VIEW COMPANY</span>
+                        <ExternalLink className="w-3 h-3" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );

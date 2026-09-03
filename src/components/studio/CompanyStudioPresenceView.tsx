@@ -60,6 +60,7 @@ import {
   getCompanyById,
   saveCompany,
   getPhysicalFacilities,
+  fetchPhysicalFacilitiesAsync,
   getRegisteredHeadquarters,
   setRegisteredHeadquarters,
   addPhysicalFacility,
@@ -67,7 +68,7 @@ import {
   removePhysicalFacility,
   updateGeographicCoverage,
 } from "@/lib/services/companyService";
-import { getCompanyRecordSync } from "@/lib/repositories/companyRepository";
+import { getCompanyRecordSync, getCompanyRecord } from "@/lib/repositories/companyRepository";
 
 interface CompanyStudioPresenceViewProps {
   companyId: string;
@@ -107,45 +108,6 @@ const MEDIA_CATEGORIES: Array<{ category: FacilityMediaCategory; label: string }
   { category: "SERVICE", label: "Service Bay & Maintenance Rig" },
   { category: "INFRASTRUCTURE", label: "Heavy Cranes & Port Infrastructure" },
   { category: "OTHER", label: "General Facility Imagery" },
-];
-
-const CURATED_FACILITY_PRESETS: Array<{ title: string; image: string; category: FacilityMediaCategory; caption: string }> = [
-  {
-    title: "Deepwater Quayside & Engineering Berth",
-    image: "https://images.unsplash.com/photo-1544551763-46a013bb70d5?auto=format&fit=crop&w=1200&q=80",
-    category: "EXTERIOR",
-    caption: "Direct deepwater berthing facility with heavy crane access for vessel refits.",
-  },
-  {
-    title: "Naval Architecture CAD & Simulation Studio",
-    image: "https://images.unsplash.com/photo-1586528116311-ad8ed7c50a92?auto=format&fit=crop&w=1200&q=80",
-    category: "OFFICE",
-    caption: "High-performance computational workstations for hull hydrodynamic optimization.",
-  },
-  {
-    title: "Hydrostatic Testing & Pressure Tank Basin",
-    image: "https://images.unsplash.com/photo-1578575437130-527eed3abbec?auto=format&fit=crop&w=1200&q=80",
-    category: "WORKSHOP",
-    caption: "Controlled hyperbaric pressure testing chamber for subsea autonomous equipment.",
-  },
-  {
-    title: "Heavy Drivetrain Assembly Drydock Bay",
-    image: "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=1200&q=80",
-    category: "PRODUCTION",
-    caption: "Drydock gantry crane installation bay for pod propulsion and shaft alignments.",
-  },
-  {
-    title: "Regional Marine Logistics & Spares Depot",
-    image: "https://images.unsplash.com/photo-1559136555-9303baea8ebd?auto=format&fit=crop&w=1200&q=80",
-    category: "INFRASTRUCTURE",
-    caption: "High-density automated logistics depot for rapid critical maritime spare dispatch.",
-  },
-  {
-    title: "Marine Technology Client Presentation Suite",
-    image: "https://images.unsplash.com/photo-1518241353330-0f7941c2d9b5?auto=format&fit=crop&w=1200&q=80",
-    category: "INTERIOR",
-    caption: "Executive boardroom and live vessel telemetry briefing theater.",
-  },
 ];
 
 const AVAILABLE_COUNTRIES = [
@@ -249,7 +211,7 @@ export const CompanyStudioPresenceView: React.FC<CompanyStudioPresenceViewProps>
   }, [companyId, canonicalCompany]);
 
   // Media adding sub-state inside editor
-  const [activeMediaInputMode, setActiveMediaInputMode] = useState<"upload" | "url" | "presets">("upload");
+  const [activeMediaInputMode, setActiveMediaInputMode] = useState<"upload" | "url">("upload");
   const [newMediaUrl, setNewMediaUrl] = useState("");
   const [newMediaTitle, setNewMediaTitle] = useState("");
   const [newMediaCaption, setNewMediaCaption] = useState("");
@@ -276,21 +238,36 @@ export const CompanyStudioPresenceView: React.FC<CompanyStudioPresenceViewProps>
   const [isSaving, setIsSaving] = useState(false);
 
   // Load Initial Data
-  const loadData = () => {
-    const loadedFacilities = getPhysicalFacilities(companyId);
-    setFacilities([...loadedFacilities]);
+  const loadData = async () => {
+    const initialFacilities = getPhysicalFacilities(companyId);
+    setFacilities([...initialFacilities]);
 
-    const comp = getCompanyById(companyId) || canonicalCompany;
-    const countries =
-      comp?.operatingCountries ||
-      comp?.countriesServed ||
-      (loadedFacilities.length > 0 ? [loadedFacilities[0].country] : ["Netherlands"]);
-    const regions =
-      comp?.operatingRegions ||
-      comp?.regionalEditions || ["Western Europe", "Global Network"];
+    const compInitial = getCompanyById(companyId) || canonicalCompany;
+    if (compInitial?.physicalFacilities && Array.isArray(compInitial.physicalFacilities)) {
+      setFacilities([...compInitial.physicalFacilities]);
+    }
 
-    setOperatingCountries([...countries]);
-    setOperatingRegions([...regions]);
+    try {
+      const liveFacilities = await fetchPhysicalFacilitiesAsync(companyId);
+      if (liveFacilities) {
+        setFacilities([...liveFacilities]);
+      }
+
+      const liveComp = (await getCompanyRecord(companyId)) || compInitial;
+      const activeFacilities = (liveFacilities && liveFacilities.length > 0) ? liveFacilities : (liveComp?.physicalFacilities || initialFacilities);
+      const countries =
+        liveComp?.operatingCountries ||
+        liveComp?.countriesServed ||
+        (activeFacilities.length > 0 ? [activeFacilities[0].country] : ["Netherlands"]);
+      const regions =
+        liveComp?.operatingRegions ||
+        liveComp?.regionalEditions || ["Western Europe", "Global Network"];
+
+      setOperatingCountries([...countries]);
+      setOperatingRegions([...regions]);
+    } catch (err) {
+      console.warn("[CompanyStudioPresenceView] loadData error:", err);
+    }
   };
 
   useEffect(() => {
@@ -633,32 +610,7 @@ export const CompanyStudioPresenceView: React.FC<CompanyStudioPresenceViewProps>
     setTimeout(() => setMediaFeedbackMessage(null), 3000);
   };
 
-  // 3. Quick-Add Presets
-  const handleApplyPresetMedia = (preset: typeof CURATED_FACILITY_PRESETS[0]) => {
-    const newItem: FacilityMediaItem = {
-      id: `m-preset-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-      type: "image",
-      source: "url",
-      url: preset.image,
-      image: preset.image,
-      title: preset.title,
-      caption: preset.caption,
-      category: preset.category,
-      isCover: formMedia.length === 0,
-      sortOrder: formMedia.length,
-      createdAt: new Date().toISOString(),
-    };
-
-    setFormMedia((prev) => {
-      const next = [...prev, newItem];
-      if (!next.some((m) => m.isCover) && next.length > 0) {
-        next[0].isCover = true;
-      }
-      return next.map((m, idx) => ({ ...m, sortOrder: idx }));
-    });
-  };
-
-  // 4. Set as Cover Photo
+  // 3. Set as Cover Photo
   const handleSetCover = (mediaId: string) => {
     setFormMedia((prev) =>
       prev.map((item) => ({
@@ -2023,18 +1975,6 @@ export const CompanyStudioPresenceView: React.FC<CompanyStudioPresenceViewProps>
                         <LinkIcon className="w-3.5 h-3.5" />
                         ADD IMAGE URL
                       </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setActiveMediaInputMode("presets")}
-                        className={`px-3.5 py-2 rounded-lg text-xs font-mono font-bold transition flex items-center gap-2 ${activeMediaInputMode === "presets"
-                            ? "bg-royal text-white shadow-xs"
-                            : "text-stone hover:text-graphite hover:bg-white"
-                          }`}
-                      >
-                        <ImageIcon className="w-3.5 h-3.5" />
-                        CURATED PRESETS
-                      </button>
                     </div>
 
                     <span className="text-[10.5px] font-mono text-mute px-2 font-bold">
@@ -2229,50 +2169,6 @@ export const CompanyStudioPresenceView: React.FC<CompanyStudioPresenceViewProps>
                           <Plus className="w-3.5 h-3.5" />
                           IMPORT PHOTO URL
                         </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* 3. CURATED PRESETS PANEL */}
-                  {activeMediaInputMode === "presets" && (
-                    <div className="space-y-3 p-5 rounded-2xl bg-canvas border border-line">
-                      <div>
-                        <h4 className="text-xs font-bold text-graphite uppercase font-mono tracking-wider flex items-center gap-1.5">
-                          <ImageIcon className="w-3.5 h-3.5 text-royal" />
-                          Curated Marine Infrastructure Photography
-                        </h4>
-                        <p className="text-[11.5px] text-stone mt-0.5">
-                          Click any verified architectural photo below to quickly attach it to this facility.
-                        </p>
-                      </div>
-
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 pt-1">
-                        {CURATED_FACILITY_PRESETS.map((preset, idx) => (
-                          <button
-                            key={idx}
-                            type="button"
-                            onClick={() => handleApplyPresetMedia(preset)}
-                            className="p-2.5 rounded-xl border border-line hover:border-royal bg-white text-left space-y-1.5 group transition shadow-2xs"
-                          >
-                            <div className="aspect-video rounded-lg overflow-hidden relative border border-line/60">
-                              <img
-                                src={preset.image}
-                                alt={preset.title}
-                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                                referrerPolicy="no-referrer"
-                              />
-                              <span className="absolute bottom-1 left-1 px-1.5 py-0.5 rounded bg-black/80 text-[8.5px] font-mono text-white">
-                                {preset.category}
-                              </span>
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <p className="text-[11px] font-bold text-graphite truncate group-hover:text-royal">
-                                {preset.title}
-                              </p>
-                              <Plus className="w-3.5 h-3.5 text-stone group-hover:text-royal shrink-0" />
-                            </div>
-                          </button>
-                        ))}
                       </div>
                     </div>
                   )}

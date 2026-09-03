@@ -428,7 +428,7 @@ export function PublicOrganizationProfile({
                   <Users className="w-4 h-4 text-royal" />
                 </div>
                 <div className="text-2xl font-black text-graphite tracking-tight group-hover:text-royal transition">
-                  {organization.totalMembersCount.toLocaleString()}
+                  {members.length.toLocaleString()}
                 </div>
                 <div className="text-[10px] text-mute font-medium mt-0.5">
                   Verified Maritime Enterprises
@@ -510,7 +510,7 @@ export function PublicOrganizationProfile({
             <Users className="w-4 h-4" />
             <span>Accredited Members</span>
             <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-slate-100 text-stone font-mono">
-              {organization.totalMembersCount}
+              {members.length}
             </span>
           </button>
 
@@ -724,7 +724,7 @@ export function PublicOrganizationProfile({
                 <div>
                   <h2 className="text-base font-extrabold text-graphite tracking-tight flex items-center gap-2">
                     <Users className="w-4 h-4 text-royal" />
-                    <span>Accredited Member Enterprises ({organization.totalMembersCount})</span>
+                    <span>Accredited Member Enterprises ({members.length})</span>
                   </h2>
                   <p className="text-xs text-stone mt-1">
                     Commercial maritime companies verified and accredited under the {organization.name} governance framework.
@@ -819,7 +819,9 @@ export function PublicOrganizationProfile({
 
                 {filteredMembers.length === 0 && (
                   <div className="p-8 text-center text-xs text-stone">
-                    No member companies match your search criteria.
+                    {members.length === 0
+                      ? `No accredited member enterprises have enrolled under ${organization.name} yet.`
+                      : "No member companies match your search criteria."}
                   </div>
                 )}
               </div>

@@ -4,7 +4,7 @@ import { UnifiedOfferingCard } from "./UnifiedOfferingCard";
 import { ProductExperienceModal } from "./ProductExperienceModal";
 import { EmptyState } from "@/components/foundation/EmptyState";
 import { Package, CheckCircle2, ChevronLeft, ChevronRight, Globe2 } from "lucide-react";
-import { getCompanyOfferings } from "@/lib/services/offeringEntityService";
+import { getCompanyOfferings, fetchCompanyOfferingsAsync } from "@/lib/services/offeringEntityService";
 
 export function CompanySolutionsModule({
   company,
@@ -19,16 +19,27 @@ export function CompanySolutionsModule({
 }) {
   const [selectedOffering, setSelectedOffering] = useState<CompanyOffering | null>(null);
   const [activeFeaturedIndex, setActiveFeaturedIndex] = useState(0);
+  const [asyncOfferings, setAsyncOfferings] = useState<CompanyOffering[]>([]);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
-  // 1. Gather canonical offerings from service and company state
+  // Sync offerings directly from Firestore on mount
+  useEffect(() => {
+    if (!company?.id) return;
+    fetchCompanyOfferingsAsync(company.id).then((list) => {
+      if (list && list.length > 0) {
+        setAsyncOfferings(list);
+      }
+    });
+  }, [company?.id]);
+
+  // 1. Gather canonical offerings from service, Firestore async state, and company state
   const canonicalList = getCompanyOfferings(company.id) || [];
   const rawOfferings: CompanyOffering[] = company.offerings ?? [];
   
   // Merge and deduplicate offerings
   const offeringMap = new Map<string, CompanyOffering>();
-  [...canonicalList, ...rawOfferings].forEach((off) => {
+  [...canonicalList, ...rawOfferings, ...asyncOfferings].forEach((off) => {
     if (off && off.id && !offeringMap.has(off.id)) {
       offeringMap.set(off.id, off);
     }

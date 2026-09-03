@@ -286,89 +286,94 @@ export function CompanyPresenceModule({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2 space-y-4">
-              <div>
-                <span className="text-xs font-semibold text-royal uppercase tracking-wider">
-                  {registeredHQ.facilityType || "Corporate Headquarters"}
-                </span>
-                <h4 className="text-lg font-semibold text-graphite mt-0.5">
-                  {registeredHQ.facilityName}
-                </h4>
-                <p className="text-sm text-slate-600 mt-2 leading-relaxed">
-                  {registeredHQ.description || "Primary corporate headquarters, central administrative offices, and maritime operating base."}
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs pt-1">
-                <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-1">
-                  <div className="text-[11px] text-slate-500 font-semibold uppercase tracking-wider flex items-center gap-1.5">
-                    <MapPin className="w-3.5 h-3.5 text-royal shrink-0" />
-                    <span>Physical Address</span>
-                  </div>
-                  <div className="font-medium text-graphite pt-0.5">{registeredHQ.address || "Havenlaan 100"}</div>
-                  <div className="text-slate-500">{registeredHQ.city || headquartersCity}, {registeredHQ.country || countryName}</div>
-                </div>
-
-                <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-1">
-                  <div className="text-[11px] text-slate-500 font-semibold uppercase tracking-wider flex items-center gap-1.5">
-                    <Clock className="w-3.5 h-3.5 text-royal shrink-0" />
-                    <span>Operating Hours</span>
-                  </div>
-                  <div className="font-medium text-graphite pt-0.5">{registeredHQ.openingHours || "Mon – Fri: 08:30 – 17:30"}</div>
-                  <div className="text-emerald-700 font-medium">{registeredHQ.status || "Operational"}</div>
-                </div>
-              </div>
-
-              {registeredHQ.operationalScope && (
-                <div className="p-4 rounded-xl bg-royal/5 border border-royal/10 space-y-1">
-                  <span className="text-[11px] font-semibold text-royal uppercase tracking-wider block">
-                    Operational Scope & Capabilities
-                  </span>
-                  <p className="text-xs sm:text-sm text-slate-700 leading-relaxed pt-0.5">
-                    {registeredHQ.operationalScope}
-                  </p>
-                </div>
-              )}
-            </div>
-
-            {/* Headquarters Photo Gallery */}
-            {registeredHQ.media && registeredHQ.media.length > 0 && (() => {
-              const hqCover = registeredHQ.media.find((m) => m.isCover) || registeredHQ.media[0];
-              const hqCoverUrl = hqCover.url || hqCover.image;
-
-              return (
-                <div className="rounded-xl overflow-hidden aspect-video lg:aspect-auto border border-slate-200 relative group bg-slate-100 flex flex-col justify-end">
-                  <img
-                    src={hqCoverUrl}
-                    alt={hqCover.title || registeredHQ.facilityName}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                    referrerPolicy="no-referrer"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-transparent flex flex-col justify-end p-4">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-[10px] font-semibold text-white uppercase tracking-wider bg-royal px-2 py-0.5 rounded">
-                        {hqCover.category || "Headquarters"}
-                      </span>
-                      {registeredHQ.media.length > 1 && (
-                        <span className="text-[10px] text-white/90 bg-black/60 px-2 py-0.5 rounded">
-                          +{registeredHQ.media.length - 1} photos
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-xs font-semibold text-white truncate">
-                      {hqCover.title || registeredHQ.facilityName}
+          {(() => {
+            const hasHQMedia = Boolean(registeredHQ.media && registeredHQ.media.length > 0);
+            return (
+              <div className={`grid grid-cols-1 ${hasHQMedia ? "lg:grid-cols-3" : "grid-cols-1"} gap-6`}>
+                <div className={`${hasHQMedia ? "lg:col-span-2" : "col-span-1"} space-y-4`}>
+                  <div>
+                    <span className="text-xs font-semibold text-royal uppercase tracking-wider">
+                      {registeredHQ.facilityType || "Corporate Headquarters"}
+                    </span>
+                    <h4 className="text-lg font-semibold text-graphite mt-0.5">
+                      {registeredHQ.facilityName}
+                    </h4>
+                    <p className="text-sm text-slate-600 mt-2 leading-relaxed">
+                      {registeredHQ.description || "Primary corporate headquarters, central administrative offices, and maritime operating base."}
                     </p>
-                    {hqCover.caption && (
-                      <p className="text-[11px] text-white/80 truncate">
-                        {hqCover.caption}
-                      </p>
-                    )}
                   </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs pt-1">
+                    <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-1">
+                      <div className="text-[11px] text-slate-500 font-semibold uppercase tracking-wider flex items-center gap-1.5">
+                        <MapPin className="w-3.5 h-3.5 text-royal shrink-0" />
+                        <span>Physical Address</span>
+                      </div>
+                      <div className="font-medium text-graphite pt-0.5">{registeredHQ.address || "Havenlaan 100"}</div>
+                      <div className="text-slate-500">{registeredHQ.city || headquartersCity}, {registeredHQ.country || countryName}</div>
+                    </div>
+
+                    <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-1">
+                      <div className="text-[11px] text-slate-500 font-semibold uppercase tracking-wider flex items-center gap-1.5">
+                        <Clock className="w-3.5 h-3.5 text-royal shrink-0" />
+                        <span>Operating Hours</span>
+                      </div>
+                      <div className="font-medium text-graphite pt-0.5">{registeredHQ.openingHours || "Mon – Fri: 08:30 – 17:30"}</div>
+                      <div className="text-emerald-700 font-medium">{registeredHQ.status || "Operational"}</div>
+                    </div>
+                  </div>
+
+                  {registeredHQ.operationalScope && (
+                    <div className="p-4 rounded-xl bg-royal/5 border border-royal/10 space-y-1">
+                      <span className="text-[11px] font-semibold text-royal uppercase tracking-wider block">
+                        Operational Scope & Capabilities
+                      </span>
+                      <p className="text-xs sm:text-sm text-slate-700 leading-relaxed pt-0.5">
+                        {registeredHQ.operationalScope}
+                      </p>
+                    </div>
+                  )}
                 </div>
-              );
-            })()}
-          </div>
+
+                {/* Headquarters Photo Gallery */}
+                {hasHQMedia && registeredHQ.media && (() => {
+                  const hqCover = registeredHQ.media.find((m) => m.isCover) || registeredHQ.media[0];
+                  const hqCoverUrl = hqCover.url || hqCover.image;
+
+                  return (
+                    <div className="rounded-xl overflow-hidden aspect-video lg:aspect-auto border border-slate-200 relative group bg-slate-100 flex flex-col justify-end">
+                      <img
+                        src={hqCoverUrl}
+                        alt={hqCover.title || registeredHQ.facilityName}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        referrerPolicy="no-referrer"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-transparent flex flex-col justify-end p-4">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-[10px] font-semibold text-white uppercase tracking-wider bg-royal px-2 py-0.5 rounded">
+                            {hqCover.category || "Headquarters"}
+                          </span>
+                          {registeredHQ.media.length > 1 && (
+                            <span className="text-[10px] text-white/90 bg-black/60 px-2 py-0.5 rounded">
+                              +{registeredHQ.media.length - 1} photos
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs font-semibold text-white truncate">
+                          {hqCover.title || registeredHQ.facilityName}
+                        </p>
+                        {hqCover.caption && (
+                          <p className="text-[11px] text-white/80 truncate">
+                            {hqCover.caption}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            );
+          })()}
         </section>
       )}
 

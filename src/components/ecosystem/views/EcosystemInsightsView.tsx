@@ -8,10 +8,13 @@ import {
   Lightbulb,
   Search,
   MessageSquare,
+  Sparkles,
+  Loader2,
+  Bot,
 } from "lucide-react";
 import {
   getEcosystemAIInsights,
-  askEcosystemAI,
+  askEcosystemAIAsync,
   type EcosystemOrganizationSummary,
   type EcosystemMemberRecord,
 } from "@/lib/services/ecosystemOrganizationService";
@@ -24,9 +27,10 @@ interface EcosystemInsightsViewProps {
 const QUICK_PROMPTS = [
   "Which members have not activated their company?",
   "Which Sector City has the most members?",
-  "Show members in Italy.",
+  "Show members in Italy or Northern Europe.",
   "Which members are verified?",
   "Which members have active commercial presence?",
+  "Provide a strategic ecosystem health summary.",
 ];
 
 export function EcosystemInsightsView({
@@ -34,22 +38,38 @@ export function EcosystemInsightsView({
   onNavigateUrl,
 }: EcosystemInsightsViewProps) {
   const [queryInput, setQueryInput] = useState("");
+  const [isQuerying, setIsQuerying] = useState(false);
   const [conversationHistory, setConversationHistory] = useState<
     { query: string; answer: string; matchedMembers: EcosystemMemberRecord[] }[]
   >([]);
 
   const insights = getEcosystemAIInsights(organization.id);
 
-  const handleAskAI = (promptToUse?: string) => {
+  const handleAskAI = async (promptToUse?: string) => {
     const q = (promptToUse || queryInput).trim();
-    if (!q) return;
+    if (!q || isQuerying) return;
 
-    const res = askEcosystemAI(organization.id, q);
-    setConversationHistory((prev) => [
-      { query: q, answer: res.answer, matchedMembers: res.matchedMembers },
-      ...prev,
-    ]);
+    setIsQuerying(true);
     if (!promptToUse) setQueryInput("");
+
+    try {
+      const res = await askEcosystemAIAsync(organization.id, q);
+      setConversationHistory((prev) => [
+        { query: q, answer: res.answer, matchedMembers: res.matchedMembers },
+        ...prev,
+      ]);
+    } catch (error) {
+      setConversationHistory((prev) => [
+        {
+          query: q,
+          answer: "Unable to process ecosystem intelligence query. Please try again.",
+          matchedMembers: [],
+        },
+        ...prev,
+      ]);
+    } finally {
+      setIsQuerying(false);
+    }
   };
 
   return (
@@ -61,8 +81,12 @@ export function EcosystemInsightsView({
             <Handshake className="w-4 h-4 text-royal" />
             <span>Institutional Intelligence Layer</span>
           </div>
-          <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">
-            ECOSYSTEM INSIGHTS & INTELLIGENCE
+          <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2.5">
+            <span>ECOSYSTEM INSIGHTS &amp; INTELLIGENCE</span>
+            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-royal bg-royal/5 border border-royal/20 px-2 py-0.5 rounded-full">
+              <Sparkles className="w-3 h-3 text-royal" />
+              <span>Gemini AI</span>
+            </span>
           </h1>
           <p className="text-sm font-medium text-slate-600 mt-1">
             Real-time automated intelligence derived from {organization.name}'s authorized ecosystem data.
@@ -77,7 +101,7 @@ export function EcosystemInsightsView({
             key={idx}
             className="bg-white rounded-3xl border border-slate-200/90 p-5 shadow-xs flex items-start gap-3.5 space-y-1"
           >
-            <div className="w-8 h-8 rounded-xl bg-royal/5 text-royal flex items-center justify-center shrink-0 border border-royal/20/50 mt-0.5 font-bold">
+            <div className="w-8 h-8 rounded-xl bg-royal/5 text-royal flex items-center justify-center shrink-0 border border-royal/20 mt-0.5 font-bold">
               <Lightbulb className="w-4 h-4 text-royal" />
             </div>
             <div>
@@ -94,17 +118,23 @@ export function EcosystemInsightsView({
 
       {/* INTERACTIVE ASK ECOSYSTEM AI INTERFACE */}
       <div className="bg-white rounded-3xl border border-slate-200/90 p-6 sm:p-8 shadow-xs space-y-6">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-slate-900 text-white flex items-center justify-center font-bold shrink-0">
-            <Handshake className="w-5 h-5 text-slate-300" />
-          </div>
-          <div>
-            <h2 className="text-lg font-extrabold text-slate-900 tracking-tight">
-              QUERY ECOSYSTEM INTELLIGENCE
-            </h2>
-            <p className="text-xs font-medium text-slate-600 mt-0.5">
-              Query your member database, activation states, regional hubs, and capabilities in natural language.
-            </p>
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-slate-900 text-white flex items-center justify-center font-bold shrink-0">
+              <Bot className="w-5 h-5 text-royal-light" />
+            </div>
+            <div>
+              <h2 className="text-lg font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+                <span>QUERY ECOSYSTEM INTELLIGENCE</span>
+                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  <span>Online</span>
+                </span>
+              </h2>
+              <p className="text-xs font-medium text-slate-600 mt-0.5">
+                Query your member database, activation states, regional hubs, and capabilities using Gemini AI.
+              </p>
+            </div>
           </div>
         </div>
 
@@ -117,8 +147,9 @@ export function EcosystemInsightsView({
             {QUICK_PROMPTS.map((promptText, i) => (
               <button
                 key={i}
+                disabled={isQuerying}
                 onClick={() => handleAskAI(promptText)}
-                className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-900 hover:text-white text-slate-700 text-xs font-semibold transition-all cursor-pointer"
+                className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-900 hover:text-white text-slate-700 text-xs font-semibold transition-all cursor-pointer disabled:opacity-50"
               >
                 {promptText}
               </button>
@@ -139,19 +170,40 @@ export function EcosystemInsightsView({
             <input
               type="text"
               value={queryInput}
+              disabled={isQuerying}
               onChange={(e) => setQueryInput(e.target.value)}
               placeholder="Ask anything about your ecosystem members, cities, or accreditation..."
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-4 py-3 text-xs text-slate-900 placeholder-slate-400 font-medium focus:outline-none focus:ring-2 focus:ring-royal focus:bg-white"
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-4 py-3 text-xs text-slate-900 placeholder-slate-400 font-medium focus:outline-none focus:ring-2 focus:ring-royal focus:bg-white disabled:opacity-60"
             />
           </div>
           <button
             type="submit"
-            className="px-5 py-3 bg-royal hover:bg-royal-dark text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-xs transition-colors cursor-pointer shrink-0"
+            disabled={isQuerying || !queryInput.trim()}
+            className="px-5 py-3 bg-royal hover:bg-royal-dark disabled:opacity-50 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-xs transition-colors cursor-pointer shrink-0"
           >
-            <Send className="w-4 h-4" />
-            <span>Query AI</span>
+            {isQuerying ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Thinking...</span>
+              </>
+            ) : (
+              <>
+                <Send className="w-4 h-4" />
+                <span>Query AI</span>
+              </>
+            )}
           </button>
         </form>
+
+        {/* LOADING INDICATOR */}
+        {isQuerying && (
+          <div className="p-4 rounded-2xl bg-royal/5 border border-royal/20 flex items-center gap-3 animate-pulse">
+            <Loader2 className="w-4 h-4 text-royal animate-spin shrink-0" />
+            <span className="text-xs font-semibold text-royal">
+              Analyzing organization data and querying Gemini AI...
+            </span>
+          </div>
+        )}
 
         {/* CONVERSATION HISTORY & MATCHED MEMBER CARDS */}
         {conversationHistory.length > 0 && (
@@ -163,14 +215,14 @@ export function EcosystemInsightsView({
                   <span>Query: "{item.query}"</span>
                 </div>
 
-                <div className="bg-white p-4 rounded-xl border border-slate-200 text-xs font-medium text-slate-800 leading-relaxed">
+                <div className="bg-white p-4 rounded-xl border border-slate-200 text-xs font-medium text-slate-800 leading-relaxed whitespace-pre-wrap">
                   {item.answer}
                 </div>
 
                 {item.matchedMembers.length > 0 && (
                   <div className="space-y-2">
                     <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
-                      Matched Ecosystem Members ({item.matchedMembers.length})
+                      Related Ecosystem Members ({item.matchedMembers.length})
                     </span>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                       {item.matchedMembers.map((m) => (
