@@ -44,8 +44,20 @@ export function OfferingEntityHeader({
     parentCompany.displayName || (parentCompany as any).name || parentCompany.legalName || "MarineWorld Enterprise";
   const companySlug = (parentCompany as any).slug || parentCompany.id;
 
+  const productRoute = isProduct
+    ? `/companies/${companySlug}/products?product=${offering.slug || offering.id}`
+    : `/companies/${companySlug}/services?service=${offering.slug || offering.id}`;
+
+  const publicShareableUrl =
+    typeof window !== "undefined" &&
+      (window.location.hostname === "localhost" ||
+        window.location.hostname === "127.0.0.1" ||
+        !window.location.hostname.includes("marineworld.city"))
+      ? `${window.location.origin}${productRoute}`
+      : canonicalUrl;
+
   const handleCopyLink = () => {
-    navigator.clipboard.writeText(canonicalUrl);
+    navigator.clipboard.writeText(publicShareableUrl);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -128,17 +140,31 @@ export function OfferingEntityHeader({
 
               <span className="text-slate-300 hidden sm:inline">&bull;</span>
 
-              <div className="flex items-center gap-1 text-[11px] font-mono text-stone">
+              <div className="flex items-center gap-1.5 text-[11px] font-mono text-stone">
                 <span className="text-slate-500">CANONICAL:</span>
-                <span className="font-semibold text-graphite">{canonicalUrl.replace("https://", "")}</span>
+                <a
+                  href={productRoute}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-semibold text-graphite hover:text-royal hover:underline transition inline-flex items-center gap-1 group"
+                  title="Open canonical offering URL in new tab"
+                >
+                  <span>{canonicalUrl.replace("https://", "")}</span>
+                  <ExternalLink className="w-3 h-3 text-slate-400 group-hover:text-royal transition-colors" />
+                </a>
                 <button
                   type="button"
                   onClick={handleCopyLink}
                   className="p-1 hover:bg-canvas rounded text-stone hover:text-royal transition cursor-pointer"
-                  title="Copy Canonical URL"
+                  title="Copy shareable offering URL"
                 >
                   {copied ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
                 </button>
+                {copied && (
+                  <span className="text-[10px] font-mono text-emerald-600 font-bold ml-0.5">
+                    COPIED
+                  </span>
+                )}
               </div>
             </div>
           </div>

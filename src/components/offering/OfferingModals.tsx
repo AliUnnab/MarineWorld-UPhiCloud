@@ -289,12 +289,26 @@ export function ShareOfferingModal({
   offering,
   canonicalUrl,
 }: ShareOfferingModalProps) {
+  const isProduct = offering.type === "product";
+  const compSlug = (offering.companySlug || (offering as any).companyId || "company").replace(/[^a-z0-9-]/g, "");
+  const productRoute = isProduct
+    ? `/companies/${compSlug}/products?product=${offering.slug || offering.id}`
+    : `/companies/${compSlug}/services?service=${offering.slug || offering.id}`;
+
+  const shareUrl =
+    typeof window !== "undefined" &&
+    (window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1" ||
+      !window.location.hostname.includes("marineworld.city"))
+      ? `${window.location.origin}${productRoute}`
+      : canonicalUrl;
+
   return (
     <ShareProtocolModal
       isOpen={isOpen}
       onClose={onClose}
       title={`Share ${offering.name}`}
-      url={canonicalUrl}
+      url={shareUrl}
       description="Anyone with this link can view this offering."
     />
   );

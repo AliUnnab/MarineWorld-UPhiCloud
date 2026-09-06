@@ -132,10 +132,16 @@ export default function App() {
     const searchParams = new URLSearchParams(window.location.search);
     const queryOfferingSlug = searchParams.get("offering") || searchParams.get("product") || searchParams.get("service") || searchParams.get("slug");
     if (queryOfferingSlug) {
+      let companyHint: string | undefined;
+      if (path.startsWith("/companies/") || path.startsWith("/company/")) {
+        const parts = path.split("/").filter(Boolean);
+        companyHint = parts[1];
+      }
       return (
         <OfferingStandalonePage
           config={config}
           slug={queryOfferingSlug}
+          companyHint={companyHint}
           onNavigate={(newPath) => {
             window.history.pushState({}, "", newPath);
             setPath(newPath);

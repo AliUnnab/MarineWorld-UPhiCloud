@@ -1,6 +1,10 @@
 import React, { useState, useEffect } from "react";
 import type { SectorConfig, OfferingGroundingSource, OfferingMediaItem } from "@/lib/types";
-import { resolveCanonicalOffering, ResolvedCanonicalOffering } from "@/lib/services/offeringEntityService";
+import {
+  resolveCanonicalOffering,
+  resolveCanonicalOfferingAsync,
+  ResolvedCanonicalOffering,
+} from "@/lib/services/offeringEntityService";
 import { getCurrentAuthSession } from "@/lib/services/securityService";
 import { recordProductView, recordServiceView } from "@/lib/services/personalWorkspaceService";
 import { injectJsonLd, buildProductSchema, buildServiceSchema } from "@/lib/services/schemaOrgService";
@@ -31,12 +35,14 @@ import {
   Layers,
   AlertCircle,
   ExternalLink,
+  Package,
 } from "lucide-react";
 
 interface OfferingStandalonePageProps {
   config: SectorConfig;
   slug: string;
   sectorCityHint?: string;
+  companyHint?: string;
   onNavigate?: (path: string) => void;
 }
 
@@ -44,11 +50,25 @@ export function OfferingStandalonePage({
   config,
   slug,
   sectorCityHint,
+  companyHint,
   onNavigate,
 }: OfferingStandalonePageProps) {
+  const effectiveCompanyHint =
+    companyHint ||
+    (() => {
+      if (typeof window !== "undefined") {
+        const parts = window.location.pathname.split("/").filter(Boolean);
+        if ((parts[0] === "companies" || parts[0] === "company") && parts[1]) {
+          return parts[1];
+        }
+      }
+      return undefined;
+    })();
+
   const [resolved, setResolved] = useState<ResolvedCanonicalOffering | null>(() =>
-    resolveCanonicalOffering(slug, sectorCityHint)
+    resolveCanonicalOffering(slug, sectorCityHint, effectiveCompanyHint)
   );
+  const [isLoading, setIsLoading] = useState<boolean>(() => !resolved);
 
   // Modals state
   const [isRequestOfferOpen, setIsRequestOfferOpen] = useState(false);
@@ -59,9 +79,33 @@ export function OfferingStandalonePage({
   const [activeLightboxMedia, setActiveLightboxMedia] = useState<OfferingMediaItem | null>(null);
 
   useEffect(() => {
-    const res = resolveCanonicalOffering(slug, sectorCityHint);
-    setResolved(res);
-  }, [slug, sectorCityHint]);
+    let isMounted = true;
+    const syncRes = resolveCanonicalOffering(slug, sectorCityHint, effectiveCompanyHint);
+    if (syncRes) {
+      setResolved(syncRes);
+      setIsLoading(false);
+      return;
+    }
+
+    setIsLoading(true);
+    resolveCanonicalOfferingAsync(slug, sectorCityHint, effectiveCompanyHint)
+      .then((asyncRes) => {
+        if (isMounted) {
+          setResolved(asyncRes);
+          setIsLoading(false);
+        }
+      })
+      .catch((err) => {
+        if (isMounted) {
+          console.warn("[OfferingStandalonePage] Async resolution error:", err);
+          setIsLoading(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [slug, sectorCityHint, effectiveCompanyHint]);
 
   // Record workspace view & inject structured JSON-LD
   useEffect(() => {
@@ -110,6 +154,36 @@ export function OfferingStandalonePage({
       injectJsonLd(schema);
     }
   }, [resolved]);
+
+  // Loading State
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-canvas flex flex-col font-sans text-graphite">
+        <header className="bg-white border-b border-line px-6 py-4">
+          <div className="max-w-7xl mx-auto flex items-center justify-between">
+            <a href="/" className="flex items-center gap-2 text-sm font-bold text-graphite hover:text-royal transition">
+              <Home className="w-4 h-4 text-royal" />
+              <span>MarineWorld Ecosystem</span>
+            </a>
+          </div>
+        </header>
+
+        <main className="flex-1 flex items-center justify-center p-6">
+          <div className="max-w-md w-full bg-white rounded-xl border border-line p-8 text-center space-y-4 shadow-xs">
+            <div className="w-12 h-12 rounded-full bg-royal/10 text-royal flex items-center justify-center mx-auto animate-pulse">
+              <Package className="w-6 h-6" />
+            </div>
+            <div>
+              <h1 className="text-base font-bold text-graphite">Loading Maritime Offering Record</h1>
+              <p className="text-xs text-stone mt-1">
+                Synchronizing <code className="font-mono font-semibold text-royal">{slug}</code> from sovereign registry...
+              </p>
+            </div>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   // 404 / Unresolved State
   if (!resolved) {

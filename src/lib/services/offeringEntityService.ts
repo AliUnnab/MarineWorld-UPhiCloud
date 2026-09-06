@@ -171,7 +171,7 @@ export function evaluateOfferingPublishReadiness(
   // Must have at least 1 verified grounding source OR confirmed structured specifications >= 2
   const specsCount = offering.specifications ? Object.keys(offering.specifications).length : 0;
   const sourcesCount = offering.groundingSources ? offering.groundingSources.length : 0;
-  
+
   const hasGrounding = sourcesCount >= 1 || specsCount >= 2;
   if (!hasGrounding) {
     errors.push("At least one verified grounding document OR confirmed structured specification set (≥2 parameters) is required for AI Grounding.");
@@ -193,9 +193,9 @@ export function evaluateOfferingPublishReadiness(
 
 import { db } from "@/lib/firebase";
 import { collection, doc, deleteDoc, setDoc, getDocs } from "firebase/firestore";
-import { findProductsByCompany, deleteProductRecord } from "@/lib/repositories/productRepository";
-import { findServicesByCompany, deleteServiceRecord } from "@/lib/repositories/serviceRepository";
-import { getCompanyRecord, getCompanyRecordSync } from "@/lib/repositories/companyRepository";
+import { findProductsByCompany, deleteProductRecord, findProductById } from "@/lib/repositories/productRepository";
+import { findServicesByCompany, deleteServiceRecord, findServiceById } from "@/lib/repositories/serviceRepository";
+import { getCompanyRecord, getCompanyRecordSync, findAllCompanies } from "@/lib/repositories/companyRepository";
 import { getCompanyProducts, deleteProduct } from "@/lib/services/productService";
 import { getCompanyServices, deleteService } from "@/lib/services/serviceService";
 import { deleteFileFromStorage } from "@/lib/services/storageService";
@@ -205,19 +205,26 @@ import type { ProductEntity, ServiceEntity } from "@/lib/types";
 function convertProductToOffering(p: any, company?: any): CompanyOffering {
   const priceVal = p.price || p.commercialInformation?.price || undefined;
   const currencyVal = p.currency || p.commercialInformation?.currency || "USD";
+  const parentCompany = company || (p.companyId ? getCompanyById(p.companyId) || getCompanyBySlug(p.companyId) : null);
+  const compSlug = p.companySlug || parentCompany?.slug || parentCompany?.id || "";
+  const candidateSlug = p.slug || generateDeterministicOfferingSlug(p.name || "product", [], p.id);
+
   return {
     id: p.id,
     entityId: p.id,
     offeringId: p.id,
     companyId: p.companyId || company?.id || "",
+    companySlug: compSlug,
+    slug: candidateSlug,
+    code: p.code,
+    sku: p.sku,
     type: "product",
     entityType: "PRODUCT",
     name: p.name || "Product",
     category: p.category || "Products",
     shortDescription: p.shortDescription || p.description || "",
     status: (p.status === "ACTIVE" || p.status === "AVAILABLE" || p.status === "DRAFT" || p.status === "ARCHIVED") ? p.status : "AVAILABLE",
-    visibility: p.visibility || "PUBLIC",
-    availability: p.availability || "AVAILABLE",
+    isPublic: p.visibility === "PUBLIC" || p.isPublic !== false,
     specifications: p.specifications || p.specs || {},
     groundingSources: p.groundingSources || p.sources || [],
     mediaReferences: p.mediaReferences || p.media || [],
@@ -228,7 +235,10 @@ function convertProductToOffering(p: any, company?: any): CompanyOffering {
     certifications: p.certifications
       ? p.certifications.map((c: any) => (typeof c === "string" ? c : c.name || c.authority || String(c)))
       : [],
-    tags: p.tags || [],
+    canonicalSectorCity: p.canonicalSectorCity || p.sectorCity,
+    sectorCity: p.sectorCity || p.canonicalSectorCity,
+    industryDomain: p.industryDomain,
+    previousSlugs: p.previousSlugs || [],
     createdAt: p.createdAt || new Date().toISOString(),
     updatedAt: p.updatedAt || new Date().toISOString(),
   };
@@ -237,19 +247,26 @@ function convertProductToOffering(p: any, company?: any): CompanyOffering {
 function convertServiceToOffering(s: any, company?: any): CompanyOffering {
   const priceVal = s.price || s.commercialInformation?.price || undefined;
   const currencyVal = s.currency || s.commercialInformation?.currency || "USD";
+  const parentCompany = company || (s.companyId ? getCompanyById(s.companyId) || getCompanyBySlug(s.companyId) : null);
+  const compSlug = s.companySlug || parentCompany?.slug || parentCompany?.id || "";
+  const candidateSlug = s.slug || generateDeterministicOfferingSlug(s.name || "service", [], s.id);
+
   return {
     id: s.id,
     entityId: s.id,
     offeringId: s.id,
     companyId: s.companyId || company?.id || "",
+    companySlug: compSlug,
+    slug: candidateSlug,
+    code: s.code,
+    sku: s.sku,
     type: "service",
     entityType: "SERVICE",
     name: s.name || "Service",
     category: s.category || "Services",
     shortDescription: s.shortDescription || s.description || "",
     status: (s.status === "ACTIVE" || s.status === "AVAILABLE" || s.status === "DRAFT" || s.status === "ARCHIVED") ? s.status : "ACTIVE",
-    visibility: s.visibility || "PUBLIC",
-    availability: s.availability || "AVAILABLE",
+    isPublic: s.visibility === "PUBLIC" || s.isPublic !== false,
     specifications: s.specifications || s.specs || {},
     groundingSources: s.groundingSources || s.sources || [],
     mediaReferences: s.mediaReferences || s.media || [],
@@ -260,7 +277,10 @@ function convertServiceToOffering(s: any, company?: any): CompanyOffering {
     certifications: s.certifications
       ? s.certifications.map((c: any) => (typeof c === "string" ? c : c.name || c.authority || String(c)))
       : [],
-    tags: s.tags || [],
+    canonicalSectorCity: s.canonicalSectorCity || s.sectorCity,
+    sectorCity: s.sectorCity || s.canonicalSectorCity,
+    industryDomain: s.industryDomain,
+    previousSlugs: s.previousSlugs || [],
     createdAt: s.createdAt || new Date().toISOString(),
     updatedAt: s.updatedAt || new Date().toISOString(),
   };
@@ -339,10 +359,22 @@ export async function fetchCompanyOfferingsAsync(companyId: string): Promise<Com
   if (!companyId) return [];
   try {
     const comp = (await getCompanyRecord(companyId)) || getCompanyById(companyId) || getCompanyBySlug(companyId);
+    const targetId = comp?.id || companyId;
     const [fbProds, fbServs] = await Promise.all([
-      findProductsByCompany(companyId).catch(() => []),
-      findServicesByCompany(companyId).catch(() => []),
+      findProductsByCompany(targetId).catch(() => []),
+      findServicesByCompany(targetId).catch(() => []),
     ]);
+
+    let extraProds: any[] = [];
+    let extraServs: any[] = [];
+    if (targetId !== companyId) {
+      const [p2, s2] = await Promise.all([
+        findProductsByCompany(companyId).catch(() => []),
+        findServicesByCompany(companyId).catch(() => []),
+      ]);
+      extraProds = p2;
+      extraServs = s2;
+    }
 
     const mergedMap = new Map<string, CompanyOffering>();
 
@@ -351,6 +383,11 @@ export async function fetchCompanyOfferingsAsync(companyId: string): Promise<Com
     syncOfferings.forEach((o) => {
       if (o && o.id) mergedMap.set(o.id, o);
     });
+    if (targetId !== companyId) {
+      getCompanyOfferings(targetId).forEach((o) => {
+        if (o && o.id && !mergedMap.has(o.id)) mergedMap.set(o.id, o);
+      });
+    }
 
     // 2. Company document offerings & embedded products/services
     if (comp?.offerings && Array.isArray(comp.offerings)) {
@@ -374,13 +411,13 @@ export async function fetchCompanyOfferingsAsync(companyId: string): Promise<Com
     }
 
     // 3. Firestore subcollections
-    fbProds.forEach((p: any) => {
+    [...fbProds, ...extraProds].forEach((p: any) => {
       const existing = mergedMap.get(p.id);
       const off = initializeCanonicalOfferingDefaults(convertProductToOffering({ ...(existing || {}), ...p }, comp), comp);
       mergedMap.set(p.id, off);
     });
 
-    fbServs.forEach((s: any) => {
+    [...fbServs, ...extraServs].forEach((s: any) => {
       const existing = mergedMap.get(s.id);
       const off = initializeCanonicalOfferingDefaults(convertServiceToOffering({ ...(existing || {}), ...s }, comp), comp);
       mergedMap.set(s.id, off);
@@ -389,6 +426,8 @@ export async function fetchCompanyOfferingsAsync(companyId: string): Promise<Com
     const result = Array.from(mergedMap.values());
     if (result.length > 0) {
       canonicalOfferingsStore.set(companyId, result);
+      if (targetId) canonicalOfferingsStore.set(targetId, result);
+      if ((comp as any)?.slug) canonicalOfferingsStore.set((comp as any).slug, result);
     }
     return result.length > 0 ? result : getCompanyOfferings(companyId);
   } catch (err) {
@@ -410,7 +449,7 @@ export function initializeCanonicalOfferingDefaults(
   const canonicalSectorCity = offering.canonicalSectorCity || offering.sectorCity || parentCompany?.sectorCityIds?.[0] || (parentCompany as any)?.cityIds?.[0] || "shipyard";
   const sectorCities = offering.sectorCities || parentCompany?.sectorCityIds || [canonicalSectorCity];
   const industryDomain = offering.industryDomain || (parentCompany as any)?.industryDomainIds?.[0] || "maritime-services";
-  
+
   const slug = offering.slug || generateDeterministicOfferingSlug(offering.name, [], offering.id);
   const canonicalUrl = buildCanonicalOfferingUrl(slug, companySlug, canonicalSectorCity);
   const groundingStatus = offering.groundingStatus || computeOfferingGroundingStatus(offering);
@@ -568,7 +607,9 @@ export function saveCanonicalOffering(
     groundingStatus,
     fieldConfirmations,
     sourceAttributions,
-    okfDocument: offeringData.okfDocument || existingOffering?.okfDocument,
+    ...(((offeringData as any).okfDocument || (existingOffering as any)?.okfDocument)
+      ? { okfDocument: (offeringData as any).okfDocument || (existingOffering as any)?.okfDocument }
+      : {}),
     aiAdvisorConfig: offeringData.aiAdvisorConfig || generateDefaultAdvisorConfig(offeringData),
     updatedAt: new Date().toISOString(),
     createdAt: existingOffering?.createdAt || offeringData.createdAt || new Date().toISOString(),
@@ -764,8 +805,8 @@ export async function deleteOfferingAsync(companyId: string, offeringId: string)
   await Promise.allSettled([
     deleteProductRecord(companyId, offeringId),
     deleteServiceRecord(companyId, offeringId),
-    deleteProduct(companyId, offeringId).catch(() => {}),
-    deleteService(companyId, offeringId).catch(() => {}),
+    deleteProduct(companyId, offeringId).catch(() => { }),
+    deleteService(companyId, offeringId).catch(() => { }),
   ]);
 
   // 4. Delete linked documents and files from Firestore
@@ -784,7 +825,7 @@ export async function deleteOfferingAsync(companyId: string, offeringId: string)
       ) {
         docDeletePromises.push(deleteDoc(docSnap.ref));
         if (data.storageReference) {
-          deleteFileFromStorage(data.storageReference).catch(() => {});
+          deleteFileFromStorage(data.storageReference).catch(() => { });
         }
       }
     });
@@ -801,7 +842,7 @@ export async function deleteOfferingAsync(companyId: string, offeringId: string)
       ) {
         docDeletePromises.push(deleteDoc(fileSnap.ref));
         if (data.storageReference) {
-          deleteFileFromStorage(data.storageReference).catch(() => {});
+          deleteFileFromStorage(data.storageReference).catch(() => { });
         }
       }
     });
@@ -914,7 +955,7 @@ export function resolveCanonicalOffering(
   companyHint?: string
 ): ResolvedCanonicalOffering | null {
   let raw = identifier.toLowerCase().trim();
-  
+
   if (raw.startsWith("http://") || raw.startsWith("https://")) {
     try {
       const parsed = new URL(raw);
@@ -960,32 +1001,41 @@ export function resolveCanonicalOffering(
   const allCompanies = findAllCompaniesSync();
 
   // Prioritize company matching parsedCompanySlug if present
-  const prioritizedCompanies = parsedCompanySlug
+  let prioritizedCompanies = parsedCompanySlug
     ? [
-        ...allCompanies.filter(
-          (c) =>
-            c.id.toLowerCase() === parsedCompanySlug?.toLowerCase() ||
-            (c as any).slug?.toLowerCase() === parsedCompanySlug?.toLowerCase()
-        ),
-        ...allCompanies.filter(
-          (c) =>
-            c.id.toLowerCase() !== parsedCompanySlug?.toLowerCase() &&
-            (c as any).slug?.toLowerCase() !== parsedCompanySlug?.toLowerCase()
-        ),
-      ]
+      ...allCompanies.filter(
+        (c) =>
+          c.id.toLowerCase() === parsedCompanySlug?.toLowerCase() ||
+          (c as any).slug?.toLowerCase() === parsedCompanySlug?.toLowerCase()
+      ),
+      ...allCompanies.filter(
+        (c) =>
+          c.id.toLowerCase() !== parsedCompanySlug?.toLowerCase() &&
+          (c as any).slug?.toLowerCase() !== parsedCompanySlug?.toLowerCase()
+      ),
+    ]
     : allCompanies;
+
+  // If prioritizedCompanies is empty or lacks parsedCompanySlug, attempt direct lookup
+  if (parsedCompanySlug && (!prioritizedCompanies.length || !prioritizedCompanies.some(c => c.id.toLowerCase() === parsedCompanySlug?.toLowerCase() || (c as any).slug?.toLowerCase() === parsedCompanySlug?.toLowerCase()))) {
+    const directComp = getCompanyById(parsedCompanySlug) || getCompanyBySlug(parsedCompanySlug) || (getCompanyRecordSync(parsedCompanySlug) as unknown as CompanyEntity);
+    if (directComp) {
+      prioritizedCompanies = [directComp, ...prioritizedCompanies];
+    }
+  }
 
   for (const company of prioritizedCompanies) {
     const offerings = getCompanyOfferings(company.id);
 
-    // Exact slug or ID match
+    // Exact slug or ID match or slug generated from name
     const match = offerings.find(
       (o) =>
         o.slug?.toLowerCase() === offeringSlugCandidate ||
         o.id.toLowerCase() === offeringSlugCandidate ||
         o.offeringId?.toLowerCase() === offeringSlugCandidate ||
         (o.code && o.code.toLowerCase() === offeringSlugCandidate) ||
-        (o.sku && o.sku.toLowerCase() === offeringSlugCandidate)
+        (o.sku && o.sku.toLowerCase() === offeringSlugCandidate) ||
+        (o.name && generateDeterministicOfferingSlug(o.name).toLowerCase() === offeringSlugCandidate)
     );
 
     if (match) {
@@ -1057,6 +1107,133 @@ export function resolveCanonicalOffering(
   }
 
   return null;
+}
+
+/**
+ * Asynchronously resolve canonical offering:
+ * 1. Checks memory & cache synchronously first.
+ * 2. If companyHint is provided, fetches company and its offerings/subcollections from Firestore.
+ * 3. If still missing, queries all companies from Firestore and checks embedded offerings and subcollections.
+ */
+export async function resolveCanonicalOfferingAsync(
+  identifier: string,
+  sectorCityHint?: string,
+  companyHint?: string
+): Promise<ResolvedCanonicalOffering | null> {
+  // 1. Try sync resolution first
+  const sync = resolveCanonicalOffering(identifier, sectorCityHint, companyHint);
+  if (sync) return sync;
+
+  let raw = identifier.toLowerCase().trim();
+  if (raw.startsWith("http://") || raw.startsWith("https://")) {
+    try {
+      const parsed = new URL(raw);
+      raw = parsed.hostname;
+    } catch { }
+  }
+
+  let offeringSlugCandidate = raw;
+  let parsedCompanySlug: string | undefined = companyHint;
+  let parsedSectorCity: string = sectorCityHint || "shipyard";
+
+  if (raw.includes(".marineworld.city")) {
+    const prefix = raw.replace(".marineworld.city", "");
+    const parts = prefix.split(".");
+    if (parts.length >= 3) {
+      offeringSlugCandidate = parts[0];
+      parsedCompanySlug = parts[1];
+      parsedSectorCity = parts[2];
+    } else if (parts.length === 2) {
+      offeringSlugCandidate = parts[0];
+      parsedSectorCity = parts[1];
+    } else if (parts.length === 1) {
+      offeringSlugCandidate = parts[0];
+    }
+  } else if (raw.includes(".")) {
+    const parts = raw.split(".");
+    if (parts.length >= 3) {
+      offeringSlugCandidate = parts[0];
+      parsedCompanySlug = parts[1];
+      parsedSectorCity = parts[2];
+    } else if (parts.length === 2) {
+      offeringSlugCandidate = parts[0];
+      parsedSectorCity = parts[1];
+    }
+  }
+
+  // 2. If parsedCompanySlug is present, fetch company offerings from Firestore
+  if (parsedCompanySlug) {
+    try {
+      const comp = await getCompanyRecord(parsedCompanySlug);
+      await fetchCompanyOfferingsAsync(parsedCompanySlug);
+      if (comp?.id && comp.id !== parsedCompanySlug) {
+        await fetchCompanyOfferingsAsync(comp.id);
+      }
+      const retry = resolveCanonicalOffering(identifier, parsedSectorCity, parsedCompanySlug);
+      if (retry) return retry;
+    } catch (err) {
+      console.warn("[OfferingEntityService] Failed to load company offerings async:", err);
+    }
+  }
+
+  // 3. Query all companies from Firestore
+  try {
+    const allComps = await findAllCompanies();
+
+    // Check companies whose embedded offerings, products, or services match candidate
+    for (const comp of allComps) {
+      const hasCandidate =
+        (comp.offerings || []).some(
+          (o) =>
+            o?.slug?.toLowerCase() === offeringSlugCandidate ||
+            o?.id?.toLowerCase() === offeringSlugCandidate ||
+            o?.offeringId?.toLowerCase() === offeringSlugCandidate ||
+            (o?.name && generateDeterministicOfferingSlug(o.name).toLowerCase() === offeringSlugCandidate)
+        ) ||
+        ((comp as any).products || []).some(
+          (p: any) =>
+            p?.slug?.toLowerCase() === offeringSlugCandidate ||
+            p?.id?.toLowerCase() === offeringSlugCandidate ||
+            (p?.name && generateDeterministicOfferingSlug(p.name).toLowerCase() === offeringSlugCandidate)
+        ) ||
+        ((comp as any).services || []).some(
+          (s: any) =>
+            s?.slug?.toLowerCase() === offeringSlugCandidate ||
+            s?.id?.toLowerCase() === offeringSlugCandidate ||
+            (s?.name && generateDeterministicOfferingSlug(s.name).toLowerCase() === offeringSlugCandidate)
+        );
+
+      if (hasCandidate) {
+        await fetchCompanyOfferingsAsync(comp.id);
+        const retry = resolveCanonicalOffering(identifier, parsedSectorCity, comp.slug || comp.id);
+        if (retry) return retry;
+      }
+    }
+
+    // Check subcollections for companies
+    for (const comp of allComps) {
+      const [foundProd, foundServ] = await Promise.all([
+        findProductById(comp.id, offeringSlugCandidate).catch(() => null),
+        findServiceById(comp.id, offeringSlugCandidate).catch(() => null),
+      ]);
+      if (foundProd || foundServ) {
+        await fetchCompanyOfferingsAsync(comp.id);
+        const retry = resolveCanonicalOffering(identifier, parsedSectorCity, comp.slug || comp.id);
+        if (retry) return retry;
+      }
+    }
+
+    // Proactively sync all companies if count is reasonable
+    if (allComps.length <= 15) {
+      await Promise.all(allComps.map((c) => fetchCompanyOfferingsAsync(c.id).catch(() => [])));
+      const retry = resolveCanonicalOffering(identifier, parsedSectorCity, companyHint);
+      if (retry) return retry;
+    }
+  } catch (err) {
+    console.warn("[OfferingEntityService] resolveCanonicalOfferingAsync fallback:", err);
+  }
+
+  return resolveCanonicalOffering(identifier, sectorCityHint, companyHint);
 }
 
 /**
