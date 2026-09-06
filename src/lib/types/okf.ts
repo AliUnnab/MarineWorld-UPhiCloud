@@ -47,7 +47,7 @@ export interface OKFLineage {
   mimeType?: string;
   ingestedAt: string;
   ingestedBy: string;
-  enrichmentEngine: "Gemini-2.0-Flash / OKF-Enrichment-Agent";
+  enrichmentEngine: "Gemini-3.6-Flash / OKF-Enrichment-Agent";
   transformDurationMs?: number;
 }
 

@@ -46,10 +46,38 @@ import type { CompanyOffering, CompanyProfile } from "@/lib/types";
 import { getCompanyProducts, getCompanyServices } from "@/lib/registry";
 import { ShareProtocolModal } from "./ShareProtocolModal";
 import { CommercialInquiryModal } from "./CommercialInquiryModal";
-import { answerOfferingAdvisorQuery, answerOfferingAdvisorQueryAsync, resolvePdfAsBase64 } from "@/lib/services/offeringAIService";
+import { answerOfferingAdvisorQuery, answerOfferingAdvisorQueryAsync, resolvePdfAsBase64, pdfBase64Cache, stripOKFTerminology } from "@/lib/services/offeringAIService";
 import { initializeCanonicalOfferingDefaults } from "@/lib/services/offeringEntityService";
+import type { OKFDocument } from "@/lib/types/okf";
+import { buildOKFDocument, getCompanyOKFDocuments } from "@/lib/services/okfService";
+import { OKFDocumentViewerModal } from "@/components/studio/knowledge/OKFDocumentViewerModal";
+import { getCurrentAuthSession, subscribeAuthState, isCompanyOwner } from "@/lib/services/securityService";
+import { resolveAccessContext } from "@/lib/services/accessContextService";
+import type { AuthContext } from "@/lib/auth/developmentAuthProvider";
+import { buildOKFSchemaOrg, injectOKFMetaAndLinks, injectJsonLd } from "@/lib/services/schemaOrgService";
 
 export type ModalTab = "overview" | "media" | "downloads" | "company";
+
+export const formatMediaImageUrl = (url?: string): string => {
+  if (!url) return "";
+  const match = url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
+  if (match && match[1]) {
+    return `https://lh3.googleusercontent.com/d/${match[1]}`;
+  }
+  return url;
+};
+
+export const getEmbeddableDocumentUrl = (url?: string): string => {
+  if (!url) return "";
+  const match = url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
+  if (match && match[1]) {
+    return `https://drive.google.com/file/d/${match[1]}/preview`;
+  }
+  if (url.includes("firebasestorage.googleapis.com") || url.endsWith(".pdf")) {
+    return url;
+  }
+  return `https://docs.google.com/viewer?url=${encodeURIComponent(url)}&embedded=true`;
+};
 
 /**
  * Maps attribute labels to semantic icons consistent with the platform standard
@@ -181,6 +209,7 @@ interface ProductExperienceModalProps {
   allOfferings?: CompanyOffering[];
   onOpenConnectModal?: (itemRef?: string) => void;
   onSelectOffering?: (offering: CompanyOffering) => void;
+  isOwner?: boolean;
 }
 
 export function ProductExperienceModal({
@@ -190,6 +219,7 @@ export function ProductExperienceModal({
   allOfferings: providedOfferings,
   onOpenConnectModal,
   onSelectOffering,
+  isOwner: propIsOwner,
 }: ProductExperienceModalProps) {
   // Consolidate full catalogue of offerings for bottom browse strip
   const allOfferings = useMemo(() => {
@@ -298,6 +328,147 @@ export function ProductExperienceModal({
     return initializeCanonicalOfferingDefaults(activeOfferingRaw, company);
   }, [activeOfferingRaw, company]);
 
+  // Track active auth session & check if current user is owner of this offering's company
+  const [authSession, setAuthSession] = useState<AuthContext>(() => getCurrentAuthSession());
+
+  useEffect(() => {
+    const unsubscribe = subscribeAuthState((newAuth) => {
+      setAuthSession(newAuth);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const isCompanyOwnerViewer = useMemo(() => {
+    if (typeof propIsOwner === "boolean") return propIsOwner;
+    if (!authSession || !authSession.uid) return false;
+
+    const targetCompanyId = company?.id || activeOffering?.companyId;
+
+    // 1. Direct match with company profile ownerId
+    if (company?.ownerId && company.ownerId === authSession.uid) {
+      return true;
+    }
+
+    // 2. Canonical isCompanyOwner check
+    if (targetCompanyId && isCompanyOwner(targetCompanyId, authSession)) {
+      return true;
+    }
+
+    // 3. Check accessContext active organization or memberships
+    try {
+      const accessCtx = resolveAccessContext(authSession);
+      if (
+        accessCtx.activeOrganization &&
+        (accessCtx.activeOrganization.companyId === targetCompanyId ||
+          accessCtx.activeOrganization.organizationId === targetCompanyId) &&
+        accessCtx.activeOrganization.role === "OWNER"
+      ) {
+        return true;
+      }
+
+      if (
+        accessCtx.availableMemberships &&
+        accessCtx.availableMemberships.some(
+          (m) =>
+            (m.companyId === targetCompanyId || m.organizationId === targetCompanyId) &&
+            m.role === "OWNER" &&
+            m.memberStatus === "ACTIVE"
+        )
+      ) {
+        return true;
+      }
+    } catch {
+      // Ignore resolution issues
+    }
+
+    // 4. Contact / official company email match
+    const compEmail =
+      (company as any)?.officialEmail || (company as any)?.email || (company as any)?.contactEmail;
+    if (
+      compEmail &&
+      authSession.email &&
+      compEmail.trim().toLowerCase() === authSession.email.trim().toLowerCase()
+    ) {
+      return true;
+    }
+
+    return false;
+  }, [propIsOwner, authSession, company, activeOffering?.companyId]);
+
+  const [isOKFModalOpen, setIsOKFModalOpen] = useState(false);
+  const [firestoreOKFDoc, setFirestoreOKFDoc] = useState<OKFDocument | null>(null);
+
+  // Fetch Firestore OKF documents on mount or offering change (accessible to all viewers for AI and SEO grounding)
+  useEffect(() => {
+    if (company?.id) {
+      getCompanyOKFDocuments(company.id)
+        .then((docs) => {
+          const match = docs.find(
+            (d) =>
+              d.offeringId === activeOffering.id ||
+              d.title.toLowerCase().trim() === activeOffering.name.toLowerCase().trim() ||
+              (activeOffering.name && d.title.toLowerCase().includes(activeOffering.name.toLowerCase()))
+          );
+          if (match) {
+            setFirestoreOKFDoc(match);
+          }
+        })
+        .catch((err) => console.warn("[ProductExperienceModal] OKF fetch error:", err));
+    }
+  }, [company?.id, activeOffering.id, activeOffering.name]);
+
+  // Sealed OKF Document Resolution for this offering
+  const activeOfferingOKFDoc = useMemo<OKFDocument>(() => {
+    if (firestoreOKFDoc) return firestoreOKFDoc;
+    if (activeOffering.okfDocument) return activeOffering.okfDocument;
+
+    const specsArray: any[] = [];
+    if (activeOffering.specifications) {
+      Object.entries(activeOffering.specifications).forEach(([k, v]) => {
+        specsArray.push({
+          key: k,
+          label: k,
+          value: String(v),
+          confidence: 0.98,
+          category: "GENERAL",
+        });
+      });
+    }
+
+    const docSources = [
+      ...(activeOffering.groundingSources || []),
+      ...(activeOffering.sourceDocuments || []),
+    ];
+    const fullExtracted = docSources.map((d) => d.extractedText || d.summary || "").filter(Boolean).join("\n\n");
+
+    return buildOKFDocument({
+      documentId: `okf-offering-${activeOffering.id}`,
+      title: activeOffering.name,
+      entityType: activeOffering.type === "service" ? "SERVICE" : "PRODUCT",
+      companyId: company.id,
+      companySlug: company.slug,
+      offeringId: activeOffering.id,
+      offeringSlug: activeOffering.slug,
+      sourceOrigin: "LOCAL_UPLOAD",
+      originalFileName: `${activeOffering.name}_Technical_Datasheet.pdf`,
+      summaryText: activeOffering.shortDescription || activeOffering.detailedDescription || `${activeOffering.name} verified engineering specification.`,
+      rawContent: fullExtracted || `${activeOffering.name}\n${activeOffering.shortDescription || ""}\n${activeOffering.detailedDescription || ""}`,
+      specifications: specsArray,
+      certifications: activeOffering.certifications || [],
+      commercialParameters: {
+        price: activeOffering.price || activeOffering.commercialInformation?.price,
+        currency: activeOffering.currency || activeOffering.commercialInformation?.currency || "USD",
+        pricingModel: activeOffering.commercialInformation?.pricingType || "Fixed",
+        leadTimeDays: activeOffering.commercialInformation?.leadTime ? parseInt(activeOffering.commercialInformation.leadTime) || undefined : undefined,
+      },
+      operationalBoundaries: activeOffering.applications || [],
+      confidenceScore: 0.99,
+    });
+  }, [activeOffering, company, firestoreOKFDoc]);
+
+
+
+
   const isService = activeOffering.type === "service";
 
   // Company identity variables
@@ -330,41 +501,53 @@ export function ProductExperienceModal({
     if (Array.isArray(customMedia) && customMedia.length > 0) {
       customMedia.forEach((m: any, idx: number) => {
         if (!m || (!m.url && !m.src)) return;
-        const url = m.url || m.src;
-        const isPdf = url.toLowerCase().includes(".pdf");
+        const rawUrl = m.url || m.src;
+        const lowerUrl = rawUrl.toLowerCase();
+        const isDoc =
+          lowerUrl.includes(".pdf") ||
+          lowerUrl.includes(".docx") ||
+          lowerUrl.includes(".xlsx") ||
+          lowerUrl.includes(".txt") ||
+          lowerUrl.includes(".dwg") ||
+          m.type === "drawing" ||
+          m.type === "document" ||
+          m.type === "datasheet";
+
+        // Filter out non-photo documents so they don't corrupt the photo gallery
+        if (isDoc) return;
+
+        const url = formatMediaImageUrl(rawUrl);
         const type: "photo" | "technical_drawing" | "video" =
           m.type === "video"
             ? "video"
-            : m.type === "drawing" || m.type === "technical_drawing" || isPdf
-            ? "technical_drawing"
             : "photo";
         const typeLabel =
           type === "video"
             ? "Video"
-            : isPdf
-            ? "PDF Blueprint"
-            : type === "technical_drawing"
-            ? "Technical Drawing"
             : "Photo";
+
         items.push({
           id: m.id || `m-${idx}`,
           type,
           typeLabel,
-          title: m.title || m.caption || `${activeOffering.name} Asset ${idx + 1}`,
+          title: m.title || m.caption || `${activeOffering.name} Photo ${idx + 1}`,
           url,
-          badgeTag: m.isCover ? "COVER IMAGE" : isPdf ? "PDF BLUEPRINT" : (m.type || typeLabel).toUpperCase(),
+          badgeTag: m.isCover ? "COVER IMAGE" : (m.type || typeLabel).toUpperCase(),
         });
       });
     }
 
-    if (primaryCoverImg && !items.some((i) => i.url === primaryCoverImg)) {
-      const isPdf = primaryCoverImg.toLowerCase().includes(".pdf");
+    if (
+      primaryCoverImg &&
+      !primaryCoverImg.toLowerCase().includes(".pdf") &&
+      !items.some((i) => i.url === formatMediaImageUrl(primaryCoverImg))
+    ) {
       items.unshift({
         id: "primary-photo",
-        type: isPdf ? "technical_drawing" : "photo",
-        typeLabel: isPdf ? "PDF Blueprint" : "Cover Photo",
+        type: "photo",
+        typeLabel: "Cover Photo",
         title: `${activeOffering.name} — Cover Asset`,
-        url: primaryCoverImg,
+        url: formatMediaImageUrl(primaryCoverImg),
         badgeTag: "PRIMARY COVER",
       });
     }
@@ -562,39 +745,53 @@ export function ProductExperienceModal({
       badge: string;
       code: string;
       url?: string;
+      isDrive?: boolean;
     }> = [];
 
     // Add Grounding Sources
     if (Array.isArray(activeOffering.groundingSources)) {
       activeOffering.groundingSources.forEach((src, idx) => {
+        const isDrive = src.origin === "GOOGLE_DRIVE" || Boolean(src.drivePath) || src.url?.includes("drive.google.com");
         docs.push({
           id: src.id || `gsrc-${idx}`,
           title: src.title || src.filename || `${activeOffering.name} Datasheet`,
           type: (src.fileType || "PDF SPEC").toUpperCase(),
           size: src.size || "1.5 MB",
-          badge: "VERIFIED",
+          badge: isDrive ? "GOOGLE DRIVE" : "VERIFIED DOC",
           code: src.filename || `DOC-${offeringCode}-${idx + 1}`,
           url: src.url,
+          isDrive,
         });
       });
     }
 
-    // Add PDF Blueprints from media references if not already in list
+    // Add PDF Blueprints / Documents from media references if not already in list
     const mediaSources =
       (activeOffering as any).mediaReferences ||
       (activeOffering as any).media ||
       [];
     if (Array.isArray(mediaSources)) {
       mediaSources.forEach((m: any, idx: number) => {
-        if (m.url?.toLowerCase().includes(".pdf") && !docs.some((d) => d.url === m.url)) {
+        const lower = (m.url || "").toLowerCase();
+        const isDoc =
+          lower.includes(".pdf") ||
+          lower.includes(".docx") ||
+          lower.includes(".xlsx") ||
+          lower.includes(".txt") ||
+          m.type === "drawing" ||
+          m.type === "document";
+
+        if (isDoc && !docs.some((d) => d.url === m.url)) {
+          const isDrive = m.url?.includes("drive.google.com");
           docs.push({
             id: m.id || `med-pdf-${idx}`,
             title: m.title || `${activeOffering.name} — Technical Blueprint / Schematic`,
-            type: "PDF BLUEPRINT",
+            type: lower.includes(".xlsx") ? "XLSX SPREADSHEET" : lower.includes(".docx") ? "DOCX SPEC" : "PDF DOCUMENT",
             size: "Technical Doc",
-            badge: "CANONICAL",
+            badge: isDrive ? "GOOGLE DRIVE" : "TECHNICAL RESOURCE",
             code: `CAD-${offeringCode}-${idx + 1}`,
             url: m.url,
+            isDrive,
           });
         }
       });
@@ -602,24 +799,6 @@ export function ProductExperienceModal({
 
     return docs;
   }, [activeOffering, offeringCode]);
-
-  // Background pre-cache attached PDF documents to memory for instant AI responses
-  useEffect(() => {
-    if (!activeOffering) return;
-    const urlsToCache: string[] = [];
-    (activeOffering.groundingSources || []).forEach((g) => {
-      const u = (g as any).base64Data || g.url;
-      if (u) urlsToCache.push(u);
-    });
-    (activeOffering.mediaReferences || []).forEach((m) => {
-      if ((m.type === "drawing" || m.url?.toLowerCase().includes(".pdf")) && m.url) {
-        urlsToCache.push(m.url);
-      }
-    });
-    urlsToCache.slice(0, 2).forEach((url) => {
-      resolvePdfAsBase64(url).catch(() => {});
-    });
-  }, [activeOffering]);
 
   // Scroll chat
   useEffect(() => {
@@ -645,7 +824,28 @@ export function ProductExperienceModal({
     setIsGenerating(true);
 
     try {
-      const response = await generateAdvisorAnswer(q, activeOffering, displayName, sectorCityLabel);
+      // Enrich grounding sources with cached base64 from memory or sessionStorage
+      const sourcesWithB64 = (activeOffering.groundingSources || []).map((src) => {
+        if ((src as any).base64Data) return src;
+        const fromCache = pdfBase64Cache.get(src.filename) || pdfBase64Cache.get(src.title) || pdfBase64Cache.get(activeOffering.id);
+        const fromSession = typeof sessionStorage !== "undefined"
+          ? (sessionStorage.getItem(`mw_pdf_${src.filename}`) || sessionStorage.getItem(`mw_pdf_${src.title}`) || sessionStorage.getItem(`mw_pdf_${activeOffering.id}`))
+          : null;
+        if (fromCache || fromSession) {
+          return {
+            ...src,
+            base64Data: fromCache || fromSession,
+          };
+        }
+        return src;
+      });
+
+      const enrichedForAdvisor: CompanyOffering = {
+        ...activeOffering,
+        groundingSources: sourcesWithB64,
+        okfDocument: activeOfferingOKFDoc,
+      };
+      const response = await generateAdvisorAnswer(q, enrichedForAdvisor, displayName, sectorCityLabel);
       
       const isSealed = q.toLowerCase().includes("official offer") || q.toLowerCase().includes("commercial offer") || q.toLowerCase().includes("package");
 
@@ -722,8 +922,71 @@ export function ProductExperienceModal({
     URL.revokeObjectURL(url);
   };
 
-  const canonicalUrl = activeOffering.canonicalUrl;
-  const isCanonicalReady = typeof canonicalUrl === "string" && canonicalUrl.startsWith("http");
+  // Construct direct link to this offering modal based on current origin & routing
+  const directOfferingUrl = useMemo(() => {
+    if (typeof window === "undefined") return "";
+    const origin = window.location.origin;
+    const compSlug =
+      company?.slug ||
+      company?.id ||
+      activeOffering?.companySlug ||
+      activeOffering?.companyId ||
+      "company";
+    const offSlug =
+      activeOffering?.slug ||
+      activeOffering?.id ||
+      activeOffering?.name?.toLowerCase().replace(/[^a-z0-9]+/g, "-") ||
+      "offering";
+    const isServiceType = activeOffering?.type === "service";
+    const moduleName = isServiceType ? "services" : "products";
+
+    const basePath = window.location.pathname.startsWith("/company/") ? "/company" : "/companies";
+    return `${origin}${basePath}/${encodeURIComponent(compSlug)}/${moduleName}/${encodeURIComponent(offSlug)}`;
+  }, [company, activeOffering]);
+
+  // Stage 14.5 — Universal AI & Google SEO Rich Metadata / JSON-LD Injection
+  // Exposes 100% of the OKF dataset (specifications, certifications, boundaries, commercial parameters)
+  // to Googlebot, GPTBot, ClaudeBot, PerplexityBot, Gemini, and search engines.
+  useEffect(() => {
+    if (!activeOfferingOKFDoc) return;
+    const schema = buildOKFSchemaOrg(activeOfferingOKFDoc, company, directOfferingUrl);
+    injectJsonLd(schema, "okf-offering-dataset-jsonld");
+
+    const cleanupMeta = injectOKFMetaAndLinks(activeOfferingOKFDoc, company, directOfferingUrl);
+    return () => {
+      cleanupMeta();
+      const s = document.getElementById("okf-offering-dataset-jsonld");
+      if (s && s.parentNode) {
+        s.parentNode.removeChild(s);
+      }
+    };
+  }, [activeOfferingOKFDoc, company, directOfferingUrl]);
+
+  const handleCopyLink = async () => {
+    if (!directOfferingUrl) return;
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(directOfferingUrl);
+      } else {
+        const textArea = document.createElement("textarea");
+        textArea.value = directOfferingUrl;
+        textArea.style.position = "fixed";
+        textArea.style.left = "-999999px";
+        textArea.style.top = "-999999px";
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        document.execCommand("copy");
+        textArea.remove();
+      }
+      setCopiedLink(true);
+      setTimeout(() => setCopiedLink(false), 2000);
+    } catch (err) {
+      console.warn("Failed to copy link:", err);
+    }
+  };
+
+  const canonicalUrl = activeOffering.canonicalUrl || directOfferingUrl;
 
   return (
     <div
@@ -757,16 +1020,9 @@ export function ProductExperienceModal({
           <div className="flex items-center gap-1.5 shrink-0">
             <button
               type="button"
-              disabled={!isCanonicalReady}
-              onClick={() => {
-                if (isCanonicalReady) {
-                  navigator.clipboard.writeText(canonicalUrl);
-                  setCopiedLink(true);
-                  setTimeout(() => setCopiedLink(false), 2000);
-                }
-              }}
-              className="inline-flex items-center gap-1.5 rounded-card-xs bg-white border border-line px-2.5 py-1 text-[11px] font-bold text-graphite hover:text-royal hover:border-royal transition cursor-pointer shadow-2xs disabled:opacity-50 disabled:cursor-not-allowed focus-visible:ring-2 focus-visible:ring-royal focus-visible:outline-hidden"
-              title="Copy link"
+              onClick={handleCopyLink}
+              className="inline-flex items-center gap-1.5 rounded-card-xs bg-white border border-line px-2.5 py-1 text-[11px] font-bold text-graphite hover:text-royal hover:border-royal transition cursor-pointer shadow-2xs focus-visible:ring-2 focus-visible:ring-royal focus-visible:outline-hidden"
+              title={`Copy direct link: ${directOfferingUrl}`}
               aria-label={copiedLink ? "Link copied" : "Copy link"}
             >
               {copiedLink ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3 text-stone" />}
@@ -1153,7 +1409,7 @@ export function ProductExperienceModal({
 
                   {/* Key Specifications / Attributes (FIX 3: Icon-Led Fact Rows matching Business Twin standard) */}
                   <div className="space-y-2.5 pt-1">
-                    <div className="flex items-center justify-between border-b border-line pb-1.5">
+                    <div className="flex flex-wrap items-center justify-between border-b border-line pb-1.5 gap-2">
                       <div className="flex items-center gap-2">
                         <SlidersHorizontal className="w-3.5 h-3.5 text-royal" />
                         <h3 className="text-[10.5px] font-bold text-graphite uppercase tracking-[0.14em]">
@@ -1161,17 +1417,34 @@ export function ProductExperienceModal({
                         </h3>
                       </div>
 
-                      {allSpecEntries.length > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => setShowFullSpecs(!showFullSpecs)}
-                          className="inline-flex items-center gap-1 text-[10px] font-bold text-royal hover:underline cursor-pointer uppercase tracking-wider focus-visible:ring-2 focus-visible:ring-royal focus-visible:outline-hidden rounded"
-                          aria-expanded={showFullSpecs}
-                        >
-                          <span>{showFullSpecs ? "Hide Full Specs" : `View Full Specs (${allSpecEntries.length})`}</span>
-                          {showFullSpecs ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                        </button>
-                      )}
+                      <div className="flex items-center gap-2">
+                        {isCompanyOwnerViewer && (
+                          <button
+                            type="button"
+                            onClick={() => setIsOKFModalOpen(true)}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-900 text-cyan-400 hover:bg-slate-800 border border-cyan-500/30 text-[10.5px] font-mono font-bold transition shadow-2xs"
+                            title="Inspect Open Knowledge Format and Google Knowledge Catalog Seal (Only visible to you)"
+                          >
+                            <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
+                            <span>SEALED OKF DATASHEET</span>
+                            <span className="text-[9.5px] font-sans font-medium text-cyan-300/80 normal-case tracking-normal">
+                              (Only visible to you)
+                            </span>
+                          </button>
+                        )}
+
+                        {allSpecEntries.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setShowFullSpecs(!showFullSpecs)}
+                            className="inline-flex items-center gap-1 text-[10px] font-bold text-royal hover:underline cursor-pointer uppercase tracking-wider focus-visible:ring-2 focus-visible:ring-royal focus-visible:outline-hidden rounded"
+                            aria-expanded={showFullSpecs}
+                          >
+                            <span>{showFullSpecs ? "Hide Full Specs" : `View Full Specs (${allSpecEntries.length})`}</span>
+                            {showFullSpecs ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                          </button>
+                        )}
+                      </div>
                     </div>
 
                     {/* 4 Highlight Metric Cards - Icon-Led Fact Rows matching Business Twin standard */}
@@ -1921,7 +2194,7 @@ export function ProductExperienceModal({
                 {mediaGallery[lightboxIndex]?.url?.toLowerCase().includes(".pdf") ? (
                   <div className="w-full h-full flex flex-col items-center justify-center space-y-3 p-4">
                     <iframe
-                      src={`https://docs.google.com/viewer?url=${encodeURIComponent(mediaGallery[lightboxIndex]?.url)}&embedded=true`}
+                      src={getEmbeddableDocumentUrl(mediaGallery[lightboxIndex]?.url)}
                       title={mediaGallery[lightboxIndex]?.title || "PDF Document"}
                       className="w-full h-[55vh] rounded-xl border border-slate-300 bg-white shadow-sm"
                     />
@@ -1941,7 +2214,7 @@ export function ProductExperienceModal({
                 ) : !failedImages[mediaGallery[lightboxIndex]?.url] ? (
                   <div className="relative max-h-full max-w-full flex items-center justify-center">
                     <img
-                      src={mediaGallery[lightboxIndex]?.url}
+                      src={formatMediaImageUrl(mediaGallery[lightboxIndex]?.url)}
                       alt={mediaGallery[lightboxIndex]?.title}
                       onError={() => handleImageError(mediaGallery[lightboxIndex]?.url)}
                       className="max-h-[58vh] max-w-[75vw] object-contain rounded-card-sm shadow-xs"
@@ -2018,7 +2291,7 @@ export function ProductExperienceModal({
         isOpen={isShareModalOpen}
         onClose={() => setIsShareModalOpen(false)}
         title={`Share ${activeOffering.name}`}
-        url={canonicalUrl || ""}
+        url={directOfferingUrl || canonicalUrl || ""}
         description="Anyone with this link can view this offering."
       />
 
@@ -2039,6 +2312,117 @@ export function ProductExperienceModal({
           }
         }}
       />
+
+      {/* Sealed OKF Document & Knowledge Catalog Seal Inspector Modal */}
+      {isCompanyOwnerViewer && isOKFModalOpen && (
+        <OKFDocumentViewerModal
+          isOpen={isOKFModalOpen}
+          onClose={() => setIsOKFModalOpen(false)}
+          okfDoc={activeOfferingOKFDoc}
+        />
+      )}
+
+      {/* 
+        Stage 14.5 — Universal AI & Google SEO Semantic Grounding Microdata Section
+        Accessible to Googlebot, GPTBot, ClaudeBot, Gemini, Perplexity, and Web Crawlers.
+        Injects full microdata & technical specifications directly into the DOM tree.
+      */}
+      <section
+        id="okf-structured-dataset"
+        className="sr-only"
+        aria-label="Authoritative Technical Datasheet for AI and Search Engine Indexing"
+        itemScope
+        itemType={activeOffering.type === "service" ? "https://schema.org/Service" : "https://schema.org/Product"}
+      >
+        <meta itemProp="name" content={activeOfferingOKFDoc.title} />
+        <meta itemProp="description" content={activeOfferingOKFDoc.summaryText} />
+        <meta itemProp="sku" content={activeOfferingOKFDoc.knowledgeCatalogSeal.sealId} />
+        <meta itemProp="url" content={directOfferingUrl} />
+        <span itemProp="brand" itemScope itemType="https://schema.org/Organization">
+          <meta itemProp="name" content={displayName} />
+        </span>
+
+        <h2>{activeOfferingOKFDoc.title} — Verified Engineering Datasheet</h2>
+        <p>{activeOfferingOKFDoc.summaryText}</p>
+
+        <div>
+          <h3>Google Knowledge Catalog Seal & Digital Notarization</h3>
+          <p>Seal ID: {activeOfferingOKFDoc.knowledgeCatalogSeal.sealId}</p>
+          <p>Cryptographic Digest SHA-256: {activeOfferingOKFDoc.knowledgeCatalogSeal.hashSha256}</p>
+          <p>Status: {activeOfferingOKFDoc.knowledgeCatalogSeal.status}</p>
+          <p>Authority: {activeOfferingOKFDoc.knowledgeCatalogSeal.authority}</p>
+          <p>Source Origin: {activeOfferingOKFDoc.lineage.sourceOrigin} ({activeOfferingOKFDoc.lineage.originalFileName || "Direct Input"})</p>
+        </div>
+
+        {activeOfferingOKFDoc.specifications.length > 0 && (
+          <div>
+            <h3>Verified Technical Specifications</h3>
+            <table>
+              <thead>
+                <tr>
+                  <th>Parameter</th>
+                  <th>Value</th>
+                  <th>Unit</th>
+                  <th>Confidence</th>
+                </tr>
+              </thead>
+              <tbody>
+                {activeOfferingOKFDoc.specifications.map((spec, idx) => (
+                  <tr key={idx} itemProp="additionalProperty" itemScope itemType="https://schema.org/PropertyValue">
+                    <td itemProp="name">{spec.label || spec.key}</td>
+                    <td itemProp="value">{spec.value}</td>
+                    <td>{spec.unit || ""}</td>
+                    <td itemProp="valueReference">{(spec.confidence * 100).toFixed(0)}% AI Verified</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {activeOfferingOKFDoc.certifications.length > 0 && (
+          <div>
+            <h3>Certifications & Class Standards</h3>
+            <ul>
+              {activeOfferingOKFDoc.certifications.map((cert, idx) => (
+                <li key={idx} itemProp="hasCertification" itemScope itemType="https://schema.org/Certification">
+                  <span itemProp="name">{cert}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {activeOfferingOKFDoc.commercialParameters && (
+          <div itemProp="offers" itemScope itemType="https://schema.org/Offer">
+            <h3>Commercial Terms</h3>
+            <p>
+              Price: <span itemProp="price">{activeOfferingOKFDoc.commercialParameters.price || "Contact for Quote"}</span>{" "}
+              <span itemProp="priceCurrency">{activeOfferingOKFDoc.commercialParameters.currency || "USD"}</span>
+            </p>
+            <p>Pricing Model: {activeOfferingOKFDoc.commercialParameters.pricingModel || "Standard"}</p>
+            {activeOfferingOKFDoc.commercialParameters.leadTimeDays && (
+              <p>Lead Time: {activeOfferingOKFDoc.commercialParameters.leadTimeDays} days</p>
+            )}
+          </div>
+        )}
+
+        {activeOfferingOKFDoc.operationalBoundaries && activeOfferingOKFDoc.operationalBoundaries.length > 0 && (
+          <div>
+            <h3>Operational Scope & Applications</h3>
+            <ul>
+              {activeOfferingOKFDoc.operationalBoundaries.map((b, idx) => (
+                <li key={idx}>{b}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        <article>
+          <h3>Open Knowledge Format Raw Specification</h3>
+          <pre>{activeOfferingOKFDoc.fullOkfMarkdown}</pre>
+        </article>
+      </section>
     </div>
   );
 }
@@ -2069,9 +2453,9 @@ async function generateAdvisorAnswer(
   }
 
   return {
-    text: result.answer,
-    detailedNotes: result.detailedNotes,
-    sources: result.sourcesUsed,
+    text: stripOKFTerminology(result.answer),
+    detailedNotes: result.detailedNotes ? stripOKFTerminology(result.detailedNotes) : undefined,
+    sources: (result.sourcesUsed || []).map(stripOKFTerminology),
     action,
   };
 }

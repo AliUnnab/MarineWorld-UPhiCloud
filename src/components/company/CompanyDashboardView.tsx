@@ -53,6 +53,27 @@ export function CompanyDashboardView({
     });
   }, [company?.id]);
 
+  // Auto-open offering modal if URL contains ?product=, ?service=, or ?offering=
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const searchParams = new URLSearchParams(window.location.search);
+    const targetSlug = searchParams.get("product") || searchParams.get("service") || searchParams.get("offering") || searchParams.get("slug");
+    if (!targetSlug) return;
+
+    const all = [...(company.offerings || []), ...asyncOfferings];
+    const match = all.find(
+      (o) =>
+        o.id === targetSlug ||
+        o.slug === targetSlug ||
+        o.name.toLowerCase().replace(/[^a-z0-9]+/g, "-") === targetSlug.toLowerCase() ||
+        o.name.toLowerCase() === targetSlug.toLowerCase() ||
+        o.id.toLowerCase().includes(targetSlug.toLowerCase())
+    );
+    if (match) {
+      setSelectedOfferingModal(match);
+    }
+  }, [asyncOfferings, company.offerings]);
+
   const displayName = company.displayName || company.name || "Enterprise Company";
   const legalName = company.legalName || company.name || displayName;
   const headquartersCity = company.headquartersCity || "International Maritime Hub";

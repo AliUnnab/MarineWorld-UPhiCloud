@@ -53,13 +53,24 @@ import type {
 } from "@/lib/types";
 import {
   simulateAIExtractionFromDocument,
+  extractOfferingWithGemini,
   computeOfferingGroundingStatus,
   generateDefaultAdvisorConfig,
   answerOfferingAdvisorQuery,
+  cachePdfBase64,
   type ExtractedOfferingDraft,
   type DocumentInputSource,
 } from "@/lib/services/offeringAIService";
-import { openGoogleDrivePicker, type GoogleDriveSelectedFile } from "@/lib/services/googleDriveService";
+import {
+  openGoogleDrivePicker,
+  requestGoogleAccessToken,
+  parseGoogleDriveLink,
+  fetchGoogleDriveFileBase64,
+  fetchGoogleDriveFileContent,
+  SERVICE_ACCOUNT_EMAIL,
+  DEFAULT_ROOT_WORKSPACE,
+  type GoogleDriveSelectedFile,
+} from "@/lib/services/googleDriveService";
 import { getCompanyDocuments } from "@/lib/services/dataSpaceService";
 import { getCurrentAuthSession } from "@/lib/services/securityService";
 import {
@@ -67,7 +78,31 @@ import {
   deleteFileFromStorage,
   validateStorageFile,
 } from "@/lib/services/storageService";
+import type { OKFDocument } from "@/lib/types/okf";
+import { buildOKFDocument, saveOKFDocumentToFirestore } from "@/lib/services/okfService";
+import { OKFDocumentViewerModal } from "@/components/studio/knowledge/OKFDocumentViewerModal";
+import { GoogleDriveBrowserModal } from "@/components/studio/knowledge/GoogleDriveBrowserModal";
 
+export const formatMediaImageUrl = (url?: string): string => {
+  if (!url) return "";
+  const match = url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
+  if (match && match[1]) {
+    return `https://lh3.googleusercontent.com/d/${match[1]}`;
+  }
+  return url;
+};
+
+export const getEmbeddableDocumentUrl = (url?: string): string => {
+  if (!url) return "";
+  const match = url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
+  if (match && match[1]) {
+    return `https://drive.google.com/file/d/${match[1]}/preview`;
+  }
+  if (url.includes("firebasestorage.googleapis.com") || url.endsWith(".pdf")) {
+    return url;
+  }
+  return `https://docs.google.com/viewer?url=${encodeURIComponent(url)}&embedded=true`;
+};
 
 export type WizardStep =
   | "METHOD_CHOICE"
@@ -163,12 +198,20 @@ export const OfferingCreationWizardModal: React.FC<OfferingCreationWizardModalPr
     base64Data?: string;
   }>>([]);
   const [selectedDriveFolderId, setSelectedDriveFolderId] = useState<string>("gdrive-f-rov4");
-  const [selectedDriveFiles, setSelectedDriveFiles] = useState<string[]>(["gdf-01", "gdf-02", "gdf-03"]);
+  const [driveLinkInput, setDriveLinkInput] = useState("");
   const [documentUrl, setDocumentUrl] = useState("");
-  const [selectedKnowledgeDocId, setSelectedKnowledgeDocId] = useState<string>("");
   const [selectedPresetId, setSelectedPresetId] = useState<string>("");
-  const [parsingProgress, setParsingProgress] = useState(0);
-  const [parsingStatusText, setParsingStatusText] = useState("");
+  const [selectedKnowledgeDocId, setSelectedKnowledgeDocId] = useState<string>("");
+  const [parsingProgress, setParsingProgress] = useState<number>(0);
+  const [parsingStatusText, setParsingStatusText] = useState<string>("Reading document binary and metadata...");
+  const [isOpeningDrivePicker, setIsOpeningDrivePicker] = useState(false);
+  const [driveError, setDriveError] = useState<string | null>(null);
+  const [isDriveBrowserOpen, setIsDriveBrowserOpen] = useState(false);
+  const [driveBrowserMode, setDriveBrowserMode] = useState<"documents" | "media">("documents");
+
+  // OKF Inspector state
+  const [isOKFViewerOpen, setIsOKFViewerOpen] = useState(false);
+  const [offeringOKFDoc, setOfferingOKFDoc] = useState<OKFDocument | null>(null);
 
   // Extracted/Draft Form State
   const [name, setName] = useState(initialOffering?.name || "");
@@ -385,34 +428,225 @@ export const OfferingCreationWizardModal: React.FC<OfferingCreationWizardModalPr
 
       setTimeout(() => {
         // Apply extracted draft
-        setName(draft.name);
-        setOfferingType(draft.type);
-        setCategory(draft.category);
-        setCode(draft.sku);
-        setShortDescription(draft.shortDescription);
-        setDetailedDescription(draft.detailedDescription);
-        setApplications(draft.applications);
-        setSpecifications(draft.specifications);
-        setCertifications(draft.certifications);
-        setStandards(draft.standards);
-        setCommercialInfo(draft.commercialInformation);
+        setName(draft.name || "");
+        setOfferingType(draft.type || "product");
+        setCategory(draft.category || "Marine Equipment & Systems");
+        setCode(draft.sku || "");
+        setShortDescription(draft.shortDescription || "");
+        setDetailedDescription(draft.detailedDescription || "");
+        setApplications(draft.applications || []);
+        setSpecifications(draft.specifications || []);
+        setCertifications(draft.certifications || []);
+        setStandards(draft.standards || []);
+
+        if (draft.commercialInformation) {
+          setCommercialInfo(draft.commercialInformation);
+          if (draft.commercialInformation.price) {
+            setPrice(draft.commercialInformation.price);
+          } else if (draft.commercialInformation.pricingGuidance) {
+            setPrice(draft.commercialInformation.pricingGuidance);
+          }
+          if (draft.commercialInformation.currency) {
+            setCurrency(draft.commercialInformation.currency);
+          }
+          if (draft.commercialInformation.pricingType) {
+            setPricingType(draft.commercialInformation.pricingType);
+          }
+        }
+
         if (draft.serviceScope) setServiceScope(draft.serviceScope);
         if (draft.coverage) setCoverage(draft.coverage);
         if (draft.deliveryModel) setDeliveryModel(draft.deliveryModel);
         if (draft.mediaReferences && draft.mediaReferences.length > 0) {
           setMediaList(draft.mediaReferences);
         }
-        setGroundingSources(draft.groundingSources);
-        setSourceAttribution(draft.sourceAttribution);
+        setGroundingSources(draft.groundingSources || []);
+        setSourceAttribution(draft.sourceAttribution || "");
         setSourceAttributions(draft.sourceAttributions || {});
         setFieldConfirmations(draft.fieldConfirmations || {});
         setConflicts(draft.conflicts || []);
+
+        if (draft.okfDocument) {
+          setOfferingOKFDoc(draft.okfDocument);
+        }
 
         setCurrentStep("REVIEW_DRAFT");
       }, 350);
     } catch (err: any) {
       setErrorMessage(err?.message || "Failed to extract data from document.");
       setCurrentStep("DOCUMENT_INGEST");
+    }
+  };
+
+  const handleDriveFilesSelected = (files: GoogleDriveSelectedFile[]) => {
+    const images: GoogleDriveSelectedFile[] = [];
+    const documents: GoogleDriveSelectedFile[] = [];
+
+    files.forEach((f) => {
+      const lower = f.name.toLowerCase();
+      const isImg =
+        f.mimeType.includes("image") ||
+        /\.(png|jpe?g|webp|svg|gif|avif|bmp)$/i.test(lower);
+
+      if (isImg) {
+        images.push(f);
+      } else {
+        documents.push(f);
+      }
+    });
+
+    // 1. Add images strictly to Visual Media Gallery (mediaList)
+    if (images.length > 0) {
+      const newMediaItems: OfferingMediaItem[] = images.map((f, i) => {
+        const cleanTitle = f.name
+          .replace(/\.[^/.]+$/, "")
+          .replace(/[-_]/g, " ")
+          .replace(/\b\w/g, (c) => c.toUpperCase());
+
+        return {
+          id: `med-gdrive-${Date.now()}-${i}`,
+          url: f.url || `https://drive.google.com/file/d/${f.id}/view`,
+          title: cleanTitle,
+          type: "photo",
+          isCover: mediaList.length === 0 && i === 0,
+          order: mediaList.length + i + 1,
+        };
+      });
+      setMediaList((prev) => [...prev, ...newMediaItems]);
+    }
+
+    // 2. Add documents (PDFs, DOCX, etc.) strictly to Technical Documents (sourceFilesList & groundingSources)
+    if (documents.length > 0) {
+      setSourceFilesList((prev) => [
+        ...prev,
+        ...documents.map((picked) => ({
+          name: picked.name,
+          size: picked.sizeBytes,
+          origin: "GOOGLE_DRIVE" as const,
+          drivePath: picked.url || `Google Drive / ${picked.name}`,
+          url: picked.url,
+          isGroundingSource: true,
+          isDownloadable: true,
+        })),
+      ]);
+
+      const newSources: OfferingGroundingSource[] = documents.map((f, i) => ({
+        id: `src-gdrive-${Date.now()}-${i}`,
+        title: f.name.replace(/\.[^/.]+$/, "").replace(/[-_]/g, " "),
+        filename: f.name,
+        fileType: f.name.split(".").pop()?.toUpperCase() || "PDF",
+        size: f.sizeBytes ? `${(f.sizeBytes / 1024 / 1024).toFixed(1)} MB` : "Drive Document",
+        url: f.url || `https://drive.google.com/file/d/${f.id}/view`,
+        drivePath: f.url || `Google Drive / ${f.name}`,
+        uploadedAt: new Date().toISOString(),
+        sourceConfidence: 100,
+        extractedFieldsCount: 1,
+        syncStatus: "SYNCED",
+        syncEnabled: true,
+        isDownloadableDocument: true,
+        isGroundingSource: true,
+      }));
+      setGroundingSources((prev) => [...prev.filter((s) => !documents.some((d) => d.name === s.filename)), ...newSources]);
+
+      // Immediately ingest file content, create OKF, and save to Firestore
+      documents.forEach(async (doc) => {
+        try {
+          const [b64, textContent] = await Promise.all([
+            fetchGoogleDriveFileBase64(doc.id).catch(() => null),
+            fetchGoogleDriveFileContent(doc.id, doc.mimeType).catch(() => ""),
+          ]);
+
+          if (b64 || textContent) {
+            if (b64) {
+              cachePdfBase64(doc.name, b64);
+              cachePdfBase64(doc.name.toLowerCase(), b64);
+              cachePdfBase64(doc.id, b64);
+              if (doc.url) cachePdfBase64(doc.url, b64);
+            }
+
+            setSourceFilesList((prev) =>
+              prev.map((s) => {
+                if (s.name === doc.name) {
+                  return {
+                    ...s,
+                    base64Data: b64 || (s as any).base64Data,
+                    content: textContent || s.content,
+                  };
+                }
+                return s;
+              })
+            );
+
+            setGroundingSources((prev) =>
+              prev.map((s) => {
+                if (s.filename === doc.name) {
+                  return {
+                    ...s,
+                    base64Data: b64 || (s as any).base64Data,
+                    extractedText: textContent || s.extractedText,
+                    summary: textContent ? textContent.slice(0, 500) : s.summary,
+                  };
+                }
+                return s;
+              })
+            );
+
+            // Create and persist OKF Document to Firestore
+            const okfDoc = buildOKFDocument({
+              title: doc.name.replace(/\.[^/.]+$/, "").replace(/[-_]/g, " "),
+              companyId: effectiveCompanyId,
+              offeringId: initialOffering?.id,
+              entityType: offeringType === "service" ? "SERVICE" : "PRODUCT",
+              specifications: [],
+              certifications: [],
+              operationalBoundaries: [],
+              rawText: textContent || `${doc.name} Technical Document`,
+              sourceOrigin: "GOOGLE_DRIVE",
+            });
+
+            await saveOKFDocumentToFirestore(okfDoc);
+          }
+        } catch (e) {
+          console.warn("[OfferingCreationWizardModal] Background Firestore OKF ingestion:", e);
+        }
+      });
+    }
+
+    setDriveError(null);
+  };
+
+  const handleLaunchGoogleDrivePicker = async () => {
+    setIsOpeningDrivePicker(true);
+    setDriveError(null);
+    setDriveBrowserMode("documents");
+    try {
+      await requestGoogleAccessToken();
+      setIsDriveBrowserOpen(true);
+    } catch (err: any) {
+      console.warn("[OfferingCreationWizardModal] Opening Drive Explorer:", err);
+      setIsDriveBrowserOpen(true);
+    } finally {
+      setIsOpeningDrivePicker(false);
+    }
+  };
+
+  const handleApplyDriveLink = () => {
+    if (!driveLinkInput.trim()) return;
+    const parsed = parseGoogleDriveLink(driveLinkInput.trim());
+    if (parsed.isValid && parsed.fileId) {
+      setSourceFilesList([
+        {
+          name: `Google_Drive_Doc_${parsed.fileId.slice(0, 6)}.pdf`,
+          origin: "GOOGLE_DRIVE",
+          drivePath: driveLinkInput.trim(),
+          url: driveLinkInput.trim(),
+          isGroundingSource: true,
+          isDownloadable: true,
+        },
+      ]);
+      setDriveError(null);
+    } else {
+      setDriveError("Invalid Google Drive link format.");
     }
   };
 
@@ -520,10 +754,16 @@ export const OfferingCreationWizardModal: React.FC<OfferingCreationWizardModalPr
       base64Data?: string;
     }> = [];
 
+    const newSources: OfferingGroundingSource[] = [];
+
     for (const f of fileArray) {
       let b64: string | undefined;
       try {
         b64 = await readFileAsBase64(f);
+        if (b64) {
+          cachePdfBase64(f.name, b64);
+          cachePdfBase64(f.name.toLowerCase(), b64);
+        }
       } catch (err) {
         console.warn("Could not read file base64:", err);
       }
@@ -537,9 +777,34 @@ export const OfferingCreationWizardModal: React.FC<OfferingCreationWizardModalPr
         isDownloadable: true,
         base64Data: b64,
       });
+
+      const cleanTitle = f.name
+        .replace(/\.[^/.]+$/, "")
+        .replace(/[-_]/g, " ")
+        .replace(/\b\w/g, (c) => c.toUpperCase());
+
+      newSources.push({
+        id: `src-local-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        title: cleanTitle,
+        filename: f.name,
+        fileType: f.name.split(".").pop()?.toUpperCase() || "PDF",
+        size: formatFileSize(f.size),
+        uploadedAt: new Date().toISOString(),
+        sourceConfidence: 100,
+        extractedFieldsCount: 1,
+        syncStatus: "SYNCED",
+        syncEnabled: true,
+        isDownloadableDocument: true,
+        isGroundingSource: true,
+        base64Data: b64,
+      });
     }
 
     setSourceFilesList((prev) => [...prev, ...newFiles]);
+    setGroundingSources((prev) => [
+      ...prev.filter((s) => !newFiles.some((nf) => nf.name === s.filename)),
+      ...newSources,
+    ]);
   };
 
   // Format file size
@@ -556,33 +821,15 @@ export const OfferingCreationWizardModal: React.FC<OfferingCreationWizardModalPr
 
     for (let index = 0; index < fileArray.length; index++) {
       const file = fileArray[index];
-      const isImgOrDoc =
-        file.type.startsWith("image/") ||
-        file.type === "application/pdf" ||
-        file.name.match(/\.(png|jpe?g|webp|svg|gif|avif|bmp|tiff|pdf|dwg|dxf|cad|step|stp)$/i);
-      if (!isImgOrDoc) continue;
-
       const lower = file.name.toLowerCase();
-      const isPdf = lower.endsWith(".pdf") || file.type === "application/pdf";
-      let detectedType: "cover" | "photo" | "drawing" | "video" = "photo";
-      if (isPdf) {
-        detectedType = "drawing";
-      } else if (
-        lower.includes("drawing") ||
-        lower.includes("dwg") ||
-        lower.includes("cad") ||
-        lower.includes("schematic") ||
-        lower.includes("blueprint") ||
-        lower.includes("spec") ||
-        lower.endsWith(".svg")
-      ) {
-        detectedType = "drawing";
-      } else if (
-        makeCoverFirst ||
-        (index === 0 && !isPdf && (mediaList.length === 0 || lower.includes("cover") || lower.includes("main") || lower.includes("hero")))
-      ) {
-        detectedType = "cover";
-      }
+      const isImg =
+        file.type.startsWith("image/") ||
+        file.name.match(/\.(png|jpe?g|webp|svg|gif|avif|bmp)$/i);
+      const isDoc =
+        file.type === "application/pdf" ||
+        file.name.match(/\.(pdf|docx?|xlsx?|txt|dwg|dxf|cad|step|stp)$/i);
+
+      if (!isImg && !isDoc) continue;
 
       const cleanTitle = file.name
         .replace(/\.[^/.]+$/, "")
@@ -590,43 +837,62 @@ export const OfferingCreationWizardModal: React.FC<OfferingCreationWizardModalPr
         .replace(/\b\w/g, (c) => c.toUpperCase());
 
       try {
-        const res = await uploadFileToStorage(file, {
-          companyId,
-          categoryFolder: "offerings",
-          subFolder: (initialOffering?.id || name || "offering").toLowerCase().replace(/[^a-z0-9]+/g, "-"),
-          fileRole: isPdf ? "drawing" : detectedType,
-        });
+        if (isImg) {
+          const isCover = makeCoverFirst || (index === 0 && (mediaList.length === 0 || lower.includes("cover") || lower.includes("main")));
+          const res = await uploadFileToStorage(file, {
+            companyId,
+            categoryFolder: "offerings",
+            subFolder: (initialOffering?.id || name || "offering").toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+            fileRole: isCover ? "cover" : "photo",
+          });
 
-        const newMediaItem: OfferingMediaItem = {
-          id: `med-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-          url: res.url,
-          title: cleanTitle || `${name || "Offering"} Asset`,
-          type: detectedType,
-          isCover: !isPdf && (makeCoverFirst || (index === 0 && (mediaList.length === 0 || detectedType === "cover"))),
-          order: mediaList.length + index + 1,
-        };
+          const newMediaItem: OfferingMediaItem = {
+            id: `med-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            url: res.url,
+            title: cleanTitle || `${name || "Offering"} Photo`,
+            type: isCover ? "cover" : "photo",
+            isCover,
+            order: mediaList.length + index + 1,
+          };
 
-        setMediaList((prev) => {
-          if (newMediaItem.isCover) {
-            return [
-              newMediaItem,
-              ...prev.map((m) => ({
-                ...m,
-                isCover: false,
-                type: m.type === "cover" ? "photo" : m.type,
-              })),
-            ];
+          setMediaList((prev) => {
+            if (newMediaItem.isCover) {
+              return [
+                newMediaItem,
+                ...prev.map((m) => ({
+                  ...m,
+                  isCover: false,
+                  type: m.type === "cover" ? "photo" : m.type,
+                })),
+              ];
+            }
+            return [...prev, newMediaItem];
+          });
+        } else if (isDoc) {
+          let b64: string | undefined;
+          try {
+            b64 = await readFileAsBase64(file);
+            if (b64) {
+              cachePdfBase64(file.name, b64);
+              cachePdfBase64(file.name.toLowerCase(), b64);
+              cachePdfBase64(cleanTitle, b64);
+            }
+          } catch {
+            // base64 fallback
           }
-          return [...prev, newMediaItem];
-        });
 
-        // Also register PDF documents into Grounding Sources
-        if (isPdf) {
+          const res = await uploadFileToStorage(file, {
+            companyId,
+            categoryFolder: "offerings",
+            subFolder: (initialOffering?.id || name || "offering").toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+            fileRole: "drawing",
+          });
+
           const newSource: OfferingGroundingSource = {
             id: `src-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
             title: cleanTitle,
             filename: file.name,
-            fileType: "PDF",
+            fileType: file.name.split(".").pop()?.toUpperCase() || "PDF",
             size: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
             url: res.url,
             uploadedAt: new Date().toISOString(),
@@ -636,8 +902,68 @@ export const OfferingCreationWizardModal: React.FC<OfferingCreationWizardModalPr
             syncEnabled: true,
             isDownloadableDocument: true,
             isGroundingSource: true,
+            base64Data: b64,
           };
-          setGroundingSources((prev) => [...prev.filter((s) => s.url !== res.url && s.filename !== file.name), newSource]);
+
+          setGroundingSources((prev) => [
+            ...prev.filter((s) => s.filename !== file.name),
+            newSource,
+          ]);
+
+          setSourceFilesList((prev) => [
+            ...prev.filter((s) => s.name !== file.name),
+            {
+              name: file.name,
+              size: file.size,
+              origin: "COMPUTER",
+              url: res.url,
+              base64Data: b64,
+              isGroundingSource: true,
+              isDownloadable: true,
+            },
+          ]);
+
+          // Asynchronously extract full text, specs, and OKF from the document using Gemini
+          if (b64) {
+            extractOfferingWithGemini({
+              name: file.name,
+              size: file.size,
+              type: file.type || "application/pdf",
+              origin: "COMPUTER",
+              base64Data: b64,
+            }, offeringType).then(async (draft) => {
+              if (draft) {
+                const fullText = (draft.groundingSources?.[0]?.extractedText) || draft.detailedDescription || draft.shortDescription;
+                setGroundingSources((prev) =>
+                  prev.map((s) =>
+                    s.filename === file.name
+                      ? {
+                          ...s,
+                          extractedText: fullText,
+                          summary: draft.shortDescription || draft.detailedDescription,
+                          extractedFieldsCount: draft.extractedFieldsCount,
+                        }
+                      : s
+                  )
+                );
+
+                if (draft.specifications && draft.specifications.length > 0) {
+                  setSpecifications((prevSpecs) => {
+                    const existingKeys = new Set(prevSpecs.map((sp) => sp.key.toLowerCase().trim()));
+                    const newSpecsToAdd = draft.specifications.filter((sp) => !existingKeys.has(sp.key.toLowerCase().trim()));
+                    return [...prevSpecs, ...newSpecsToAdd];
+                  });
+                }
+
+                if (draft.okfDocument) {
+                  setOfferingOKFDoc(draft.okfDocument);
+                  await saveOKFDocumentToFirestore(draft.okfDocument).catch(console.warn);
+                }
+              }
+            }).catch((err) => {
+              console.warn("[OfferingCreationWizardModal] Background PDF extraction warning:", err);
+            });
+          }
         }
       } catch (uploadErr) {
         console.error("[OfferingCreationWizardModal] Media upload error:", uploadErr);
@@ -665,6 +991,17 @@ export const OfferingCreationWizardModal: React.FC<OfferingCreationWizardModalPr
     if (e.target.files && e.target.files.length > 0) {
       handleProcessDesktopFiles(e.target.files, true);
       e.target.value = "";
+    }
+  };
+
+  const handleImportDriveMedia = async () => {
+    setDriveBrowserMode("media");
+    try {
+      await requestGoogleAccessToken();
+      setIsDriveBrowserOpen(true);
+    } catch (err: any) {
+      console.warn("[OfferingCreationWizardModal] Opening Drive Explorer for media:", err);
+      setIsDriveBrowserOpen(true);
     }
   };
 
@@ -862,7 +1199,7 @@ export const OfferingCreationWizardModal: React.FC<OfferingCreationWizardModalPr
               folderPath: selectedDriveFolderId ? `/GoogleDrive/Folders/${selectedDriveFolderId}` : "/MarineWorld/Offerings/",
               autoSyncEnabled: true,
               lastSyncAt: new Date().toISOString(),
-              fileCount: selectedDriveFiles.length,
+              fileCount: sourceFilesList.filter((f) => f.origin === "GOOGLE_DRIVE").length,
             } as any)
           : initialOffering?.googleDriveSync,
       aiAdvisorConfig: {
@@ -878,6 +1215,33 @@ export const OfferingCreationWizardModal: React.FC<OfferingCreationWizardModalPr
       updatedAt: new Date().toISOString(),
       createdAt: initialOffering?.createdAt || new Date().toISOString(),
     };
+
+    let updatedOKF: OKFDocument | undefined = undefined;
+    if (offeringOKFDoc) {
+      updatedOKF = {
+        ...offeringOKFDoc,
+        title: finalOffering.name,
+        offeringId: finalOffering.id,
+        offeringSlug: finalOffering.slug,
+        entityType: finalOffering.type === "service" ? "SERVICE" : "PRODUCT",
+        companyId,
+      };
+      saveOKFDocumentToFirestore(updatedOKF).catch((err) => {
+        console.warn("[OfferingCreationWizardModal] Error saving OKF document:", err);
+      });
+      finalOffering.okfDocument = updatedOKF;
+    }
+
+    // Cache base64 data for all grounding files by offering ID and names
+    groundingSources.forEach((src) => {
+      const b64 = (src as any).base64Data;
+      if (b64) {
+        cachePdfBase64(finalOffering.id, b64);
+        cachePdfBase64(finalOffering.name, b64);
+        if (src.filename) cachePdfBase64(src.filename, b64);
+        if (src.title) cachePdfBase64(src.title, b64);
+      }
+    });
 
     onSaveOffering(finalOffering);
     onClose();
@@ -1033,7 +1397,7 @@ export const OfferingCreationWizardModal: React.FC<OfferingCreationWizardModalPr
                     <div className="space-y-1.5 pt-2 border-t border-line/60 text-[11px] font-mono text-stone">
                       <div className="flex items-center gap-2">
                         <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                        <span>Supports PDF, DOCX, XLSX, Images</span>
+                        <span>Supports PDF, DOCX, XLSX, Google Drive, Images</span>
                       </div>
                       <div className="flex items-center gap-2">
                         <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
@@ -1043,6 +1407,23 @@ export const OfferingCreationWizardModal: React.FC<OfferingCreationWizardModalPr
                         <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                         <span>Instant source attribution & grounding</span>
                       </div>
+                    </div>
+
+                    <div className="pt-2 flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setCreationMethod("DOCUMENT");
+                          setCurrentStep("DOCUMENT_INGEST");
+                          setSourceTab("GOOGLE_DRIVE");
+                          handleLaunchGoogleDrivePicker();
+                        }}
+                        className="px-3 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-800 text-[11px] font-mono font-bold flex items-center gap-1.5 transition border border-amber-500/20"
+                      >
+                        <FolderOpen className="w-3.5 h-3.5 text-amber-600" />
+                        <span>Direct Google Drive Import</span>
+                      </button>
                     </div>
                   </div>
 
@@ -1218,6 +1599,22 @@ export const OfferingCreationWizardModal: React.FC<OfferingCreationWizardModalPr
                         }
                       }}
                     />
+
+                    <div className="pt-2 flex items-center justify-center gap-3">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setSourceTab("GOOGLE_DRIVE");
+                          handleLaunchGoogleDrivePicker();
+                        }}
+                        className="px-4 py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-800 text-xs font-mono font-bold flex items-center gap-2 border border-amber-500/30 transition shadow-2xs cursor-pointer"
+                      >
+                        <FolderOpen className="w-4 h-4 text-amber-600" />
+                        <span>Or Import from Google Drive</span>
+                      </button>
+                    </div>
                   </label>
 
                   {/* Uploaded Files Queue */}
@@ -1269,20 +1666,53 @@ export const OfferingCreationWizardModal: React.FC<OfferingCreationWizardModalPr
                   <div className="p-4 rounded-2xl bg-amber-50/50 border border-amber-200/60 flex items-start gap-3">
                     <FolderOpen className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
                     <div className="space-y-1 text-xs">
-                      <p className="font-bold text-amber-900 uppercase font-mono">
-                        Google Drive Enterprise Sync Connected
+                      <p className="font-bold text-amber-900 uppercase font-mono flex items-center justify-between">
+                        <span>Google Drive Enterprise Sync & Ingestion</span>
+                        <span className="text-[10px] text-emerald-700 font-bold bg-emerald-100/80 px-2 py-0.5 rounded">CONNECTED</span>
                       </p>
                       <p className="text-amber-800 leading-relaxed">
-                        Select individual engineering datasheets or synchronize an entire offering folder. Updates to source documents in Google Drive will prompt version re-grounding.
+                        Service Account: <code className="font-mono text-[10.5px] bg-white/60 px-1 py-0.5 rounded">{SERVICE_ACCOUNT_EMAIL}</code> | Root Workspace: <code className="font-mono text-[10.5px] bg-white/60 px-1 py-0.5 rounded">{DEFAULT_ROOT_WORKSPACE}</code>
                       </p>
                     </div>
                   </div>
-                  {/* Google Drive Picker Trigger */}
-                  <div className="p-5 rounded-2xl border border-line bg-white space-y-4">
+
+                  {driveError && (
+                    <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 flex items-center gap-2 text-xs text-rose-800">
+                      <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                      <span>{driveError}</span>
+                    </div>
+                  )}
+
+                  {/* Option A: Direct Drive Link */}
+                  <div className="p-4 rounded-2xl border border-line bg-canvas space-y-3">
+                    <label className="text-xs font-bold text-graphite block">
+                      Option A: Paste Google Drive Share Link or File ID
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="url"
+                        value={driveLinkInput}
+                        onChange={(e) => setDriveLinkInput(e.target.value)}
+                        placeholder="https://drive.google.com/file/d/1A2B3C.../view"
+                        className="flex-1 px-3 py-2 bg-white border border-line rounded-xl text-xs font-mono text-graphite focus:outline-hidden focus:border-royal"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleApplyDriveLink}
+                        disabled={!driveLinkInput.trim()}
+                        className="px-4 py-2 rounded-xl bg-royal text-white text-xs font-bold hover:bg-royal/90 disabled:opacity-50 transition"
+                      >
+                        Add Drive File
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Option B: Google Drive Picker Trigger */}
+                  <div className="p-5 rounded-2xl border border-dashed border-line bg-white space-y-4">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                       <div>
                         <h4 className="font-bold text-xs text-graphite uppercase font-mono">
-                          Google Drive Live Integration
+                          Option B: Interactive Google Drive Picker
                         </h4>
                         <p className="text-xs text-stone mt-0.5">
                           Pick engineering specifications and datasheets directly from your Google Drive using Google Picker API.
@@ -1291,29 +1721,12 @@ export const OfferingCreationWizardModal: React.FC<OfferingCreationWizardModalPr
 
                       <button
                         type="button"
-                        onClick={async () => {
-                          try {
-                            const files = await openGoogleDrivePicker({ allowFolders: true, multiSelect: true });
-                            if (files && files.length > 0) {
-                              setSourceFilesList((prev) => [
-                                ...prev,
-                                ...files.map((f) => ({
-                                  name: f.name,
-                                  origin: "GOOGLE_DRIVE" as const,
-                                  drivePath: f.url || `Google Drive / ${f.name}`,
-                                  isGroundingSource: true,
-                                  isDownloadable: true,
-                                })),
-                              ]);
-                            }
-                          } catch (err: any) {
-                            console.error("[OfferingWizard] Google Picker error:", err);
-                          }
-                        }}
-                        className="px-4 py-2.5 bg-royal hover:bg-royal/90 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-2xs transition shrink-0"
+                        onClick={handleLaunchGoogleDrivePicker}
+                        disabled={isOpeningDrivePicker}
+                        className="px-4 py-2.5 bg-royal hover:bg-royal/90 disabled:opacity-60 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-2xs transition shrink-0"
                       >
                         <Folder className="w-4 h-4" />
-                        <span>Browse Google Drive...</span>
+                        <span>{isOpeningDrivePicker ? "Opening Picker..." : "Browse Google Drive..."}</span>
                       </button>
                     </div>
 
@@ -1335,7 +1748,7 @@ export const OfferingCreationWizardModal: React.FC<OfferingCreationWizardModalPr
                                   <span className="text-xs font-bold text-graphite truncate">{file.name}</span>
                                 </div>
                                 <span className="text-[10px] font-mono font-bold uppercase text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md">
-                                  Selected
+                                  Ready to Parse
                                 </span>
                               </div>
                             ))}
@@ -1431,9 +1844,9 @@ export const OfferingCreationWizardModal: React.FC<OfferingCreationWizardModalPr
                   id="btn-trigger-ai-extraction"
                   disabled={
                     sourceFilesList.length === 0 &&
-                    ((sourceTab as string) === "GOOGLE_DRIVE" && selectedDriveFiles.length === 0) &&
-                    ((sourceTab as string) === "URL" && !documentUrl.trim()) &&
-                    ((sourceTab as string) === "PRESETS" && !selectedPresetId && !selectedKnowledgeDocId)
+                    !documentUrl.trim() &&
+                    !selectedPresetId &&
+                    !selectedKnowledgeDocId
                   }
                   onClick={handleRunExtraction}
                   className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-royal hover:bg-royal/90 disabled:opacity-50 text-white text-xs font-bold shadow-md cursor-pointer transition uppercase tracking-wider"
@@ -2301,16 +2714,26 @@ export const OfferingCreationWizardModal: React.FC<OfferingCreationWizardModalPr
 
               {/* Media Gallery Grid */}
               <div className="space-y-3">
-                <div className="flex items-center justify-between font-mono text-xs font-bold text-graphite uppercase">
+                <div className="flex flex-wrap items-center justify-between font-mono text-xs font-bold text-graphite uppercase gap-2">
                   <span>Offering Visual Gallery ({mediaList.length})</span>
-                  <button
-                    type="button"
-                    onClick={() => mediaFileInputRef.current?.click()}
-                    className="text-[11px] font-mono text-royal hover:underline flex items-center gap-1 cursor-pointer"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Upload More from Desktop</span>
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleImportDriveMedia}
+                      className="text-[11px] font-mono text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-300 px-2.5 py-1 rounded-lg flex items-center gap-1 cursor-pointer transition"
+                    >
+                      <FolderOpen className="w-3.5 h-3.5 text-amber-600" />
+                      <span>Import from Google Drive</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => mediaFileInputRef.current?.click()}
+                      className="text-[11px] font-mono text-royal bg-royal/5 hover:bg-royal/10 border border-royal/30 px-2.5 py-1 rounded-lg flex items-center gap-1 cursor-pointer transition"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Upload from Desktop</span>
+                    </button>
+                  </div>
                 </div>
 
                 {mediaList.length === 0 ? (
@@ -2319,16 +2742,27 @@ export const OfferingCreationWizardModal: React.FC<OfferingCreationWizardModalPr
                     <div className="space-y-1">
                       <p className="text-xs font-bold text-graphite uppercase">No Media Assets Added Yet</p>
                       <p className="text-xs text-stone">
-                        Upload equipment photos, CAD schematics, or datasheets from your desktop.
+                        Upload equipment photos, CAD schematics, or datasheets from your desktop or Google Drive.
                       </p>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => mediaFileInputRef.current?.click()}
-                      className="px-4 py-2 rounded-xl bg-royal text-white text-xs font-bold shadow-2xs hover:bg-royal/90 cursor-pointer"
-                    >
-                      Browse Desktop Files
-                    </button>
+                    <div className="flex items-center justify-center gap-2 pt-2">
+                      <button
+                        type="button"
+                        onClick={handleImportDriveMedia}
+                        className="px-4 py-2 rounded-xl bg-amber-600 text-white text-xs font-bold shadow-2xs hover:bg-amber-700 cursor-pointer flex items-center gap-1.5"
+                      >
+                        <FolderOpen className="w-4 h-4" />
+                        <span>Import from Google Drive</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => mediaFileInputRef.current?.click()}
+                        className="px-4 py-2 rounded-xl bg-royal text-white text-xs font-bold shadow-2xs hover:bg-royal/90 cursor-pointer flex items-center gap-1.5"
+                      >
+                        <Upload className="w-4 h-4" />
+                        <span>Browse Desktop Files</span>
+                      </button>
+                    </div>
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
@@ -2538,6 +2972,104 @@ export const OfferingCreationWizardModal: React.FC<OfferingCreationWizardModalPr
                 )}
               </div>
 
+              {/* ========================================================= */}
+              {/* SECTION 2: ATTACHED TECHNICAL DOCUMENTS & GROUNDING FILES */}
+              {/* ========================================================= */}
+              <div className="space-y-3 pt-6 border-t border-line">
+                <div className="flex flex-wrap items-center justify-between font-mono text-xs font-bold text-graphite uppercase gap-2">
+                  <div className="flex items-center gap-2">
+                    <FileText className="w-4 h-4 text-emerald-600" />
+                    <span>Technical Documents & Grounding Files ({groundingSources.length})</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDriveBrowserMode("documents");
+                        setIsDriveBrowserOpen(true);
+                      }}
+                      className="text-[11px] font-mono text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 px-2.5 py-1 rounded-lg flex items-center gap-1 cursor-pointer transition"
+                    >
+                      <FolderOpen className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>Add Docs from Drive</span>
+                    </button>
+                    <label className="text-[11px] font-mono text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 px-2.5 py-1 rounded-lg flex items-center gap-1 cursor-pointer transition">
+                      <Plus className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>Upload Document</span>
+                      <input
+                        type="file"
+                        multiple
+                        accept=".pdf,.docx,.xlsx,.txt,.dwg,.cad"
+                        className="hidden"
+                        onChange={(e) => {
+                          if (e.target.files && e.target.files.length > 0) {
+                            handleProcessDesktopFiles(e.target.files);
+                          }
+                        }}
+                      />
+                    </label>
+                  </div>
+                </div>
+
+                {groundingSources.length === 0 ? (
+                  <div className="p-6 rounded-2xl border border-line bg-slate-50 text-center space-y-2">
+                    <FileText className="w-8 h-8 text-slate-400 mx-auto" />
+                    <p className="text-xs font-bold text-graphite uppercase">No Technical Documents Attached</p>
+                    <p className="text-xs text-stone">
+                      Attach datasheets, manuals, or certificates to ground this offering with verified data.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {groundingSources.map((source) => (
+                      <div
+                        key={source.id}
+                        className="p-3.5 rounded-2xl border border-line bg-white shadow-2xs flex items-center justify-between gap-3 hover:border-emerald-300 transition"
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-700 shrink-0">
+                            <FileText className="w-5 h-5" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-xs font-bold text-graphite truncate" title={source.filename}>
+                              {source.title || source.filename}
+                            </p>
+                            <p className="text-[10px] font-mono text-stone">
+                              {source.fileType} • {source.size} • {source.origin || "DIRECT UPLOAD"}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {source.url && (
+                            <a
+                              href={source.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition"
+                              title="Download / View"
+                            >
+                              <ExternalLink className="w-3.5 h-3.5" />
+                            </a>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setGroundingSources((prev) => prev.filter((s) => s.id !== source.id));
+                              setSourceFilesList((prev) => prev.filter((f) => f.name !== source.filename));
+                            }}
+                            className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 transition"
+                            title="Remove Document"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               {/* Fullscreen Preview Lightbox Modal (Supports both Images and PDF Documents) */}
               {selectedPreviewMedia && (
                 <div
@@ -2575,15 +3107,20 @@ export const OfferingCreationWizardModal: React.FC<OfferingCreationWizardModalPr
                       </div>
                     </div>
                     <div className="flex-1 overflow-auto flex flex-col items-center justify-center p-4 bg-slate-950 min-h-[60vh]">
-                      {selectedPreviewMedia.url?.toLowerCase().includes(".pdf") ? (
+                      {selectedPreviewMedia.url?.toLowerCase().includes(".pdf") ||
+                      selectedPreviewMedia.type === "drawing" ? (
                         <div className="w-full flex-1 flex flex-col items-center justify-center space-y-3">
                           <iframe
-                            src={`https://docs.google.com/viewer?url=${encodeURIComponent(selectedPreviewMedia.url)}&embedded=true`}
+                            src={getEmbeddableDocumentUrl(selectedPreviewMedia.url)}
                             title={selectedPreviewMedia.title || "PDF Document"}
                             className="w-full h-[65vh] rounded-xl border border-slate-800 bg-white"
                           />
                           <div className="flex items-center justify-between w-full px-2 text-xs text-slate-400">
-                            <span>Direct PDF Storage Resource</span>
+                            <span>
+                              {selectedPreviewMedia.url?.includes("drive.google.com")
+                                ? "Google Drive Document Resource"
+                                : "Direct Technical Document Resource"}
+                            </span>
                             <a
                               href={selectedPreviewMedia.url}
                               target="_blank"
@@ -2591,13 +3128,13 @@ export const OfferingCreationWizardModal: React.FC<OfferingCreationWizardModalPr
                               className="px-3.5 py-1.5 rounded-lg bg-royal text-white font-bold flex items-center gap-1.5 hover:bg-royal/90 transition shadow-2xs text-xs"
                             >
                               <ExternalLink className="w-3.5 h-3.5" />
-                              <span>Open / Download Original PDF</span>
+                              <span>Open / Download in Google Drive</span>
                             </a>
                           </div>
                         </div>
                       ) : (
                         <img
-                          src={selectedPreviewMedia.url}
+                          src={formatMediaImageUrl(selectedPreviewMedia.url)}
                           alt={selectedPreviewMedia.title}
                           className="max-w-full max-h-[70vh] object-contain rounded-lg shadow-lg"
                         />
@@ -2853,6 +3390,17 @@ export const OfferingCreationWizardModal: React.FC<OfferingCreationWizardModalPr
                 </button>
 
                 <div className="flex items-center gap-2 w-full sm:w-auto">
+                  {offeringOKFDoc && (
+                    <button
+                      type="button"
+                      onClick={() => setIsOKFViewerOpen(true)}
+                      className="px-3.5 py-2 rounded-xl bg-slate-900 text-cyan-400 hover:bg-slate-800 text-xs font-bold transition shadow-2xs flex items-center gap-1.5 border border-cyan-500/30"
+                    >
+                      <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
+                      <span>Inspect OKF (.okf.md)</span>
+                    </button>
+                  )}
+
                   <button
                     type="button"
                     onClick={() => handleFinalSave("DRAFT")}
@@ -2877,6 +3425,24 @@ export const OfferingCreationWizardModal: React.FC<OfferingCreationWizardModalPr
 
         </div>
       </div>
+
+      {isOKFViewerOpen && offeringOKFDoc && (
+        <OKFDocumentViewerModal
+          isOpen={isOKFViewerOpen}
+          onClose={() => setIsOKFViewerOpen(false)}
+          okfDoc={offeringOKFDoc}
+        />
+      )}
+
+      {isDriveBrowserOpen && (
+        <GoogleDriveBrowserModal
+          isOpen={isDriveBrowserOpen}
+          onClose={() => setIsDriveBrowserOpen(false)}
+          onSelectFiles={handleDriveFilesSelected}
+          multiSelect={true}
+          mimeTypeFilter={driveBrowserMode}
+        />
+      )}
     </div>
   );
 };

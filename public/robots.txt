@@ -1,0 +1,32 @@
+# robots.txt for MarineWorld City & Open Knowledge Format (OKF) Data Layer
+User-agent: *
+Allow: /
+Allow: /api/okf/
+Allow: /llms.txt
+Allow: /.well-known/llms.txt
+
+# Major Search Engines
+User-agent: Googlebot
+Allow: /
+User-agent: Bingbot
+Allow: /
+
+# External AI Crawlers & LLM Indexers
+User-agent: Google-Extended
+Allow: /
+User-agent: GPTBot
+Allow: /
+User-agent: ClaudeBot
+Allow: /
+User-agent: PerplexityBot
+Allow: /
+User-agent: CCBot
+Allow: /
+User-agent: anthropic-ai
+Allow: /
+User-agent: OAI-SearchBot
+Allow: /
+User-agent: Applebot-Extended
+Allow: /
+
+Sitemap: https://marineworld.city/sitemap.xml

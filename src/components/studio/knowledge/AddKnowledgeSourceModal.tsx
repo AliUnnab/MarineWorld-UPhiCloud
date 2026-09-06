@@ -23,9 +23,10 @@ import {
   Trash2,
   ExternalLink,
   Lock,
-  Eye,
   Info,
   Anchor,
+  HardDrive,
+  ShieldCheck,
 } from "lucide-react";
 import type {
   CompanyOffering,
@@ -44,6 +45,10 @@ import {
 } from "@/lib/services/knowledgeIngestionService";
 import {
   openGoogleDrivePicker,
+  requestGoogleAccessToken,
+  parseGoogleDriveLink,
+  SERVICE_ACCOUNT_EMAIL,
+  DEFAULT_ROOT_WORKSPACE,
   type GoogleDriveSelectedFile,
 } from "@/lib/services/googleDriveService";
 import { saveCompanyDocument } from "@/services/knowledgeService";
@@ -52,6 +57,10 @@ import {
   deleteFileFromStorage,
   validateStorageFile,
 } from "@/lib/services/storageService";
+import type { OKFDocument } from "@/lib/types/okf";
+import { buildOKFDocument, saveOKFDocumentToFirestore } from "@/lib/services/okfService";
+import { OKFDocumentViewerModal } from "./OKFDocumentViewerModal";
+import { GoogleDriveBrowserModal } from "./GoogleDriveBrowserModal";
 
 
 interface AddKnowledgeSourceModalProps {
@@ -156,6 +165,12 @@ export const AddKnowledgeSourceModal: React.FC<AddKnowledgeSourceModalProps> = (
   const [drivePickedFiles, setDrivePickedFiles] = useState<GoogleDriveSelectedFile[]>([]);
   const [isOpeningDrivePicker, setIsOpeningDrivePicker] = useState(false);
   const [driveError, setDriveError] = useState<string | null>(null);
+  const [driveLinkInput, setDriveLinkInput] = useState("");
+  const [isDriveBrowserOpen, setIsDriveBrowserOpen] = useState(false);
+
+  // OKF Inspector Modal State
+  const [isOKFViewerOpen, setIsOKFViewerOpen] = useState(false);
+  const [generatedOKFDoc, setGeneratedOKFDoc] = useState<OKFDocument | null>(null);
 
   // Reset modal state on open/close
   useEffect(() => {
@@ -274,32 +289,80 @@ export const AddKnowledgeSourceModal: React.FC<AddKnowledgeSourceModalProps> = (
         setSelectedOfferingId(result.detectedOfferingId || "");
         setSelectedFacilityName(result.detectedFacilityName || "Rotterdam Maritime Sector Base");
         setStructuredFacts(result.structuredFacts);
+
+        // Construct canonical OKF document
+        const okfDoc = buildOKFDocument({
+          title: result.documentTitle,
+          entityType: result.detectedOfferingId ? "PRODUCT" : "GENERAL_CORPORATE",
+          companyId,
+          sourceOrigin: payload.sourceType === "GOOGLE_DRIVE" ? "GOOGLE_DRIVE" : payload.sourceType === "URL_SOURCE" ? "URL_SOURCE" : "LOCAL_UPLOAD",
+          originalFileName: payload.fileName || result.documentTitle,
+          driveFileId: payload.sourceType === "GOOGLE_DRIVE" ? selectedDriveItem?.id : undefined,
+          drivePath: payload.googleDrivePath || (selectedDriveItem ? `MarineWorld_Workspace/${selectedDriveItem.name}` : undefined),
+          summaryText: result.summaryText || `${result.documentTitle} technical knowledge document.`,
+          specifications: result.structuredFacts.map((f) => ({
+            key: f.field,
+            label: f.fieldLabel,
+            value: f.canonicalValue,
+            confidence: f.confidenceScore,
+            category: f.category === "CERTIFICATION" ? "COMPLIANCE" : "GENERAL",
+          })),
+          certifications: result.structuredFacts
+            .filter((f) => f.category === "CERTIFICATION")
+            .map((f) => f.canonicalValue),
+          confidenceScore: result.confidenceScore || 0.98,
+        });
+        setGeneratedOKFDoc(okfDoc);
+
         setStep("REVIEW_AND_GROUND");
       }
     }, 350);
+  };
+
+  const handleDriveFilesSelected = (files: GoogleDriveSelectedFile[]) => {
+    if (files.length > 0) {
+      const picked = files[0];
+      setDrivePickedFiles(files);
+      setSelectedDriveItem({
+        id: picked.id,
+        name: picked.name,
+        type: picked.isFolder ? "FOLDER" : "FILE",
+        path: picked.url || `Google Drive / ${picked.name}`,
+        size: picked.sizeBytes ? `${Math.round(picked.sizeBytes / 1024)} KB` : "Google Doc",
+      });
+      setDriveError(null);
+    }
   };
 
   const handleLaunchGoogleDrivePicker = async () => {
     setIsOpeningDrivePicker(true);
     setDriveError(null);
     try {
-      const files = await openGoogleDrivePicker({ allowFolders: true, multiSelect: false });
-      if (files && files.length > 0) {
-        const picked = files[0];
-        setDrivePickedFiles(files);
-        setSelectedDriveItem({
-          id: picked.id,
-          name: picked.name,
-          type: picked.isFolder ? "FOLDER" : "FILE",
-          path: picked.url || `Google Drive / ${picked.name}`,
-          size: picked.sizeBytes ? `${Math.round(picked.sizeBytes / 1024)} KB` : "Google Doc",
-        });
-      }
+      await requestGoogleAccessToken();
+      setIsDriveBrowserOpen(true);
     } catch (err: any) {
-      console.error("[AddKnowledgeSourceModal] Google Picker Error:", err);
-      setDriveError(err?.message || "Could not open Google Drive Picker. Please verify permissions.");
+      console.warn("[AddKnowledgeSourceModal] Opening Drive Explorer:", err);
+      setIsDriveBrowserOpen(true);
     } finally {
       setIsOpeningDrivePicker(false);
+    }
+  };
+
+  // Process Drive Link Input
+  const handleApplyDriveLink = () => {
+    if (!driveLinkInput.trim()) return;
+    const parsed = parseGoogleDriveLink(driveLinkInput.trim());
+    if (parsed.isValid && parsed.fileId) {
+      setSelectedDriveItem({
+        id: parsed.fileId,
+        name: `Google_Drive_Doc_${parsed.fileId.slice(0, 6)}.pdf`,
+        type: parsed.isFolder ? "FOLDER" : "FILE",
+        path: driveLinkInput.trim(),
+        size: "Shared Drive Resource",
+      });
+      setDriveError(null);
+    } else {
+      setDriveError("Invalid Google Drive link format. Please provide a valid Drive file or folder URL.");
     }
   };
 
@@ -370,6 +433,16 @@ export const AddKnowledgeSourceModal: React.FC<AddKnowledgeSourceModalProps> = (
 
     try {
       await saveCompanyDocument(companyId, document);
+      if (generatedOKFDoc) {
+        const updatedOKF: OKFDocument = {
+          ...generatedOKFDoc,
+          title: editedTitle,
+          documentId: document.id,
+          offeringId: editedScope === "OFFERING" ? selectedOfferingId : undefined,
+          classifications: [editedClassification],
+        };
+        await saveOKFDocumentToFirestore(updatedOKF);
+      }
     } catch (err) {
       console.warn("[AddKnowledgeSourceModal] Firestore sync error:", err);
     }
@@ -672,10 +745,10 @@ export const AddKnowledgeSourceModal: React.FC<AddKnowledgeSourceModalProps> = (
               <div className="flex items-center justify-between">
                 <div>
                   <h4 className="text-xs font-bold text-graphite uppercase tracking-wider">
-                    Google Drive Live Connection
+                    Google Drive Live Connection & Workspace
                   </h4>
                   <p className="text-xs text-stone mt-0.5">
-                    Connect and pick documentation directly from your Google Drive using Google Picker.
+                    Connect and pick documentation directly from your Google Drive using Google Picker or paste a direct Drive link.
                   </p>
                 </div>
                 <button
@@ -687,6 +760,23 @@ export const AddKnowledgeSourceModal: React.FC<AddKnowledgeSourceModalProps> = (
                 </button>
               </div>
 
+              {/* Service Account / Workspace Status Badge */}
+              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-700 space-y-1">
+                <div className="flex items-center justify-between font-mono text-[10.5px]">
+                  <span className="font-bold text-graphite flex items-center gap-1.5">
+                    <HardDrive className="w-3.5 h-3.5 text-royal" />
+                    Google Drive Service Account
+                  </span>
+                  <span className="text-emerald-700 font-bold">READY</span>
+                </div>
+                <div className="text-[10px] font-mono text-stone truncate">
+                  Account: <code>{SERVICE_ACCOUNT_EMAIL}</code>
+                </div>
+                <div className="text-[10px] font-mono text-stone">
+                  Target Root Workspace: <code>{DEFAULT_ROOT_WORKSPACE}</code>
+                </div>
+              </div>
+
               {driveError && (
                 <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 flex items-center gap-2 text-xs text-rose-800">
                   <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
@@ -694,13 +784,38 @@ export const AddKnowledgeSourceModal: React.FC<AddKnowledgeSourceModalProps> = (
                 </div>
               )}
 
-              <div className="p-4 rounded-xl border border-dashed border-line bg-canvas flex flex-col items-center justify-center text-center space-y-3 py-6">
-                <div className="w-12 h-12 rounded-2xl bg-amber-500/10 text-amber-600 flex items-center justify-center">
-                  <Folder className="w-6 h-6" />
+              {/* Paste Drive Link Option */}
+              <div className="p-4 rounded-xl border border-line bg-canvas space-y-3">
+                <label className="text-xs font-bold text-graphite block">
+                  Option A: Paste Google Drive Share Link
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="url"
+                    value={driveLinkInput}
+                    onChange={(e) => setDriveLinkInput(e.target.value)}
+                    placeholder="https://drive.google.com/file/d/1A2B3C.../view or folder link"
+                    className="flex-1 px-3 py-2 bg-white border border-line rounded-xl text-xs font-mono text-graphite focus:outline-hidden focus:border-royal"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleApplyDriveLink}
+                    disabled={!driveLinkInput.trim()}
+                    className="px-4 py-2 rounded-xl bg-royal text-white text-xs font-bold hover:bg-royal/90 disabled:opacity-50 transition"
+                  >
+                    Connect Link
+                  </button>
+                </div>
+              </div>
+
+              {/* Interactive Google Drive Picker Option */}
+              <div className="p-4 rounded-xl border border-dashed border-line bg-canvas flex flex-col items-center justify-center text-center space-y-3 py-5">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center">
+                  <Folder className="w-5 h-5" />
                 </div>
                 <div>
                   <h5 className="text-xs font-bold text-graphite">
-                    {selectedDriveItem ? selectedDriveItem.name : "Select Google Drive Document"}
+                    Option B: Interactive Google Drive Picker
                   </h5>
                   <p className="text-[11px] text-stone mt-0.5 max-w-sm">
                     {selectedDriveItem
@@ -750,6 +865,7 @@ export const AddKnowledgeSourceModal: React.FC<AddKnowledgeSourceModalProps> = (
               <div className="pt-2 flex justify-end gap-2">
                 <button
                   type="button"
+                  disabled={!selectedDriveItem}
                   onClick={() => {
                     if (!selectedDriveItem) return;
                     startIngestionPipeline({
@@ -762,7 +878,7 @@ export const AddKnowledgeSourceModal: React.FC<AddKnowledgeSourceModalProps> = (
                   className="px-5 py-2.5 bg-royal hover:bg-royal/90 disabled:opacity-40 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition"
                 >
                   <Cpu className="w-3.5 h-3.5" />
-                  <span>Analyze Selected Drive File with AI</span>
+                  <span>Transform into Sealed OKF Document</span>
                 </button>
               </div>
             </div>
@@ -1292,6 +1408,15 @@ export const AddKnowledgeSourceModal: React.FC<AddKnowledgeSourceModalProps> = (
             <div className="flex items-center gap-2">
               <button
                 type="button"
+                onClick={() => setIsOKFViewerOpen(true)}
+                className="px-3.5 py-2 rounded-xl bg-slate-900 text-cyan-400 hover:bg-slate-800 text-xs font-bold transition shadow-2xs flex items-center gap-1.5 border border-cyan-500/30"
+              >
+                <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Inspect OKF (.okf.md)</span>
+              </button>
+
+              <button
+                type="button"
                 id="btn-save-draft-knowledge"
                 onClick={() => handleConfirmAndGround(false)}
                 className="px-4 py-2 rounded-xl bg-white border border-line hover:bg-mist text-graphite text-xs font-bold transition shadow-2xs"
@@ -1312,6 +1437,24 @@ export const AddKnowledgeSourceModal: React.FC<AddKnowledgeSourceModalProps> = (
           )}
         </div>
       </div>
+
+      {isOKFViewerOpen && generatedOKFDoc && (
+        <OKFDocumentViewerModal
+          isOpen={isOKFViewerOpen}
+          onClose={() => setIsOKFViewerOpen(false)}
+          okfDoc={generatedOKFDoc}
+        />
+      )}
+
+      {isDriveBrowserOpen && (
+        <GoogleDriveBrowserModal
+          isOpen={isDriveBrowserOpen}
+          onClose={() => setIsDriveBrowserOpen(false)}
+          onSelectFiles={handleDriveFilesSelected}
+          multiSelect={true}
+          mimeTypeFilter="documents"
+        />
+      )}
     </div>
   );
 };

@@ -26,6 +26,9 @@ import {
   PowerOff,
   Trash2,
   Unlink,
+  ShieldCheck,
+  HardDrive,
+  BadgeCheck,
 } from "lucide-react";
 import type { DocumentEntity, CompanyEntity, CompanyOffering } from "@/lib/types";
 import { getCompanyById } from "@/lib/services/companyService";
@@ -62,6 +65,10 @@ import {
 } from "@/components/studio/knowledge/LifecycleConfirmationModal";
 import { SafeDeleteModal } from "@/components/studio/knowledge/SafeDeleteModal";
 import type { KnowledgeSourceType } from "@/lib/services/knowledgeIngestionService";
+import type { OKFDocument } from "@/lib/types/okf";
+import { buildOKFDocument } from "@/lib/services/okfService";
+import { OKFDocumentViewerModal } from "./knowledge/OKFDocumentViewerModal";
+import { SERVICE_ACCOUNT_EMAIL, DEFAULT_ROOT_WORKSPACE } from "@/lib/services/googleDriveService";
 
 type KnowledgeClassification =
   | "ALL"
@@ -113,6 +120,29 @@ export const CompanyStudioKnowledgeView: React.FC<CompanyStudioKnowledgeViewProp
     type: ConfirmationType;
   } | null>(null);
   const [safeDeleteDoc, setSafeDeleteDoc] = useState<DocumentEntity | null>(null);
+
+  // OKF Inspector State
+  const [okfInspectDoc, setOkfInspectDoc] = useState<OKFDocument | null>(null);
+  const [isOKFInspectOpen, setIsOKFInspectOpen] = useState(false);
+
+  const handleInspectOKF = (doc: DocumentEntity) => {
+    const okf = buildOKFDocument({
+      documentId: doc.id,
+      title: doc.title,
+      entityType: doc.productId || doc.serviceId ? "PRODUCT" : "GENERAL_CORPORATE",
+      companyId,
+      offeringId: doc.productId || doc.serviceId,
+      sourceOrigin: doc.sourceType === "GOOGLE_DRIVE" ? "GOOGLE_DRIVE" : doc.sourceType === "URL" ? "URL_SOURCE" : "LOCAL_UPLOAD",
+      originalFileName: doc.title,
+      summaryText: (doc.metadata?.summaryText as string) || doc.title,
+      specifications: (doc.metadata?.specifications as any) || [],
+      certifications: (doc.metadata?.certifications as any) || (doc.documentType === "CERTIFICATE" ? [doc.title] : []),
+      commercialParameters: (doc.metadata?.commercialParameters as any),
+      confidenceScore: (doc.metadata?.confidenceScore as number) || 0.98,
+    });
+    setOkfInspectDoc(okf);
+    setIsOKFInspectOpen(true);
+  };
 
   const reloadData = async () => {
     try {
@@ -852,6 +882,18 @@ export const CompanyStudioKnowledgeView: React.FC<CompanyStudioKnowledgeViewProp
                           >
                             {statusText}
                           </span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleInspectOKF(doc);
+                            }}
+                            className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-slate-900 text-cyan-400 hover:bg-slate-800 border border-cyan-500/30 flex items-center gap-1 transition"
+                            title="Inspect Open Knowledge Format and Google Knowledge Catalog Seal"
+                          >
+                            <ShieldCheck className="w-3 h-3 text-cyan-400" />
+                            <span>SEALED OKF</span>
+                          </button>
                         </div>
                       </div>
 
@@ -1034,6 +1076,14 @@ export const CompanyStudioKnowledgeView: React.FC<CompanyStudioKnowledgeViewProp
             );
             setTimeout(() => setSuccessMessage(null), 3500);
           }}
+        />
+      )}
+      {/* 7. OKF Document & Knowledge Catalog Seal Inspector Modal */}
+      {isOKFInspectOpen && okfInspectDoc && (
+        <OKFDocumentViewerModal
+          isOpen={isOKFInspectOpen}
+          onClose={() => setIsOKFInspectOpen(false)}
+          okfDoc={okfInspectDoc}
         />
       )}
     </div>

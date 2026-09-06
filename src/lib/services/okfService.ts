@@ -229,7 +229,7 @@ export function buildOKFDocument(params: {
     mimeType: params.mimeType || "application/pdf",
     ingestedAt: now,
     ingestedBy: "MarineWorld OKF Enrichment Agent",
-    enrichmentEngine: "Gemini-2.0-Flash / OKF-Enrichment-Agent",
+    enrichmentEngine: "Gemini-3.6-Flash / OKF-Enrichment-Agent",
   };
 
   const doc: OKFDocument = {
@@ -353,7 +353,7 @@ export async function getCompanyOKFDocuments(companyId: string): Promise<OKFDocu
             sourceOrigin: data.sourceType === "GOOGLE_DRIVE" ? "GOOGLE_DRIVE" : "LOCAL_UPLOAD",
             ingestedAt: data.createdAt,
             ingestedBy: data.createdBy,
-            enrichmentEngine: "Gemini-2.0-Flash / OKF-Enrichment-Agent",
+            enrichmentEngine: "Gemini-3.6-Flash / OKF-Enrichment-Agent",
           },
           classifications: ["TECHNICAL"],
           specifications: data.metadata.specifications || [],
@@ -392,19 +392,19 @@ export function buildOKFGroundingContextPrompt(
   targetOfferingTitle?: string
 ): string {
   if (!okfDocs || okfDocs.length === 0) {
-    return "No verified OKF Knowledge Documents are currently attached. State clearly that verified parameters are unavailable.";
+    return "No verified Knowledge Documents are currently attached. State clearly that verified parameters are unavailable.";
   }
 
   const promptSections: string[] = [
-    "=== AUTHORITATIVE GOOGLE KNOWLEDGE CATALOG (OKF) GROUNDED DATA ===",
+    "=== AUTHORITATIVE KNOWLEDGE CATALOG GROUNDED DATA ===",
     "You must answer user inquiries using STRICTLY AND ONLY the verified facts, parameters, and specifications below.",
     "Do NOT hallucinate, extrapolate, or invent unlisted technical specs, pricing, or certifications.",
-    "When providing facts, explicitly cite the OKF Document and Section in the format [OKF: DocumentTitle §Section].",
+    "When providing facts, cite the verified document by name directly. NEVER use internal acronyms such as OKF.",
     "",
   ];
 
   okfDocs.forEach((doc, idx) => {
-    promptSections.push(`--- [OKF SEALED RECORD #${idx + 1}] ---`);
+    promptSections.push(`--- [VERIFIED RECORD #${idx + 1}] ---`);
     promptSections.push(`Document: ${doc.title} (Seal ID: ${doc.knowledgeCatalogSeal.sealId})`);
     promptSections.push(`Entity Type: ${doc.entityType}`);
     promptSections.push(`Source Lineage: ${doc.lineage.sourceOrigin} | Status: ${doc.knowledgeCatalogSeal.status}`);
@@ -438,6 +438,152 @@ export function buildOKFGroundingContextPrompt(
     promptSections.push("");
   });
 
-  promptSections.push("=== END OF OKF GROUNDED DATA ===");
+  promptSections.push("=== END OF GROUNDED DATA ===");
   return promptSections.join("\n");
 }
+
+/**
+ * Stage 14.5 — Universal AI & Crawler OKF Document Resolver
+ * Resolves verified OKF document by company and offering identifiers.
+ * Checks Firestore first, then falls back to Registry catalog definitions.
+ */
+export async function resolveOKFDocumentForOffering(
+  companyIdOrSlug: string,
+  offeringIdOrSlug: string
+): Promise<OKFDocument | null> {
+  const normComp = (companyIdOrSlug || "").toLowerCase().trim();
+  const normOff = (offeringIdOrSlug || "").toLowerCase().trim();
+
+  // 1. Try fetching from Firestore documents collection
+  try {
+    const colRef = collection(db, "companies", companyIdOrSlug, "documents");
+    const snap = await getDocs(colRef);
+    for (const d of snap.docs) {
+      const data = d.data();
+      if (data.metadata?.isOKF) {
+        const offId = (data.productId || data.serviceId || "").toLowerCase();
+        const docTitle = (data.title || "").toLowerCase();
+        if (
+          d.id.toLowerCase() === normOff ||
+          offId === normOff ||
+          docTitle.includes(normOff) ||
+          normOff.includes(docTitle)
+        ) {
+          return {
+            okfVersion: data.metadata.okfVersion || "1.0",
+            documentId: d.id,
+            title: data.title || "OKF Document",
+            entityType: data.productId || data.serviceId ? "PRODUCT" : "GENERAL_CORPORATE",
+            companyId: data.companyId || companyIdOrSlug,
+            companySlug: companyIdOrSlug,
+            offeringId: data.productId || data.serviceId || offeringIdOrSlug,
+            knowledgeCatalogSeal:
+              data.metadata.knowledgeCatalogSeal ||
+              generateKnowledgeCatalogSeal(companyIdOrSlug, data.title, ""),
+            lineage: data.metadata.lineage || {
+              sourceOrigin: data.sourceType === "GOOGLE_DRIVE" ? "GOOGLE_DRIVE" : "LOCAL_UPLOAD",
+              ingestedAt: data.createdAt,
+              ingestedBy: data.createdBy,
+              enrichmentEngine: "Gemini-3.6-Flash / OKF-Enrichment-Agent",
+            },
+            classifications: ["TECHNICAL"],
+            specifications: data.metadata.specifications || [],
+            certifications: data.metadata.certifications || [],
+            commercialParameters: data.metadata.commercialParameters,
+            operationalBoundaries: data.metadata.operationalBoundaries || [],
+            tags: ["OKF", "Google-Knowledge-Catalog"],
+            summaryText: data.metadata.summaryText || data.title,
+            rawMarkdownBody: data.metadata.fullOkfMarkdown || "",
+            fullOkfMarkdown: data.metadata.fullOkfMarkdown || "",
+            groundingRules: {
+              hallucinationPrevention: "STRICT_SEALED",
+              allowExternalInference: false,
+              autoSyncWithDrive: true,
+              citationRequired: true,
+            },
+            confidenceScore: data.metadata.confidenceScore || 0.95,
+            createdAt: data.createdAt,
+            updatedAt: data.updatedAt,
+          };
+        }
+      }
+    }
+  } catch (err) {
+    // Firestore might be unavailable in some mock runs, proceed to fallback
+  }
+
+  // 2. Fallback to Registry definitions
+  try {
+    const { getCompanyById, getCompanyProducts, getCompanyServices } = await import("@/lib/registry");
+    const company = getCompanyById(companyIdOrSlug);
+    if (company) {
+      const allOfferings = [
+        ...(company.offerings || []),
+        ...(getCompanyProducts(company) || []),
+        ...(getCompanyServices(company) || []),
+      ];
+
+      const match = allOfferings.find((o: any) => {
+        if (!o) return false;
+        const id = (o.id || "").toLowerCase();
+        const slug = (o.slug || "").toLowerCase();
+        const name = (o.name || "").toLowerCase();
+        return id === normOff || slug === normOff || name === normOff || name.includes(normOff);
+      });
+
+      if (match) {
+        const m = match as any;
+        const specsArray: OKFSpecification[] = [];
+        if (m.specifications) {
+          Object.entries(m.specifications).forEach(([k, v]) => {
+            specsArray.push({
+              key: k,
+              label: k,
+              value: String(v),
+              confidence: 0.98,
+              category: "GENERAL",
+            });
+          });
+        }
+
+        const certStrings: string[] = (m.certifications || []).map((c: any) =>
+          typeof c === "string" ? c : c?.name || String(c)
+        );
+
+        return buildOKFDocument({
+          documentId: `okf-${company.id}-${m.id || m.slug}`,
+          title: m.name,
+          entityType: m.type === "service" ? "SERVICE" : "PRODUCT",
+          companyId: company.id,
+          companySlug: company.slug || company.id,
+          offeringId: m.id,
+          offeringSlug: m.slug,
+          sourceOrigin: "LOCAL_UPLOAD",
+          originalFileName: `${m.name}_Technical_Datasheet.pdf`,
+          summaryText:
+            m.shortDescription ||
+            m.detailedDescription ||
+            `${m.name} verified engineering specification.`,
+          rawContent: `${m.name}\n${m.shortDescription || ""}\n${m.detailedDescription || ""}`,
+          specifications: specsArray,
+          certifications: certStrings,
+          commercialParameters: {
+            price: m.price || m.commercialInformation?.price,
+            currency: m.currency || m.commercialInformation?.currency || "USD",
+            pricingModel: m.commercialInformation?.pricingType || "Fixed",
+            leadTimeDays: m.commercialInformation?.leadTime
+              ? parseInt(String(m.commercialInformation.leadTime)) || undefined
+              : undefined,
+          },
+          operationalBoundaries: m.applications || [],
+          confidenceScore: 0.99,
+        });
+      }
+    }
+  } catch (err) {
+    console.warn("[OKFService] Registry fallback lookup failed:", err);
+  }
+
+  return null;
+}
+

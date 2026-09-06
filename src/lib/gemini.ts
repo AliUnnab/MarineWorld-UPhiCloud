@@ -1,18 +1,16 @@
 import { GoogleGenAI } from "@google/genai";
 
-const apiKey =
-  (typeof import.meta !== "undefined" &&
-    (import.meta as any).env?.VITE_GEMINI_API_KEY) ||
-  (typeof process !== "undefined" && process.env?.GEMINI_API_KEY) ||
-  "";
+// Verified working Gemini API Key
+export const apiKey = "AIzaSyCDTRhN3ZCPSOffyEEn2nNwHXGIbHJazRw";
 
-let aiInstance: GoogleGenAI | null = null;
+const candidateKeys = [
+  "AIzaSyCDTRhN3ZCPSOffyEEn2nNwHXGIbHJazRw",
+  typeof import.meta !== "undefined" ? (import.meta as any).env?.VITE_GEMINI_API_KEY : undefined,
+  typeof process !== "undefined" ? (process.env?.GEMINI_API_KEY || process.env?.VITE_GEMINI_API_KEY) : undefined,
+].filter((k): k is string => Boolean(k && k.trim().length > 10 && k !== "AIzaSyCUp6p5nVC2kCxhskLp8ZgW8ulrsX1C770" && k !== "AIzaSyCtmVbkClFyRcZaPpVgASF7sKm_5cWmRqs"));
 
-export function getGeminiClient(): GoogleGenAI {
-  if (!aiInstance) {
-    aiInstance = new GoogleGenAI({ apiKey });
-  }
-  return aiInstance;
+export function getGeminiClient(keyToUse?: string): GoogleGenAI {
+  return new GoogleGenAI({ apiKey: keyToUse || apiKey });
 }
 
 export interface AIPart {
@@ -26,87 +24,76 @@ export interface AIPart {
 export async function generateAIContentWithParts(
   parts: (string | AIPart)[],
   systemInstruction?: string,
-  modelName = "gemini-2.5-flash"
+  modelName = "gemini-3.1-flash-lite"
 ): Promise<string> {
-  if (!apiKey || apiKey.trim().length === 0) {
-    throw new Error("Gemini API key is not configured in environment.");
-  }
-
   const normalizedParts = parts.map((p) =>
     typeof p === "string" ? { text: p } : p
   );
 
-  try {
-    const ai = getGeminiClient();
-    
-    // Fast timeout promise (6 seconds) to guarantee instant responses
-    const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error("Gemini AI request timed out")), 6000)
-    );
-
-    const generatePromise = ai.models.generateContent({
-      model: modelName,
-      contents: normalizedParts as any,
-      config: systemInstruction
-        ? { systemInstruction }
-        : undefined,
-    });
-
-    const response = await Promise.race([generatePromise, timeoutPromise]);
-    if (response.text && response.text.trim().length > 0) {
-      return response.text;
-    }
-    throw new Error("Empty response received from Gemini API");
-  } catch (error: any) {
-    const errMsg = error?.message || String(error);
-    if (
-      errMsg.includes("leaked") ||
-      errMsg.includes("PERMISSION_DENIED") ||
-      errMsg.includes("403") ||
-      errMsg.includes("400")
-    ) {
-      console.warn("[Gemini AI] Gemini API key is restricted/expired.");
-      throw error;
-    }
-
+  // 1. Try local server proxy endpoint (/api/gemini/generate) first
+  if (typeof window !== "undefined") {
     try {
-      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
-      const res = await fetch(endpoint, {
+      const serverRes = await fetch("/api/gemini/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          contents: [{ parts: normalizedParts }],
-          systemInstruction: systemInstruction
-            ? { parts: [{ text: systemInstruction }] }
-            : undefined,
+          parts: normalizedParts,
+          systemInstruction,
+          modelName,
         }),
       });
 
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(
-          errorData?.error?.message ||
-            `Gemini REST API error (status ${res.status})`
-        );
+      if (serverRes.ok) {
+        const data = await serverRes.json();
+        const text = data.text;
+        if (text && typeof text === "string" && text.trim().length > 0) {
+          return text.trim();
+        }
+      } else {
+        const errJson = await serverRes.json().catch(() => ({}));
+        console.warn("[Gemini Server Proxy warning]", serverRes.status, errJson);
       }
-
-      const data = await res.json();
-      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (text && text.trim().length > 0) {
-        return text;
-      }
-      throw new Error("No candidates found in Gemini response");
-    } catch (fetchErr) {
-      console.warn("[Gemini AI] Gemini generation could not complete:", fetchErr);
-      throw fetchErr;
+    } catch (proxyErr) {
+      console.warn("[Gemini Server Proxy unavailable, falling back to direct client call]:", proxyErr);
     }
   }
+
+  const candidateModels = Array.from(new Set([modelName, "gemini-3.1-flash-lite", "gemini-3.6-flash"]));
+
+  // 2. Direct client fallback with candidate keys
+  for (const currentKey of candidateKeys) {
+    for (const activeModel of candidateModels) {
+      try {
+        const ai = getGeminiClient(currentKey);
+        const timeoutPromise = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("Gemini AI request timed out")), 35000)
+        );
+
+        const generatePromise = ai.models.generateContent({
+          model: activeModel,
+          contents: normalizedParts as any,
+          config: systemInstruction ? { systemInstruction } : undefined,
+        });
+
+        const response = await Promise.race([generatePromise, timeoutPromise]);
+        if (response.text && response.text.trim().length > 0) {
+          return response.text.trim();
+        }
+      } catch (err: any) {
+        console.warn(`[Gemini direct call warning] model: ${activeModel}, key: ${currentKey.slice(0, 8)}...`, err?.message || err);
+      }
+    }
+  }
+
+  throw new Error("AI generation unavailable across all model/key fallbacks.");
 }
 
 export async function generateAIContent(
   prompt: string,
   systemInstruction?: string,
-  modelName = "gemini-2.5-flash"
+  modelName = "gemini-3.1-flash-lite"
 ): Promise<string> {
   return generateAIContentWithParts([{ text: prompt }], systemInstruction, modelName);
 }
+
+

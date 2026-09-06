@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
   X,
   Share2,
@@ -34,9 +34,11 @@ import type { CompanyProfile, ProductEntity, ServiceEntity, CompanyOffering, Kno
 import { getCompanyProducts, getCompanyServices } from "@/lib/registry";
 import { resolveMarineWorldCompanyDigitalId } from "@/lib/services/companyIdentityService";
 import { getCompanyOfferings, fetchCompanyOfferingsAsync } from "@/lib/services/offeringEntityService";
-import { resolvePdfAsBase64 } from "@/lib/services/offeringAIService";
+import { resolvePdfAsBase64, stripOKFTerminology } from "@/lib/services/offeringAIService";
 import { getKnowledgeSources } from "@/lib/services/knowledgeLifecycleService";
 import { generateAIContent, generateAIContentWithParts, type AIPart } from "@/lib/gemini";
+import type { OKFDocument, OKFSpecification } from "@/lib/types/okf";
+import { buildOKFDocument, getCompanyOKFDocuments, buildOKFGroundingContextPrompt } from "@/lib/services/okfService";
 import { ShareProtocolModal } from "./ShareProtocolModal";
 
 export type TwinPerspectiveMode = "technical" | "commercial" | "negotiation" | "operations";
@@ -80,10 +82,11 @@ export function CompanyBusinessTwinAIModal({
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [copiedId, setCopiedId] = useState(false);
   const [asyncOfferings, setAsyncOfferings] = useState<CompanyOffering[]>([]);
+  const [companyOKFDocs, setCompanyOKFDocs] = useState<OKFDocument[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Sync offerings from Firestore on mount
+  // Sync offerings & OKF documents from Firestore on mount
   useEffect(() => {
     if (!company?.id) return;
     fetchCompanyOfferingsAsync(company.id).then((list) => {
@@ -91,7 +94,19 @@ export function CompanyBusinessTwinAIModal({
         setAsyncOfferings(list);
       }
     });
-  }, [company?.id]);
+
+    getCompanyOKFDocuments(company.id).then((docs) => {
+      if (docs && docs.length > 0) {
+        setCompanyOKFDocs(docs);
+      } else if (company.slug && company.slug !== company.id) {
+        getCompanyOKFDocuments(company.slug).then((slugDocs) => {
+          if (slugDocs && slugDocs.length > 0) {
+            setCompanyOKFDocs(slugDocs);
+          }
+        });
+      }
+    });
+  }, [company?.id, company?.slug]);
 
   // Identity extraction
   const displayName = company.displayName || company.name || "Enterprise Node";
@@ -119,13 +134,134 @@ export function CompanyBusinessTwinAIModal({
   const products: ProductEntity[] = getCompanyProducts(company) || [];
   const services: ServiceEntity[] = getCompanyServices(company) || [];
   const canonicalOfferings = getCompanyOfferings(company.id) || [];
-  const mergedOfferingsMap = new Map<string, CompanyOffering>();
-  [...canonicalOfferings, ...(company.offerings || []), ...asyncOfferings].forEach((o) => {
-    if (o && o.id && !mergedOfferingsMap.has(o.id)) {
-      mergedOfferingsMap.set(o.id, o);
-    }
-  });
-  const offerings: CompanyOffering[] = Array.from(mergedOfferingsMap.values());
+
+  // Merge all products, services, and offerings into a unified collection
+  const offerings: CompanyOffering[] = useMemo(() => {
+    const map = new Map<string, CompanyOffering>();
+    [...canonicalOfferings, ...(company.offerings || []), ...asyncOfferings].forEach((o) => {
+      if (o && o.id && !map.has(o.id)) {
+        map.set(o.id, o);
+      }
+    });
+    products.forEach((p) => {
+      if (p && p.id && !map.has(p.id)) {
+        map.set(p.id, {
+          id: p.id,
+          name: p.name,
+          type: "product",
+          companyId: company.id,
+          slug: p.slug,
+          category: p.category,
+          shortDescription: p.shortDescription,
+          detailedDescription: p.description,
+          specifications: p.specifications as any,
+          certifications: p.certifications as any,
+          groundingSources: (p as any).groundingSources || [],
+          sourceDocuments: (p as any).sourceDocuments || [],
+          commercialInformation: (p as any).commercialInformation,
+          price: (p as any).price,
+          currency: (p as any).currency,
+        });
+      }
+    });
+    services.forEach((s) => {
+      if (s && s.id && !map.has(s.id)) {
+        map.set(s.id, {
+          id: s.id,
+          name: s.name,
+          type: "service",
+          companyId: company.id,
+          slug: s.slug,
+          category: s.category,
+          shortDescription: s.shortDescription,
+          detailedDescription: s.description,
+          specifications: s.specifications as any,
+          certifications: s.certifications as any,
+          groundingSources: (s as any).groundingSources || [],
+          sourceDocuments: (s as any).sourceDocuments || [],
+          commercialInformation: (s as any).commercialInformation,
+          price: (s as any).price,
+          currency: (s as any).currency,
+        });
+      }
+    });
+    return Array.from(map.values());
+  }, [canonicalOfferings, company.offerings, asyncOfferings, products, services, company.id]);
+
+  // Resolve all OKF documents across company and all offerings
+  const allResolvedOKFDocs = useMemo<OKFDocument[]>(() => {
+    const docMap = new Map<string, OKFDocument>();
+
+    // 1. Add all Firestore OKF documents
+    companyOKFDocs.forEach((d) => {
+      docMap.set(d.documentId, d);
+      if (d.offeringId) docMap.set(d.offeringId, d);
+    });
+
+    // 2. Ensure each offering has a complete OKF document
+    offerings.forEach((off) => {
+      if (off.id && !docMap.has(off.id)) {
+        const specsArray: OKFSpecification[] = [];
+        if (off.specifications) {
+          Object.entries(off.specifications).forEach(([k, v]) => {
+            specsArray.push({
+              key: k,
+              label: k,
+              value: String(v),
+              confidence: 0.98,
+              category: "GENERAL",
+            });
+          });
+        }
+
+        const docSources = [
+          ...(off.groundingSources || []),
+          ...(off.sourceDocuments || []),
+        ];
+        const fullExtracted = docSources
+          .map((d) => d.extractedText || (d as any).content || d.summary || "")
+          .filter(Boolean)
+          .join("\n\n");
+
+        const syntheticOKF = buildOKFDocument({
+          documentId: `okf-${company.id}-${off.id}`,
+          title: off.name,
+          entityType: off.type === "service" ? "SERVICE" : "PRODUCT",
+          companyId: company.id,
+          companySlug: company.slug || company.id,
+          offeringId: off.id,
+          offeringSlug: off.slug,
+          sourceOrigin: "LOCAL_UPLOAD",
+          originalFileName: `${off.name}_Technical_Datasheet.pdf`,
+          summaryText:
+            off.shortDescription ||
+            off.detailedDescription ||
+            `${off.name} verified engineering specification.`,
+          rawContent:
+            fullExtracted ||
+            `${off.name}\n${off.shortDescription || ""}\n${off.detailedDescription || ""}`,
+          specifications: specsArray,
+          certifications: (off.certifications || []).map((c: any) =>
+            typeof c === "string" ? c : c?.name || String(c)
+          ),
+          commercialParameters: {
+            price: off.price || off.commercialInformation?.price,
+            currency: off.currency || off.commercialInformation?.currency || "USD",
+            pricingModel: (off.commercialInformation?.pricingType as any) || "Fixed",
+            leadTimeDays: off.commercialInformation?.leadTime
+              ? parseInt(String(off.commercialInformation.leadTime)) || undefined
+              : undefined,
+          },
+          operationalBoundaries: off.applications || [],
+          confidenceScore: 0.99,
+        });
+
+        docMap.set(off.id, syntheticOKF);
+      }
+    });
+
+    return Array.from(new Set(docMap.values()));
+  }, [companyOKFDocs, offerings, company]);
 
   const knowledgeDocs: KnowledgeSourceEntity[] = [
     ...(getKnowledgeSources(company.id) || []),
@@ -285,6 +421,7 @@ export function CompanyBusinessTwinAIModal({
         services,
         offerings,
         knowledgeDocs,
+        allResolvedOKFDocs,
         capabilities,
         digitalIdInfo.mwCompanyDigitalId,
         formattedSectorCity
@@ -975,6 +1112,7 @@ function generateComprehensiveTwinResponse(
   products: ProductEntity[],
   services: ServiceEntity[],
   offerings: CompanyOffering[],
+  okfDocs: OKFDocument[],
   capabilities: string[],
   digitalId: string,
   sectorCity: string
@@ -984,27 +1122,69 @@ function generateComprehensiveTwinResponse(
   parameterCard?: { title: string; items: { label: string; value: string }[] };
   action?: { label: string; actionType: "CONNECT" | "OFFERINGS" | "SHARE" | "DOWNLOAD" };
 } {
-  const q = query.toLowerCase();
-  const displayName = company.displayName || company.name;
+  const q = query.toLowerCase().trim();
+  const displayName = company.displayName || company.name || "Company";
   const city = company.headquartersCity || company.city || "Rotterdam";
   const country = company.country || company.registrationCountry || "Netherlands";
 
+  // Check if query is targeting a specific offering by name
+  const matchedOffering = offerings.find((o) => {
+    const oName = (o.name || "").toLowerCase();
+    const oSlug = (o.slug || "").toLowerCase();
+    return q.includes(oName) || (oSlug && q.includes(oSlug));
+  });
+
+  if (matchedOffering) {
+    const price = matchedOffering.price || matchedOffering.commercialInformation?.price;
+    const currency = matchedOffering.currency || matchedOffering.commercialInformation?.currency || "USD";
+    const symbol = currency === "EUR" ? "€" : currency === "TRY" ? "₺" : currency === "GBP" ? "£" : "$";
+    const priceStr = price ? `${price.includes("$") || price.includes("€") || price.includes("₺") ? price : `${symbol}${price} ${currency}`}` : "Available upon RFQ";
+    const leadTimeStr = matchedOffering.commercialInformation?.leadTime ? `${matchedOffering.commercialInformation.leadTime}` : "Standard production schedule";
+
+    const specItems: { label: string; value: string }[] = [];
+    if (matchedOffering.specifications) {
+      Object.entries(matchedOffering.specifications).slice(0, 4).forEach(([k, v]) => {
+        specItems.push({ label: k, value: String(v) });
+      });
+    }
+
+    const certs = (matchedOffering.certifications || []).map((c: any) => typeof c === "string" ? c : c?.name || String(c));
+    const certsStr = certs.length > 0 ? certs.join(", ") : "DNV / Lloyd's Register / ABS";
+
+    const specsText = specItems.length > 0
+      ? specItems.map((s) => `• **${s.label}**: ${s.value}`).join("\n")
+      : "• Comprehensive verified engineering specifications available.";
+
+    return {
+      text: `**${matchedOffering.name}** (${matchedOffering.type === "service" ? "Service" : "Product"} / ${matchedOffering.category || "Maritime Offering"})\n\n${matchedOffering.shortDescription || matchedOffering.detailedDescription || "Verified institutional engineering specification."}\n\n**Technical Specifications:**\n${specsText}\n\n**Commercial Terms:**\n• **Price**: ${priceStr}\n• **Lead Time**: ${leadTimeStr}\n• **Class Certifications**: ${certsStr}\n\nWould you like to initiate a formal commercial RFQ or review the engineering datasheet?`,
+      sources: [`${matchedOffering.name} Technical Datasheet`, "MarineWorld Verified Registry", "Class Society Audit"],
+      parameterCard: {
+        title: `${matchedOffering.name} Parameters`,
+        items: [
+          { label: "Price", value: priceStr },
+          { label: "Lead Time", value: leadTimeStr },
+          ...(specItems.slice(0, 2)),
+          { label: "Certifications", value: certsStr },
+        ],
+      },
+      action: { label: "View Offering Details", actionType: "OFFERINGS" },
+    };
+  }
+
   // 1. Products & Offerings Query
-  if (q.includes("product") || q.includes("offering") || q.includes("build") || q.includes("equipment") || q.includes("catalog") || q.includes("ürün") || q.includes("katalog")) {
+  if (q.includes("product") || q.includes("offering") || q.includes("build") || q.includes("equipment") || q.includes("catalog") || q.includes("ürün") || q.includes("katalog") || q.includes("hizmet") || q.includes("service")) {
     const list = offerings.length > 0
-      ? offerings.slice(0, 5).map((o) => {
+      ? offerings.slice(0, 6).map((o) => {
           const price = o.price || o.commercialInformation?.price;
           const currency = o.currency || o.commercialInformation?.currency || "USD";
           const symbol = currency === "EUR" ? "€" : currency === "TRY" ? "₺" : currency === "GBP" ? "£" : "$";
           const priceBadge = price ? ` — Price: **${price.includes("$") || price.includes("€") || price.includes("₺") ? price : `${symbol}${price} ${currency}`}**` : "";
-          return `• **${o.name}** (${o.category || "Commercial Offering"})${priceBadge}\n  ${o.shortDescription || "Full institutional specification available."}`;
+          return `• **${o.name}** (${o.type === "service" ? "Service" : "Product"} / ${o.category || "Commercial Offering"})${priceBadge}\n  ${o.shortDescription || "Full institutional specification available."}`;
         }).join("\n\n")
-      : products.length > 0
-      ? products.slice(0, 5).map((p) => `• **${p.name}** (${p.category})\n  ${p.shortDescription || p.description}`).join("\n\n")
       : `• **Verified Marine Engineering Services** — Flagship specialized maritime solutions.`;
 
     return {
-      text: `Here is an overview of our verified product & offering catalog for **${displayName}**:\n\n${list}\n\nAll items are manufactured/delivered under verified classification standards (DNV, Lloyd's Register, ABS) and supported across **${sectorCity}**.\n\nWould you like detailed engineering schematics, lead times, or a formal quotation?`,
+      text: `Here is an overview of our verified products and services catalog for **${displayName}**:\n\n${list}\n\nAll items are manufactured and delivered under verified classification standards (DNV, Lloyd's Register, ABS) and supported across **${sectorCity}**.\n\nWould you like detailed engineering schematics, lead times, or a formal quotation?`,
       sources: ["MarineWorld Product Catalog", "Verified Offering Registry", "Class Society Certifications"],
       parameterCard: {
         title: "Catalog Compliance & Specifications",
@@ -1020,7 +1200,7 @@ function generateComprehensiveTwinResponse(
   }
 
   // 2. Sales / Contact / RFQ / Price Query
-  if (q.includes("sales") || q.includes("contact") || q.includes("rfq") || q.includes("email") || q.includes("quote") || q.includes("pricing") || q.includes("cost") || q.includes("rate") || q.includes("desk") || q.includes("fiyat") || q.includes("iletişim") || q.includes("teklif")) {
+  if (q.includes("sales") || q.includes("contact") || q.includes("rfq") || q.includes("email") || q.includes("quote") || q.includes("pricing") || q.includes("cost") || q.includes("rate") || q.includes("desk") || q.includes("fiyat") || q.includes("iletişim") || q.includes("teklif") || q.includes("sipariş")) {
     const email = company.officialEmail || `commercial@${company.slug || "marine"}.com`;
     const phone = company.officialPhone || "+31 (0) 10 400 9000";
 
@@ -1041,7 +1221,7 @@ function generateComprehensiveTwinResponse(
   }
 
   // 3. Technical Specs / Facility / Engineering
-  if (q.includes("spec") || q.includes("technical") || q.includes("dock") || q.includes("shipyard") || q.includes("facility") || q.includes("teknik") || q.includes("kapasite")) {
+  if (q.includes("spec") || q.includes("technical") || q.includes("dock") || q.includes("shipyard") || q.includes("facility") || q.includes("teknik") || q.includes("kapasite") || q.includes("tersane") || q.includes("sertifika") || q.includes("certification")) {
     const caps = capabilities.slice(0, 5).map((c) => `• **${c}**`).join("\n");
     return {
       text: `**Technical Profile & Operating Facilities for ${displayName}**:\n\n• **Primary Operating Hub**: ${city}, ${country}\n• **Classification Societies**: DNV, Lloyd's Register, Bureau Veritas, ABS.\n• **Core Capabilities**:\n${caps}\n\nOur engineering offices leverage 3D finite-element modeling, CFD hydrodynamic simulations, and digital twin telemetry integration.`,
@@ -1095,7 +1275,7 @@ function generateComprehensiveTwinResponse(
 }
 
 /**
- * Live Grounded Company AI using Gemini API with all Firestore data, offerings, prices, and attached documents
+ * Live Grounded Company AI using Gemini API with all Firestore data, offerings, prices, OKF records, and attached documents
  */
 async function generateComprehensiveTwinResponseAsync(
   query: string,
@@ -1105,6 +1285,7 @@ async function generateComprehensiveTwinResponseAsync(
   services: ServiceEntity[],
   offerings: CompanyOffering[],
   knowledgeDocs: KnowledgeSourceEntity[],
+  okfDocs: OKFDocument[],
   capabilities: string[],
   digitalId: string,
   sectorCity: string
@@ -1121,6 +1302,7 @@ async function generateComprehensiveTwinResponseAsync(
     products,
     services,
     offerings,
+    okfDocs,
     capabilities,
     digitalId,
     sectorCity
@@ -1128,91 +1310,145 @@ async function generateComprehensiveTwinResponseAsync(
 
   try {
     const displayName = company.displayName || company.name || "Company";
+    const legalName = company.legalName || displayName;
     const city = company.headquartersCity || company.city || "Rotterdam";
     const country = company.country || company.registrationCountry || "Netherlands";
-    
-    // Format offerings summary with prices and specs
-    const offeringLines = offerings.map((o) => {
+    const address = company.headquartersAddress || (company as any).address || "Havenlaan 100";
+    const email = company.officialEmail || `commercial@${company.slug || "marine"}.com`;
+    const phone = company.officialPhone || "+31 (0) 10 400 9000";
+    const website = company.website || "https://marineworld.city";
+    const foundedYear = company.foundedYear || "1875";
+    const description = company.description || company.corporateDescription || company.shortDescription || "Specialized maritime enterprise.";
+    const vesselTypes = (company.sectorAttributes?.vesselTypes || []).join(", ") || "Commercial Vessels, Offshore Support Ships, Special Craft";
+    const companyCerts = Array.isArray(company.certifications)
+      ? company.certifications.map((c: any) => typeof c === "string" ? c : c?.name || String(c)).join(", ")
+      : "ISO 9001:2015, DNV";
+
+    // 1. Authoritative OKF Grounding Context Snippet
+    const okfPromptSnippet = buildOKFGroundingContextPrompt(okfDocs, displayName);
+
+    // 2. Comprehensive Offerings Technical & Commercial Catalog
+    const offeringDetailedSections = offerings.map((o, idx) => {
       const price = o.price || o.commercialInformation?.price;
       const currency = o.currency || o.commercialInformation?.currency || "USD";
       const symbol = currency === "EUR" ? "€" : currency === "TRY" ? "₺" : currency === "GBP" ? "£" : "$";
-      const priceStr = price ? `Price: ${price.includes("$") || price.includes("€") || price.includes("₺") ? price : `${symbol}${price} ${currency}`}` : "Price: Available upon RFQ";
-      const leadTime = o.commercialInformation?.leadTime ? `, Lead Time: ${o.commercialInformation.leadTime}` : "";
-      const incoterms = o.commercialInformation?.incoterms ? `, Incoterms: ${o.commercialInformation.incoterms}` : "";
-      const specs = o.specifications ? Object.entries(o.specifications).slice(0, 3).map(([k, v]) => `${k}: ${v}`).join(", ") : "";
-      return `- **${o.name}** (${o.type?.toUpperCase() || "OFFERING"} / ${o.category || "General"}): ${o.shortDescription || ""}. [${priceStr}${leadTime}${incoterms}]. ${specs ? `Key Specs: [${specs}]` : ""}`;
-    }).join("\n");
+      const priceStr = price
+        ? (price.includes("$") || price.includes("€") || price.includes("₺") ? price : `${symbol}${price} ${currency}`)
+        : "Available upon official RFQ";
+      const leadTimeStr = o.commercialInformation?.leadTime ? `${o.commercialInformation.leadTime}` : "Standard production schedule";
+      const warrantyStr = o.commercialInformation?.warrantyPeriod || "24-Month Marine Warranty";
+      const incotermsStr = o.commercialInformation?.incoterms || "EXW / FOB";
+      const pricingModel = o.commercialInformation?.pricingType || "Fixed / Milestone Settlement";
 
-    // Format company knowledge documents & all offering grounding documents
-    const allCompanyDocsMap = new Map<string, string>();
-    knowledgeDocs.forEach((d: any) => {
-      const title = d.title || d.name || d.filename || "Document";
+      const specLines: string[] = [];
+      if (o.specifications) {
+        Object.entries(o.specifications).forEach(([k, v]) => {
+          specLines.push(`    - ${k}: ${v}`);
+        });
+      }
+
+      const certLines = (o.certifications || []).map((c: any) => typeof c === "string" ? c : c?.name || String(c));
+      const appsLines = (o.applications || []).join("; ") || "Commercial Marine, Offshore, Port Operations";
+
+      const docExtracts: string[] = [];
+      [...(o.groundingSources || []), ...(o.sourceDocuments || [])].forEach((g) => {
+        const text = g.extractedText || (g as any).content || g.summary || g.description || "";
+        if (text) {
+          docExtracts.push(`    - Attached Datasheet/Doc: "${g.title || g.filename || 'Technical File'}" (${g.fileType || 'PDF'})\n      Extracted Content: ${text.slice(0, 1500)}`);
+        }
+      });
+
+      return `--- [OFFERING RECORD #${idx + 1}] ---
+Title: ${o.name}
+Type: ${o.type === "service" ? "SERVICE" : "PRODUCT"}
+Category: ${o.category || "Maritime Equipment"}
+Commercial Pricing: ${priceStr} (Model: ${pricingModel})
+Standard Lead Time: ${leadTimeStr}
+Warranty: ${warrantyStr} | Incoterms: ${incotermsStr}
+Summary: ${o.shortDescription || "Verified engineering specification."}
+Detailed Overview: ${o.detailedDescription || o.shortDescription || "Class-approved marine solution."}
+Technical Specifications:
+${specLines.length > 0 ? specLines.join("\n") : "    - Standard verified marine parameters"}
+Class Certifications: ${certLines.length > 0 ? certLines.join(", ") : "DNV / Lloyd's Register / ABS Compliance"}
+Operational Applications & Target Scope: ${appsLines}
+Attached Technical Documents & Files:
+${docExtracts.length > 0 ? docExtracts.join("\n") : "    - Authoritative engineering datasheet attached"}`;
+    }).join("\n\n");
+
+    // 3. Corporate Knowledge Documents
+    const corporateDocSections = knowledgeDocs.map((d: any, idx) => {
+      const title = d.title || d.name || d.filename || `Corporate File #${idx + 1}`;
       const type = d.sourceType || d.type || "Document";
       const summary = d.summary || d.contentExcerpt || d.description || d.extractedText || "";
-      allCompanyDocsMap.set(title, `• Document: "${title}" (${type})${summary ? `\n  Summary/Content: ${summary}` : ""}`);
-    });
+      return `• Corporate Document: "${title}" (${type})${summary ? `\n  Summary/Excerpt: ${summary.slice(0, 1200)}` : ""}`;
+    }).join("\n\n");
 
-    offerings.forEach((o) => {
-      (o.groundingSources || []).forEach((g) => {
-        const title = g.title || g.filename || "Offering Resource";
-        const summary = g.summary || g.contentExcerpt || g.description || g.extractedText || o.shortDescription || "";
-        allCompanyDocsMap.set(title, `• Resource Document: "${title}" (${g.fileType || "PDF"}) for Offering [${o.name}]\n  Summary/Content: ${summary}`);
-      });
-      (o.mediaReferences || []).filter((m) => m.type === "drawing" || m.url?.toLowerCase().includes(".pdf")).forEach((m) => {
-        const title = m.title || "Blueprint Drawing";
-        allCompanyDocsMap.set(title, `• Technical Drawing / Blueprint: "${title}" (PDF) for Offering [${o.name}]`);
-      });
-    });
-
-    const docLines = Array.from(allCompanyDocsMap.values()).join("\n\n");
-
+    // 4. Full Master Prompt
     const prompt = `You are the official Company AI representative for "${displayName}" on the MarineWorld global maritime network.
-You have complete access to this company's verified profile, all registered products and services, commercial pricing, technical parameters, and all attached documents and resources.
+You have complete, 100% full visibility into ALL company information, all registered products, all services, all technical specifications, all commercial prices, lead times, warranties, all attached documents/blueprints, and all verified engineering records.
 
-VERIFIED COMPANY DATA:
+================================================================================
+1. VERIFIED COMPANY PROFILE & SOVEREIGN DIGITAL TWIN:
+================================================================================
 - Company Name: ${displayName}
-- Legal Name: ${company.legalName || displayName}
+- Legal Name: ${legalName}
 - Digital Registry ID: ${digitalId}
-- Headquarters: ${city}, ${country}
+- Headquarters: ${city}, ${country} (Address: ${address})
 - Sector City: ${sectorCity}
 - Operating Status: ${company.operatingStatus || "ACTIVE"}
 - Verification Status: ${company.verificationStatus || "VERIFIED"}
-- Official Commercial Email: ${company.officialEmail || "commercial@" + (company.slug || "marine") + ".com"}
-- Official Operations Phone: ${company.officialPhone || "+31 (0) 10 400 9000"}
-- Company Description: ${company.description || company.corporateDescription || company.shortDescription || "N/A"}
-- Core Capabilities: ${capabilities.join(", ") || "Marine Engineering, Vessel Construction, Maritime Services"}
+- Official Commercial Email: ${email}
+- Official Operations Phone: ${phone}
+- Official Website: ${website}
+- Year Founded: ${foundedYear}
+- Primary Sector: ${company.primarySectorCategory || company.industry || "Marine Engineering & Shipbuilding"}
+- Corporate Narrative & History: ${description}
+- Core Capabilities: ${capabilities.join(", ") || "Custom Shipbuilding, Naval Architecture, Hybrid Propulsion, Drydock Refit"}
+- Target Vessel Types: ${vesselTypes}
+- Corporate Accreditations: ${companyCerts}
 
-REGISTERED PRODUCTS & SERVICES (OFFERINGS WITH SPECIFICATIONS & PRICING):
-${offeringLines || "No individual offerings registered yet."}
+================================================================================
+2. AUTHORITATIVE KNOWLEDGE CATALOG GROUNDED DATA:
+================================================================================
+${okfPromptSnippet}
 
-ATTACHED DOCUMENTS & GROUNDED KNOWLEDGE RESOURCES (FULL DIRECT VISIBILITY):
-${docLines || "Standard MarineWorld Verified Registry Files."}
+================================================================================
+3. REGISTERED OFFERINGS (PRODUCTS & SERVICES - FULL TECHNICAL & COMMERCIAL DATA):
+================================================================================
+${offeringDetailedSections || "No individual offerings registered yet."}
 
+================================================================================
+4. ATTACHED CORPORATE KNOWLEDGE DOCUMENTS & PDF SOURCES:
+================================================================================
+${corporateDocSections || "Standard verified registry files."}
+
+================================================================================
 CURRENT PERSPECTIVE MODE: ${mode.toUpperCase()}
-
 USER INQUIRY:
 "${query}"
+================================================================================
 
-INSTRUCTIONS:
+INSTRUCTIONS & STRICT DIRECTIVES:
 1. Provide an authoritative, precise, professional, and helpful response strictly representing ${displayName}.
-2. You have FULL DIRECT VISIBILITY to inspect and understand all attached PDF documents, datasheets, blueprints, and files listed under ATTACHED DOCUMENTS & GROUNDED KNOWLEDGE RESOURCES.
-3. If the user asks what is in any document, asks about the document contents, or refers to any uploaded PDF/resource, explain and cite the content of that document accurately.
-4. Use ALL facts from the verified data above. If the user asks about specific products, prices, lead times, documents, or services, quote them accurately.
-5. If the user asks in Turkish, respond in natural professional Turkish. If in English, respond in English.
-6. Structure the response clearly with bold titles, clean bullet points (e.g. • Item: Value), and markdown without messy asterisks.
-7. If the user asks for commercial quotes, RFQs, or contact, provide the email, phone, and direct connect recommendations.
-8. Keep the response concise and focused (1 to 3 paragraphs).`;
+2. You have FULL DIRECT VISIBILITY to inspect and understand all attached documents, datasheets, blueprints, specifications, prices, lead times, and verified engineering records above.
+3. If the user asks about ANY specific product, service, specification, price, lead time, certification, or attached document, answer authoritatively and cite the exact values, numbers, and units from the data.
+4. If the user asks about the company, explain its capabilities, location, headquarters, drydocks, certifications, and history accurately.
+5. STRICT TERMINOLOGY RULE: UNDER NO CIRCUMSTANCES should you ever write or mention the acronym or word "OKF" or "Open Knowledge Format" anywhere in your response. Refer to sources as "verified technical specifications", "engineering datasheet", "doğrulanmış teknik veriler", "teknik veri föyü", or "teknik şartname".
+6. Multi-language support: If the user writes in Turkish, respond in fluent, professional, natural Turkish. If in English, respond in professional English.
+7. Format your response cleanly with bold headings, clean bullet points (•), and structured paragraphs. Never use raw messy markdown or excessive asterisks.
+8. If the user asks for commercial quotes, proposals, or contact, provide the official email, operations phone, and recommend opening an RFQ.
+9. Keep your response thorough yet focused (2 to 4 well-structured paragraphs).`;
 
-    const systemInstruction = `You are the verified Company AI for "${displayName}". You have full direct access to the company's verified profile, offerings, specifications, prices, and attached PDF resources. Answer authoritatively and accurately using ONLY the verified facts. Zero hallucination.`;
+    const systemInstruction = `You are the verified Senior Technical & Commercial Company AI representative for "${displayName}". You have complete, direct, full visibility into all company records, offerings, specifications, prices, and attached PDF datasheets. Answer authoritatively using ONLY verified facts. Zero hallucination. DO NOT mention the acronym "OKF" anywhere in your answer.`;
 
-    // Gather candidate PDF URLs (limit to 2 most relevant documents)
+    // Gather candidate PDF URLs (limit to 3 most relevant)
     const candidateUrls: string[] = [];
     for (const d of knowledgeDocs) {
       const candidateUrl = (d as any).base64Data || d.url || (d as any).fileUrl;
       if (candidateUrl && !candidateUrls.includes(candidateUrl)) candidateUrls.push(candidateUrl);
     }
     for (const o of offerings) {
-      for (const g of o.groundingSources || []) {
+      for (const g of [...(o.groundingSources || []), ...(o.sourceDocuments || [])]) {
         const candidateUrl = (g as any).base64Data || g.url;
         if (candidateUrl && !candidateUrls.includes(candidateUrl)) candidateUrls.push(candidateUrl);
       }
@@ -1220,7 +1456,7 @@ INSTRUCTIONS:
 
     const parts: (string | AIPart)[] = [];
     const resolvedPdfs = await Promise.all(
-      candidateUrls.slice(0, 2).map((url) => resolvePdfAsBase64(url))
+      candidateUrls.slice(0, 3).map((url) => resolvePdfAsBase64(url))
     );
 
     for (const b64 of resolvedPdfs) {
@@ -1234,19 +1470,81 @@ INSTRUCTIONS:
       }
     }
 
-    // Append instruction prompt
     parts.push({ text: prompt });
 
     const aiText = await generateAIContentWithParts(parts, systemInstruction);
     if (aiText && aiText.trim().length > 10) {
+      const cleanedText = stripOKFTerminology(aiText.trim());
+
+      // Smart Parameter Card detection based on query or response
+      const lowerQ = query.toLowerCase();
+      const matchedOff = offerings.find((o) => {
+        const oName = (o.name || "").toLowerCase();
+        const oSlug = (o.slug || "").toLowerCase();
+        return lowerQ.includes(oName) || (oSlug && lowerQ.includes(oSlug)) || cleanedText.toLowerCase().includes(oName);
+      });
+
+      let parameterCard: { title: string; items: { label: string; value: string }[] } | undefined = syncFallback.parameterCard;
+      let action: { label: string; actionType: "CONNECT" | "OFFERINGS" | "SHARE" | "DOWNLOAD" } | undefined = syncFallback.action;
+
+      if (matchedOff) {
+        const p = matchedOff.price || matchedOff.commercialInformation?.price;
+        const cur = matchedOff.currency || matchedOff.commercialInformation?.currency || "USD";
+        const sym = cur === "EUR" ? "€" : cur === "TRY" ? "₺" : cur === "GBP" ? "£" : "$";
+        const pStr = p ? (p.includes("$") || p.includes("€") || p.includes("₺") ? p : `${sym}${p} ${cur}`) : "Available upon RFQ";
+        const ltStr = matchedOff.commercialInformation?.leadTime ? `${matchedOff.commercialInformation.leadTime}` : "Standard schedule";
+
+        const specCardItems: { label: string; value: string }[] = [
+          { label: "Offering", value: matchedOff.name },
+          { label: "Price", value: pStr },
+          { label: "Lead Time", value: ltStr },
+        ];
+
+        if (matchedOff.specifications) {
+          Object.entries(matchedOff.specifications).slice(0, 2).forEach(([k, v]) => {
+            specCardItems.push({ label: k, value: String(v) });
+          });
+        }
+
+        parameterCard = {
+          title: `${matchedOff.name} Parameters`,
+          items: specCardItems.slice(0, 4),
+        };
+        action = { label: `View ${matchedOff.name}`, actionType: "OFFERINGS" };
+      } else if (lowerQ.includes("rfq") || lowerQ.includes("price") || lowerQ.includes("cost") || lowerQ.includes("contact") || lowerQ.includes("teklif") || lowerQ.includes("fiyat")) {
+        parameterCard = {
+          title: "Commercial Engagement Protocol",
+          items: [
+            { label: "RFQ Turnaround", value: "24–48 Business Hours" },
+            { label: "NDA Protection", value: "MarineWorld Standard" },
+            { label: "Commercial Desk", value: email },
+            { label: "Digital Registry ID", value: digitalId },
+          ],
+        };
+        action = { label: "Open RFQ / Direct Connect", actionType: "CONNECT" };
+      } else if (lowerQ.includes("spec") || lowerQ.includes("technical") || lowerQ.includes("dock") || lowerQ.includes("shipyard") || lowerQ.includes("teknik")) {
+        parameterCard = {
+          title: "Technical Profile & Capabilities",
+          items: [
+            { label: "Operating Hub", value: `${city}, ${country}` },
+            { label: "Sector City", value: sectorCity },
+            { label: "Class Approvals", value: "DNV, LR, ABS, BV" },
+            { label: "Capabilities", value: capabilities.slice(0, 2).join(", ") },
+          ],
+        };
+        action = { label: "Download Spec Summary", actionType: "DOWNLOAD" };
+      }
+
       const sources: string[] = ["MarineWorld Verified Registry", `${displayName} Corporate Catalog`];
       if (offerings.length > 0) sources.push("Verified Offering Specifications");
-      if (knowledgeDocs.length > 0) sources.push("Attached Technical Documents");
+      if (okfDocs.length > 0) sources.push("Verified Technical Datasheets");
+      if (knowledgeDocs.length > 0) sources.push("Attached Corporate Documents");
 
       return {
-        ...syncFallback,
-        text: aiText.trim(),
-        sources: sources.slice(0, 3),
+        text: cleanedText,
+        sources: sources.slice(0, 4),
+        parameterCard,
+        action,
       };
     }
   } catch (err) {

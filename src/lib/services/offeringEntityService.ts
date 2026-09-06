@@ -568,6 +568,7 @@ export function saveCanonicalOffering(
     groundingStatus,
     fieldConfirmations,
     sourceAttributions,
+    okfDocument: offeringData.okfDocument || existingOffering?.okfDocument,
     aiAdvisorConfig: offeringData.aiAdvisorConfig || generateDefaultAdvisorConfig(offeringData),
     updatedAt: new Date().toISOString(),
     createdAt: existingOffering?.createdAt || offeringData.createdAt || new Date().toISOString(),
@@ -590,23 +591,42 @@ export function saveCanonicalOffering(
 
   canonicalOfferingsStore.set(companyId, updatedList);
 
+  // Strip large base64Data before writing to Firestore so documents don't exceed 1MB limit
+  const sanitizedListForFirestore = updatedList.map((off) => ({
+    ...off,
+    groundingSources: (off.groundingSources || []).map((src) => {
+      const copy = { ...src };
+      delete (copy as any).base64Data;
+      return copy;
+    }),
+  }));
+
   // Sync back to CompanyEntity (Firestore persistent)
   const updatedCompany: CompanyEntity = {
     ...company,
-    offerings: updatedList,
+    offerings: sanitizedListForFirestore,
     updatedAt: new Date().toISOString(),
   };
   saveCompany(updatedCompany);
 
   // Authoritative Subcollection Firestore write
   try {
+    const sanitizedOfferingForFirestore = {
+      ...finalOffering,
+      groundingSources: (finalOffering.groundingSources || []).map((src) => {
+        const copy = { ...src };
+        delete (copy as any).base64Data;
+        return copy;
+      }),
+    };
+
     if (finalOffering.entityType === "PRODUCT" || finalOffering.type === "product") {
       import("@/services/productService").then(({ saveProduct }) => {
-        saveProduct(companyId, finalOffering as any);
+        saveProduct(companyId, sanitizedOfferingForFirestore as any);
       });
     } else {
       import("@/services/serviceService").then(({ saveService }) => {
-        saveService(companyId, finalOffering as any);
+        saveService(companyId, sanitizedOfferingForFirestore as any);
       });
     }
   } catch (err) {

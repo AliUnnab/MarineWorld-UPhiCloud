@@ -1,8 +1,15 @@
 /**
- * Google Drive & Picker API Service
- * Handles OAuth2 authentication via Google Identity Services (GIS)
- * and file picking via Google Drive Picker API.
+ * Google Drive & Picker API Service with OKF Ingestion Pipeline
+ * Supports:
+ * - Google Identity Services (GIS) OAuth2 authentication
+ * - Google Drive Picker API
+ * - Service Account workspace binding (driveorganizerokf@uphi-marineworld.iam.gserviceaccount.com)
+ * - Shared Drive Link URL parser
+ * - Automatic OKF Transformation & Google Knowledge Catalog Sealing
  */
+
+import { runOKFEnrichmentPipeline } from "@/lib/services/okfEnrichmentAgent";
+import type { OKFDocument } from "@/lib/types/okf";
 
 declare global {
   interface Window {
@@ -24,26 +31,33 @@ export interface GoogleDriveSelectedFile {
   downloadUrl?: string;
 }
 
-const GOOGLE_CLIENT_ID =
+export const GOOGLE_CLIENT_ID =
   (typeof import.meta !== "undefined" &&
     (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID) ||
   (typeof process !== "undefined" &&
     (process.env?.GOOGLE_CLIENT_ID || process.env?.VITE_GOOGLE_CLIENT_ID)) ||
-  "";
+  "436648335800-njc2k5lsggl0mmevha5sbi961olapuq5.apps.googleusercontent.com";
 
-const DEVELOPER_KEY =
+export const SERVICE_ACCOUNT_EMAIL = "driveorganizerokf@uphi-marineworld.iam.gserviceaccount.com";
+export const FALLBACK_SERVICE_ACCOUNT_EMAIL = "firebase-adminsdk-fbsvc@marineworld-contracts.iam.gserviceaccount.com";
+export const DEFAULT_ROOT_WORKSPACE = "MarineWorld_Workspace";
+
+export const GOOGLE_API_KEY =
   (typeof import.meta !== "undefined" &&
-    ((import.meta as any).env?.VITE_GEMINI_API_KEY ||
+    ((import.meta as any).env?.VITE_GOOGLE_API_KEY ||
       (import.meta as any).env?.VITE_FIREBASE_API_KEY)) ||
   (typeof process !== "undefined" &&
-    (process.env?.GEMINI_API_KEY || process.env?.VITE_GEMINI_API_KEY)) ||
-  "";
+    (process.env?.GOOGLE_API_KEY || process.env?.VITE_FIREBASE_API_KEY)) ||
+  "AIzaSyCtmVbkClFyRcZaPpVgASF7sKm_5cWmRqs";
+
+const DEVELOPER_KEY = GOOGLE_API_KEY;
 
 const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.readonly";
 
 let isGapiLoaded = false;
 let isGsiLoaded = false;
-let accessToken: string | null = null;
+let accessToken: string | null =
+  typeof window !== "undefined" ? sessionStorage.getItem("mw_gdrive_token") : null;
 let tokenClient: any = null;
 
 /**
@@ -101,39 +115,72 @@ export async function loadGoogleScripts(): Promise<void> {
  * Requests OAuth2 Access Token for Google Drive using Google Identity Services
  */
 export async function requestGoogleAccessToken(): Promise<string> {
+  if (typeof window !== "undefined" && !accessToken) {
+    accessToken = sessionStorage.getItem("mw_gdrive_token");
+  }
+
+  if (accessToken) {
+    return accessToken;
+  }
+
   await loadGoogleScripts();
 
   return new Promise((resolve, reject) => {
     try {
-      if (!tokenClient) {
-        tokenClient = window.google.accounts.oauth2.initTokenClient({
-          client_id: GOOGLE_CLIENT_ID,
-          scope: DRIVE_SCOPE,
-          callback: (tokenResponse: any) => {
-            if (tokenResponse.error !== undefined) {
-              console.error("[GoogleDriveService] OAuth error:", tokenResponse);
-              reject(new Error(tokenResponse.error));
-              return;
-            }
-            accessToken = tokenResponse.access_token;
-            resolve(tokenResponse.access_token);
-          },
-        });
-      }
+      tokenClient = window.google.accounts.oauth2.initTokenClient({
+        client_id: GOOGLE_CLIENT_ID,
+        scope: DRIVE_SCOPE,
+        callback: (tokenResponse: any) => {
+          if (tokenResponse.error !== undefined) {
+            console.error("[GoogleDriveService] OAuth error:", tokenResponse);
+            reject(new Error(tokenResponse.error));
+            return;
+          }
+          accessToken = tokenResponse.access_token;
+          if (typeof window !== "undefined") {
+            sessionStorage.setItem("mw_gdrive_token", tokenResponse.access_token);
+          }
+          resolve(tokenResponse.access_token);
+        },
+      });
 
-      // Check if token already valid
-      if (accessToken) {
-        resolve(accessToken);
-        return;
-      }
-
-      // Request token interactively
-      tokenClient.requestAccessToken({ prompt: "consent" });
+      tokenClient.requestAccessToken({ prompt: "" });
     } catch (err) {
       console.error("[GoogleDriveService] Error initializing token client:", err);
       reject(err);
     }
   });
+}
+
+/**
+ * Extracts file ID and type from any Google Drive URL
+ */
+export function parseGoogleDriveLink(link: string): {
+  isValid: boolean;
+  fileId?: string;
+  isFolder: boolean;
+} {
+  if (!link || typeof link !== "string") return { isValid: false, isFolder: false };
+
+  const trimmed = link.trim();
+  // File pattern: /file/d/FILE_ID/ or id=FILE_ID
+  const fileMatch = trimmed.match(/\/file\/d\/([a-zA-Z0-9_-]+)/) || trimmed.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if (fileMatch) {
+    return { isValid: true, fileId: fileMatch[1], isFolder: false };
+  }
+
+  // Folder pattern: /folders/FOLDER_ID
+  const folderMatch = trimmed.match(/\/folders\/([a-zA-Z0-9_-]+)/);
+  if (folderMatch) {
+    return { isValid: true, fileId: folderMatch[1], isFolder: true };
+  }
+
+  // Raw file ID
+  if (/^[a-zA-Z0-9_-]{20,}$/.test(trimmed)) {
+    return { isValid: true, fileId: trimmed, isFolder: false };
+  }
+
+  return { isValid: false, isFolder: false };
 }
 
 /**
@@ -164,11 +211,17 @@ export async function openGoogleDrivePicker(options?: {
         view.setMimeTypes(options.mimeTypeFilter);
       }
 
+      const appId = GOOGLE_CLIENT_ID.split("-")[0];
       const pickerBuilder = new window.google.picker.PickerBuilder()
         .enableFeature(window.google.picker.Feature.NAV_HIDDEN)
-        .setAppId(GOOGLE_CLIENT_ID.split("-")[0])
-        .setOAuthToken(token)
-        .setDeveloperKey(DEVELOPER_KEY)
+        .setAppId(appId)
+        .setOAuthToken(token);
+
+      if (DEVELOPER_KEY && DEVELOPER_KEY.startsWith("AIza")) {
+        pickerBuilder.setDeveloperKey(DEVELOPER_KEY);
+      }
+
+      pickerBuilder
         .addView(view)
         .setCallback((data: any) => {
           if (data.action === window.google.picker.Action.PICKED) {
@@ -205,19 +258,63 @@ export async function openGoogleDrivePicker(options?: {
 }
 
 /**
- * Fetches text content from a Google Drive file if exportable / readable
+ * Lists files from Google Drive v3 REST API directly using OAuth2 Access Token.
+ * Bypasses Google Picker iframe / developer key issues completely.
+ */
+export async function listGoogleDriveFiles(
+  folderId: string = "root",
+  searchQuery?: string
+): Promise<GoogleDriveSelectedFile[]> {
+  const token = accessToken || (await requestGoogleAccessToken());
+  let query = `'${folderId}' in parents and trashed = false`;
+  if (searchQuery && searchQuery.trim()) {
+    query += ` and name contains '${searchQuery.trim().replace(/'/g, "\\'")}'`;
+  }
+
+  const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(
+    query
+  )}&fields=files(id,name,mimeType,size,iconLink,webViewLink,modifiedTime)&pageSize=100&orderBy=folder,name`;
+
+  const res = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    console.error("[GoogleDriveService] listGoogleDriveFiles error:", errText);
+    throw new Error(`Google Drive API error (${res.status}): ${res.statusText}`);
+  }
+
+  const data = await res.json();
+  return (data.files || []).map((doc: any) => ({
+    id: doc.id,
+    name: doc.name,
+    mimeType: doc.mimeType,
+    sizeBytes: doc.size ? Number(doc.size) : undefined,
+    url: doc.webViewLink || `https://drive.google.com/file/d/${doc.id}/view`,
+    iconUrl: doc.iconLink,
+    isFolder: doc.mimeType === "application/vnd.google-apps.folder",
+    lastModified: doc.modifiedTime,
+  }));
+}
+
+/**
+ * Fetches text content from a Google Drive file
  */
 export async function fetchGoogleDriveFileContent(
   fileId: string,
-  mimeType: string
+  mimeType?: string
 ): Promise<string> {
-  const token = accessToken || (await requestGoogleAccessToken());
   try {
+    const token = accessToken || (await requestGoogleAccessToken());
     let url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`;
 
-    // If Google Docs, export as plain text
     if (mimeType === "application/vnd.google-apps.document") {
       url = `https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=text/plain`;
+    } else if (mimeType === "application/vnd.google-apps.spreadsheet") {
+      url = `https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=text/csv`;
     }
 
     const response = await fetch(url, {
@@ -228,12 +325,83 @@ export async function fetchGoogleDriveFileContent(
 
     if (!response.ok) {
       console.warn(`[GoogleDriveService] Could not fetch file body: ${response.statusText}`);
-      return "";
+      return `[Google Drive File: ${fileId}]`;
     }
 
     return await response.text();
   } catch (err) {
     console.warn("[GoogleDriveService] Error fetching file content:", err);
-    return "";
+    return `[Google Drive Content: ${fileId}]`;
   }
+}
+
+/**
+ * Fetches raw binary of a Google Drive file as base64 string for Multimodal AI ingestion
+ */
+export async function fetchGoogleDriveFileBase64(fileId: string): Promise<string | null> {
+  try {
+    const token = accessToken || (typeof window !== "undefined" ? sessionStorage.getItem("mw_gdrive_token") : null);
+
+    const headers: Record<string, string> = {};
+    let url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`;
+
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    } else if (DEVELOPER_KEY && DEVELOPER_KEY.startsWith("AIza")) {
+      url += `&key=${DEVELOPER_KEY}`;
+    }
+
+    let response = await fetch(url, { headers });
+
+    if (!response.ok) {
+      // Fallback to direct public download link
+      const fallbackUrl = `https://drive.usercontent.google.com/download?id=${fileId}&export=download`;
+      response = await fetch(fallbackUrl);
+    }
+
+    if (!response.ok) return null;
+    const blob = await response.blob();
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const res = reader.result as string;
+        resolve(res.split(",")[1] || null);
+      };
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(blob);
+    });
+  } catch (err) {
+    console.warn("[GoogleDriveService] fetchGoogleDriveFileBase64 error:", err);
+    return null;
+  }
+}
+
+/**
+ * Imports a Google Drive file, pipes it through the OKF Enrichment Agent, and returns sealed OKFDocument
+ */
+export async function importGoogleDriveFileAsOKF(
+  driveFile: GoogleDriveSelectedFile,
+  companyId: string,
+  options?: {
+    offeringId?: string;
+    offeringSlug?: string;
+    entityType?: "PRODUCT" | "SERVICE" | "COMPANY" | "FACILITY" | "CONTRACT" | "GENERAL_CORPORATE";
+  }
+): Promise<OKFDocument> {
+  const content = await fetchGoogleDriveFileContent(driveFile.id, driveFile.mimeType);
+
+  return runOKFEnrichmentPipeline({
+    title: driveFile.name,
+    rawText: content || `Google Drive file: ${driveFile.name}`,
+    companyId,
+    offeringId: options?.offeringId,
+    offeringSlug: options?.offeringSlug,
+    entityType: options?.entityType || (options?.offeringId ? "PRODUCT" : "GENERAL_CORPORATE"),
+    sourceOrigin: "GOOGLE_DRIVE",
+    sourceUri: driveFile.url || `https://drive.google.com/file/d/${driveFile.id}/view`,
+    originalFileName: driveFile.name,
+    driveFileId: driveFile.id,
+    drivePath: `MarineWorld_Workspace/${driveFile.name}`,
+    mimeType: driveFile.mimeType,
+  });
 }

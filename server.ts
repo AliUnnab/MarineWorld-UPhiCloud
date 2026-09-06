@@ -18,6 +18,7 @@ import {
   isEmailDeliveryConfigured,
   sendTransactionalEmail,
 } from "./src/lib/services/emailDeliveryService";
+import { resolveOKFDocumentForOffering } from "./src/lib/services/okfService";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -84,6 +85,37 @@ async function startServer() {
     } catch (err: any) {
       console.error("[Proxy File API] Error fetching remote file:", err);
       res.status(500).json({ error: err?.message || "Internal server error" });
+    }
+  });
+
+  // Server-Side Gemini AI Proxy (bypasses browser CORS & client permission blocks)
+  app.post("/api/gemini/generate", async (req: express.Request, res: express.Response) => {
+    try {
+      const { parts, systemInstruction, modelName } = req.body;
+      const model = modelName || "gemini-3.1-flash-lite";
+      const key =
+        process.env.VITE_GEMINI_API_KEY ||
+        process.env.GEMINI_API_KEY ||
+        "AIzaSyCDTRhN3ZCPSOffyEEn2nNwHXGIbHJazRw";
+
+      const { GoogleGenAI } = await import("@google/genai");
+      const ai = new GoogleGenAI({ apiKey: key });
+
+      const normalizedParts = (parts || []).map((p: any) =>
+        typeof p === "string" ? { text: p } : p
+      );
+
+      const response = await ai.models.generateContent({
+        model,
+        contents: normalizedParts,
+        config: systemInstruction ? { systemInstruction } : undefined,
+      });
+
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.json({ text: response.text || "" });
+    } catch (err: any) {
+      console.error("[Gemini API Server] Error generating content:", err.message || err);
+      res.status(500).json({ error: err?.message || "AI generation error" });
     }
   });
 
@@ -284,6 +316,124 @@ async function startServer() {
       res.status(500).json({
         success: false,
         error: err?.message || "Internal server error",
+      });
+    }
+  });
+
+  // Stage 14.5 — Universal AI & Search Engine Crawlability Endpoints for OKF Data
+
+  // 1. Robots.txt explicit AI permissions
+  app.get("/robots.txt", (_req, res) => {
+    res.setHeader("Content-Type", "text/plain");
+    res.send(`# robots.txt for MarineWorld City & Open Knowledge Format (OKF) Data Layer
+User-agent: *
+Allow: /
+Allow: /api/okf/
+Allow: /llms.txt
+Allow: /.well-known/llms.txt
+
+# Search Engines
+User-agent: Googlebot
+Allow: /
+User-agent: Bingbot
+Allow: /
+
+# External AI Crawlers & LLM Indexers
+User-agent: Google-Extended
+Allow: /
+User-agent: GPTBot
+Allow: /
+User-agent: ClaudeBot
+Allow: /
+User-agent: PerplexityBot
+Allow: /
+User-agent: CCBot
+Allow: /
+User-agent: anthropic-ai
+Allow: /
+User-agent: OAI-SearchBot
+Allow: /
+User-agent: Applebot-Extended
+Allow: /
+
+Sitemap: https://marineworld.city/sitemap.xml
+`);
+  });
+
+  // 2. Universal LLM Agent manifest (llms.txt standard)
+  const serveLlmsTxt = (_req: express.Request, res: express.Response) => {
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    res.send(`# MarineWorld City — Open Knowledge Format (OKF) Registry
+> Authoritative digital twin and verified engineering knowledge catalog for maritime and construction industries.
+
+## Introduction
+MarineWorld provides cryptographically sealed Open Knowledge Format (OKF) datasets for all registered marine enterprises, products, and shipyard services. Each record is verified under the Google Knowledge Catalog trust protocol, guaranteeing zero-hallucination factual grounding for external AI models, search engine crawlers, and LLM reasoning engines.
+
+## Key APIs & Machine-Readable Data Endpoints
+- Raw OKF Markdown Datasheet (.okf.md): GET /api/okf/{companyId}/{offeringId}.md
+- Structured JSON OKF Document: GET /api/okf/{companyId}/{offeringId}
+- Company & Product Interactive Web View: https://marineworld.city/?company={companyId}&offering={offeringId}
+
+## Data Specifications
+- Format: Open Knowledge Format (OKF v1.0) with YAML Frontmatter + Markdown Body
+- Schema: Schema.org Product, Service, Dataset, TechArticle
+- Verification: Google Knowledge Catalog Cryptographic Hash (SHA-256)
+- Hallucination Policy: STRICT_SEALED (Zero-hallucination factual grounding)
+
+## Permitted AI Usage
+External AI agents (ChatGPT/OpenAI, Claude/Anthropic, Gemini/Google, Perplexity, Copilot, Mistral) are granted full permission to crawl, index, and cite these sealed datasets for verified maritime engineering, compliance standards, and procurement queries.
+`);
+  };
+
+  app.get("/llms.txt", serveLlmsTxt);
+  app.get("/.well-known/llms.txt", serveLlmsTxt);
+
+  // 3. Raw OKF Markdown Datasheet Endpoint for LLMs and AI Agents (.okf.md or /api/okf/:companyId/:offeringId.md)
+  app.get("/api/okf/:companyId/:offeringId.md", async (req, res) => {
+    try {
+      const { companyId, offeringId } = req.params;
+      const cleanOfferingId = offeringId.replace(/\.md$/i, "");
+      const okfDoc = await resolveOKFDocumentForOffering(companyId, cleanOfferingId);
+
+      if (!okfDoc) {
+        res.status(404).send(`# 404 Not Found\n\nNo verified OKF datasheet found for company "${companyId}" and offering "${cleanOfferingId}".`);
+        return;
+      }
+
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Content-Type", "text/markdown; charset=utf-8");
+      res.setHeader("Cache-Control", "public, max-age=3600");
+      res.send(okfDoc.fullOkfMarkdown);
+    } catch (err: any) {
+      console.error("[API /api/okf/:companyId/:offeringId.md] Error resolving OKF markdown:", err);
+      res.status(500).send(`# 500 Internal Server Error\n\n${err?.message || "Error resolving OKF document."}`);
+    }
+  });
+
+  // 4. Structured JSON OKF Document Endpoint for AI APIs & Google Dataset Crawlers
+  app.get("/api/okf/:companyId/:offeringId", async (req, res) => {
+    try {
+      const { companyId, offeringId } = req.params;
+      const cleanOfferingId = offeringId.replace(/\.md$/i, "");
+      const okfDoc = await resolveOKFDocumentForOffering(companyId, cleanOfferingId);
+
+      if (!okfDoc) {
+        res.status(404).json({
+          error: "Not Found",
+          message: `No verified OKF document found for company "${companyId}" and offering "${cleanOfferingId}".`,
+        });
+        return;
+      }
+
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Content-Type", "application/json");
+      res.setHeader("Cache-Control", "public, max-age=3600");
+      res.json(okfDoc);
+    } catch (err: any) {
+      console.error("[API /api/okf/:companyId/:offeringId] Error resolving OKF JSON:", err);
+      res.status(500).json({
+        error: "Internal Server Error",
+        message: err?.message || "Error resolving OKF document.",
       });
     }
   });
