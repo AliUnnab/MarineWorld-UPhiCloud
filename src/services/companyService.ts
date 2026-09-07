@@ -47,6 +47,104 @@ export async function getCompanyBySlug(slug: string): Promise<CompanyEntity | nu
 }
 
 /**
+ * Get a company with its full details including subcollections:
+ * products, services, offerings, contacts package, and members.
+ */
+export async function getCompanyWithFullDetails(idOrSlug: string): Promise<CompanyEntity | null> {
+  if (!idOrSlug) return null;
+
+  // 1. Resolve company document by ID or slug
+  let comp: CompanyEntity | null = await getCompanyById(idOrSlug);
+  if (!comp) {
+    comp = await getCompanyBySlug(idOrSlug);
+  }
+  if (!comp) return null;
+
+  const compId = comp.id;
+
+  // 2. Fetch subcollections in parallel
+  try {
+    const [productsSnap, servicesSnap, offeringsSnap, contactsDoc, membersSnap] = await Promise.all([
+      getDocs(collection(db, COLLECTION_NAME, compId, "products")).catch(() => null),
+      getDocs(collection(db, COLLECTION_NAME, compId, "services")).catch(() => null),
+      getDocs(collection(db, COLLECTION_NAME, compId, "offerings")).catch(() => null),
+      getDoc(doc(db, COLLECTION_NAME, compId, "contacts", "package")).catch(() => null),
+      getDocs(collection(db, COLLECTION_NAME, compId, "members")).catch(() => null),
+    ]);
+
+    const productsMap = new Map<string, any>();
+    if (Array.isArray(comp.products)) {
+      comp.products.forEach((p: any) => p?.id && productsMap.set(p.id, p));
+    }
+    if (productsSnap) {
+      productsSnap.forEach((d) => productsMap.set(d.id, { id: d.id, ...d.data() }));
+    }
+    if (offeringsSnap) {
+      offeringsSnap.forEach((d) => {
+        if (!productsMap.has(d.id)) {
+          productsMap.set(d.id, { id: d.id, ...d.data() });
+        }
+      });
+    }
+
+    const servicesMap = new Map<string, any>();
+    if (Array.isArray(comp.services)) {
+      comp.services.forEach((s: any) => s?.id && servicesMap.set(s.id, s));
+    }
+    if (servicesSnap) {
+      servicesSnap.forEach((d) => servicesMap.set(d.id, { id: d.id, ...d.data() }));
+    }
+
+    const teamMembersMap = new Map<string, any>();
+    if (Array.isArray((comp as any).teamMembers)) {
+      (comp as any).teamMembers.forEach((m: any) => (m?.email || m?.name) && teamMembersMap.set(m.email || m.name, m));
+    }
+
+    if (contactsDoc && contactsDoc.exists()) {
+      const cData = contactsDoc.data();
+      if (cData.generalContacts) {
+        (comp as any).contacts = { ...((comp as any).contacts || {}), ...cData.generalContacts };
+        if (cData.generalContacts.phoneHq && !comp.phone) comp.phone = cData.generalContacts.phoneHq;
+        if (cData.generalContacts.officialEmail && !comp.officialEmail) comp.officialEmail = cData.generalContacts.officialEmail;
+        if (cData.generalContacts.officialWebsite && !comp.website) comp.website = cData.generalContacts.officialWebsite;
+        if (cData.generalContacts.address && !comp.address) comp.address = cData.generalContacts.address;
+      }
+      if (Array.isArray(cData.teamMembers)) {
+        cData.teamMembers.forEach((tm: any) => {
+          if (tm?.email || tm?.name) teamMembersMap.set(tm.email || tm.name, tm);
+        });
+      }
+    }
+
+    if (membersSnap) {
+      membersSnap.forEach((mDoc) => {
+        const mData = mDoc.data();
+        const key = mData.businessEmail || mData.displayName || mDoc.id;
+        if (key && !teamMembersMap.has(key)) {
+          teamMembersMap.set(key, {
+            id: mDoc.id,
+            name: mData.displayName || mData.name || "Team Member",
+            role: mData.jobTitle || mData.role || "Member",
+            department: mData.department || "General",
+            email: mData.businessEmail || mData.email || "",
+            phone: mData.phone || "",
+          });
+        }
+      });
+    }
+
+    comp.products = Array.from(productsMap.values());
+    comp.services = Array.from(servicesMap.values());
+    (comp as any).teamMembers = Array.from(teamMembersMap.values());
+    comp.offerings = Array.from(productsMap.values());
+  } catch (err) {
+    console.warn("[companyService] Error hydrating full details:", err);
+  }
+
+  return comp;
+}
+
+/**
  * List all companies (or filter by sector / city)
  */
 export async function listCompanies(options?: {

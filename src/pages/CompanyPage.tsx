@@ -13,6 +13,7 @@ import {
 import {
   getCompanyBySlug as getFirestoreCompanyBySlug,
   getCompanyById as getFirestoreCompanyById,
+  getCompanyWithFullDetails,
 } from "@/services/companyService";
 import { getCurrentAuthSession } from "@/lib/services/securityService";
 import {
@@ -84,6 +85,7 @@ export function CompanyPage({
       setCompanyFetchError(null);
       try {
         const found =
+          (await getCompanyWithFullDetails(resolvedSlug!)) ||
           (await getFirestoreCompanyBySlug(resolvedSlug!)) ||
           (await getFirestoreCompanyById(resolvedSlug!));
         if (isMounted && found) {
