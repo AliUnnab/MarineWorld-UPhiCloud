@@ -56,7 +56,7 @@ export function CompanyContextBar({
       href: `/cities/${citySlug}`,
     },
     {
-      label: company.name.toUpperCase(),
+      label: String(company.displayName || company.name || company.legalName || "COMPANY").toUpperCase(),
       href: isModulePage ? companyHref : null,
     },
     ...(isModulePage

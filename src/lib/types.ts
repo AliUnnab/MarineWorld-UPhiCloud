@@ -1101,6 +1101,7 @@ export interface SectorConfig {
   hero: {
     eyebrow: string;
     statement: string;
+    substatement?: string;
     accentPhrase: string;
     support: string;
     primaryCta: string;
@@ -1348,6 +1349,7 @@ export interface CompanyEntity {
   onboardingStep?: number;
   onboardingCompleted?: boolean;
   requestedPlanCode?: PlanCode | string;
+  billingCycle?: "MONTHLY" | "ANNUAL";
   planDetails?: Plan;
   sectorAttributes?: Record<string, any>;
   sectorCityId?: string;
@@ -2098,7 +2100,7 @@ export type CompanyCapability =
   | "EXTERNAL_CONNECTORS"
   | "FUTURE_AI_AGENTS";
 
-export type PlanCode = "STARTER" | "GROWTH" | "ENTERPRISE";
+export type PlanCode = "FREE" | "STARTER" | "GROWTH" | "ENTERPRISE";
 
 export interface PlanLimits {
   maxProducts: number;
@@ -2112,13 +2114,20 @@ export interface Plan {
   id: string;
   code: PlanCode;
   name: string;
+  tagline?: string;
+  badge?: string;
   status: "ACTIVE" | "ARCHIVED" | "DEPRECATED";
   billingInterval: "MONTHLY" | "ANNUAL";
   price: number;
+  annualPrice?: number;
   currency: string;
   includedCapabilities: CompanyCapability[];
   limits: PlanLimits;
   metadata?: Record<string, unknown>;
+  description?: string;
+  features?: string[];
+  note?: string;
+  ctaLabel?: string;
 }
 
 export type SubscriptionStatus =
@@ -2174,6 +2183,7 @@ export interface SubscriptionIntent {
   enrolledOrganizationName?: string;
   enrolledOrganizationCode?: string;
   currency: string;
+  billingInterval?: "MONTHLY" | "ANNUAL";
   status: PaymentStatus;
   paymentReference: string | null;
   paymentMethod?: CommercialPaymentMethod;

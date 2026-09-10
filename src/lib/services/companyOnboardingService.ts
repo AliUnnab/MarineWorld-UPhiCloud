@@ -70,14 +70,70 @@ export function isCommercialDemoMode(): boolean {
  * Pre-configured Plans Entity Registry (Configuration Entities, Not Hardcoded UI)
  */
 export const AVAILABLE_PLANS: Record<PlanCode, Plan> = {
+  FREE: {
+    id: "plan-free-01",
+    code: "FREE",
+    name: "FREE INITIAL ACTIVATION",
+    tagline: "",
+    status: "ACTIVE",
+    billingInterval: "MONTHLY",
+    price: 0,
+    annualPrice: 0,
+    currency: "USD",
+    description: "Register your company and begin your AI-Native transformation with a limited setup.",
+    note: "Limited setup. Upgrade when you're ready to activate more capabilities.",
+    ctaLabel: "START FREE",
+    features: [
+      "Company Registration",
+      "Basic Company Identity",
+      "Basic Company Profile",
+      "Verification Start",
+      "1 Product",
+      "1 Service",
+      "1 Knowledge Source",
+      "Basic Company AI Preview",
+      "MarineWorld Network Index Inclusion",
+      "Public Company Profile Preview",
+      "AI-Native Company Activation Start",
+    ],
+    includedCapabilities: [
+      "COMPANY_STUDIO",
+      "BUSINESS_TWIN",
+      "PRODUCT_CATALOG",
+      "SERVICE_CATALOG",
+      "CONNECT",
+      "AI_ADVISOR",
+      "FILE_STORAGE",
+    ],
+    limits: {
+      maxProducts: 1,
+      maxServices: 1,
+      maxMembers: 1,
+      monthlyAiQueries: 25,
+      storageMb: 100,
+    },
+  },
   STARTER: {
     id: "plan-starter-01",
     code: "STARTER",
-    name: "AI-Native Starter",
+    name: "STARTER",
+    tagline: "Become AI-Native",
     status: "ACTIVE",
     billingInterval: "MONTHLY",
     price: 299,
+    annualPrice: 2990,
     currency: "USD",
+    description: "For companies establishing their verified AI-native business presence.",
+    ctaLabel: "START WITH STARTER",
+    features: [
+      "Company Studio",
+      "Verified Company Identity",
+      "Product Catalog",
+      "Service Catalog",
+      "Company AI",
+      "Connect",
+      "AI Advisor",
+    ],
     includedCapabilities: [
       "COMPANY_STUDIO",
       "BUSINESS_TWIN",
@@ -98,11 +154,29 @@ export const AVAILABLE_PLANS: Record<PlanCode, Plan> = {
   GROWTH: {
     id: "plan-growth-01",
     code: "GROWTH",
-    name: "AI-Native Growth",
+    name: "GROWTH",
+    tagline: "Operate & Grow with AI",
+    badge: "MOST POPULAR",
     status: "ACTIVE",
     billingInterval: "MONTHLY",
     price: 899,
+    annualPrice: 8990,
     currency: "USD",
+    description: "For companies ready to operate their business through AI, knowledge and commercial workflows.",
+    ctaLabel: "START WITH GROWTH",
+    features: [
+      "Company Studio",
+      "Business Twin",
+      "AI Advisor",
+      "AI Analysis",
+      "Product Catalog",
+      "Service Catalog",
+      "Company AI",
+      "Connect",
+      "RFQ",
+      "Analytics",
+      "File Storage",
+    ],
     includedCapabilities: [
       "COMPANY_STUDIO",
       "BUSINESS_TWIN",
@@ -126,11 +200,30 @@ export const AVAILABLE_PLANS: Record<PlanCode, Plan> = {
   ENTERPRISE: {
     id: "plan-enterprise-01",
     code: "ENTERPRISE",
-    name: "AI-Native Enterprise",
+    name: "ENTERPRISE",
+    tagline: "Automate & Scale Globally",
     status: "ACTIVE",
     billingInterval: "MONTHLY",
     price: 2499,
+    annualPrice: 24990,
     currency: "USD",
+    description: "For organizations requiring advanced integration, governance and AI-native operations at scale.",
+    ctaLabel: "CONTACT SALES",
+    features: [
+      "Company Studio",
+      "Business Twin",
+      "AI Advisor",
+      "AI Analysis",
+      "Product Catalog",
+      "Service Catalog",
+      "Company AI",
+      "Connect",
+      "RFQ",
+      "Analytics",
+      "File Storage",
+      "External Connectors",
+      "Future AI Agents",
+    ],
     includedCapabilities: [
       "COMPANY_STUDIO",
       "BUSINESS_TWIN",
@@ -377,7 +470,8 @@ import {
 export function createSubscriptionIntent(
   companyId: string,
   planCode: PlanCode,
-  overrideEnrollmentCode?: string
+  overrideEnrollmentCode?: string,
+  billingInterval: "MONTHLY" | "ANNUAL" = "MONTHLY"
 ): SubscriptionIntent {
   const plan = AVAILABLE_PLANS[planCode];
   if (!plan) {
@@ -387,8 +481,11 @@ export function createSubscriptionIntent(
   const comp = getCompanyById(companyId) || createdCompaniesRegistry.get(companyId);
   const businessId = comp?.businessId || generateBusinessId(companyId);
 
-  let catalogAmount = plan.price;
-  let finalAmount = plan.price;
+  const isAnnual = billingInterval === "ANNUAL" && (plan.annualPrice !== undefined && plan.annualPrice > 0);
+  const basePrice = isAnnual ? (plan.annualPrice ?? plan.price * 12) : plan.price;
+
+  let catalogAmount = basePrice;
+  let finalAmount = basePrice;
   let discountPercentage = 0;
   let enrolledOrgId = comp?.enrolledOrganizationId;
   let enrolledOrgName = comp?.enrolledOrganizationName;
@@ -423,6 +520,7 @@ export function createSubscriptionIntent(
     enrolledOrganizationName: enrolledOrgName,
     enrolledOrganizationCode: enrolledOrgCode,
     currency: plan.currency,
+    billingInterval,
     status: "PENDING",
     paymentReference: null,
     createdAt: new Date().toISOString(),
@@ -619,7 +717,7 @@ export function startCompanyOnboarding(
   if (!plan) {
     return {
       success: false,
-      error: `Invalid plan code '${request.requestedPlanCode}'. Must be STARTER, GROWTH, or ENTERPRISE.`,
+      error: `Invalid plan code '${request.requestedPlanCode}'. Must be FREE, STARTER, GROWTH, or ENTERPRISE.`,
     };
   }
 

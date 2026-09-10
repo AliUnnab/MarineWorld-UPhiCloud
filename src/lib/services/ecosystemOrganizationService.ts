@@ -94,6 +94,7 @@ export interface EcosystemOrganizationSummary {
   enrollmentCode: string; // Member Enrollment Code (for member onboarding)
   ecosystemHubId?: string;
   country?: string;
+  registrationNumber?: string;
   officialWebsite?: string;
   primaryContact?: string;
   principalAuthorityUserId: string;

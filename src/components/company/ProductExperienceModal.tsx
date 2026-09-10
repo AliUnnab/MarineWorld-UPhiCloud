@@ -475,9 +475,9 @@ export function ProductExperienceModal({
   const displayName = company.displayName || company.name || "Enterprise Shipyard";
   const logoSrc = company.logoUrl || (company as any).logo || null;
   const [logoError, setLogoError] = useState(false);
-  const rawCityId = (Array.isArray(company.sectorCityIds) && company.sectorCityIds[0]) || 
-                    (Array.isArray(company.cityIds) && company.cityIds[0]) || 
-                    "brokerage";
+  const rawCityId = (Array.isArray(company.sectorCityIds) && company.sectorCityIds[0]) ||
+    (Array.isArray(company.cityIds) && company.cityIds[0]) ||
+    "brokerage";
   const primarySectorCityId = typeof rawCityId === "string" ? rawCityId : "brokerage";
   const sectorCityLabel = primarySectorCityId.toLowerCase().endsWith(".city")
     ? primarySectorCityId.toUpperCase()
@@ -698,7 +698,7 @@ export function ProductExperienceModal({
   const keySpecs = useMemo(() => {
     const specs = activeOffering.specifications || {};
     const entries = Object.entries(specs);
-    
+
     const list = entries.length > 0
       ? entries.map(([k, v]) => ({ label: k, value: String(v) }))
       : [];
@@ -800,8 +800,13 @@ export function ProductExperienceModal({
     return docs;
   }, [activeOffering, offeringCode]);
 
-  // Scroll chat
+  // Scroll chat (only on active message interaction, not initial mount)
+  const isChatInitialMount = useRef(true);
   useEffect(() => {
+    if (isChatInitialMount.current) {
+      isChatInitialMount.current = false;
+      return;
+    }
     if (chatMessages.length > 0) {
       chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
@@ -846,7 +851,7 @@ export function ProductExperienceModal({
         okfDocument: activeOfferingOKFDoc,
       };
       const response = await generateAdvisorAnswer(q, enrichedForAdvisor, displayName, sectorCityLabel);
-      
+
       const isSealed = q.toLowerCase().includes("official offer") || q.toLowerCase().includes("commercial offer") || q.toLowerCase().includes("package");
 
       const advisorMsg: ChatMessage = {
@@ -859,14 +864,14 @@ export function ProductExperienceModal({
         isOfferSealed: isSealed,
         offerDetails: isSealed
           ? {
-              referenceCode: offeringCode,
-              issuingEntity: displayName,
-              incotermsRules: activeOffering.commercialInformation?.incoterms || "EXW / FOB Shipyard Gate",
-              jurisdiction: sectorCityLabel,
-              milestonePricing: "30% Advance Deposit / 70% Milestone Settlement upon FAT",
-              leadTime: activeOffering.commercialInformation?.leadTime || "Standard production slot",
-              warranty: activeOffering.commercialInformation?.warranty || "24-Month Marine Guarantee",
-            }
+            referenceCode: offeringCode,
+            issuingEntity: displayName,
+            incotermsRules: activeOffering.commercialInformation?.incoterms || "EXW / FOB Shipyard Gate",
+            jurisdiction: sectorCityLabel,
+            milestonePricing: "30% Advance Deposit / 70% Milestone Settlement upon FAT",
+            leadTime: activeOffering.commercialInformation?.leadTime || "Standard production slot",
+            warranty: activeOffering.commercialInformation?.warranty || "24-Month Marine Guarantee",
+          }
           : undefined,
         sources: response.sources,
         actionSuggestion: response.action,
@@ -1007,7 +1012,7 @@ export function ProductExperienceModal({
         tabIndex={-1}
         className="relative w-full max-w-7xl h-[94vh] max-h-[920px] bg-white rounded-card-lg border border-line shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200 z-10 focus:outline-hidden"
       >
-        
+
         {/* TOP COMPACT VERIFIED OFFERING RECORD BAR (FIX 1) */}
         <div className="px-6 py-2 bg-canvas/80 border-b border-line flex items-center justify-between gap-3 font-sans text-xs shrink-0">
           <div className="flex items-center gap-2 min-w-0">
@@ -1033,10 +1038,10 @@ export function ProductExperienceModal({
 
         {/* TOP DUAL-PANE BODY AREA (LEFT: PRODUCT/SERVICE | RIGHT: AI ADVISOR) */}
         <div className="flex-1 flex flex-col lg:flex-row overflow-hidden min-h-0 divide-y lg:divide-y-0 lg:divide-x divide-line">
-          
+
           {/* LEFT PANE (50%): OFFERING SPECIFICATION RECORD */}
           <div className="flex-1 lg:w-1/2 flex flex-col overflow-hidden bg-white">
-            
+
             {/* Header Bar */}
             <div className="px-6 py-3 border-b border-line flex items-center justify-between gap-4 shrink-0 bg-white">
               <div className="flex items-center gap-3 min-w-0">
@@ -1059,6 +1064,15 @@ export function ProductExperienceModal({
                     {offeringCode}
                   </span>
                 </div>
+              </div>
+
+              {/* U-Commerce AI-Native Network Badge */}
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-royal/10 text-royal font-mono font-bold text-[10.5px] border border-royal/20 uppercase tracking-wider">
+                  <ShieldCheck className="w-3.5 h-3.5 text-royal" />
+                  <span className="hidden sm:inline">U-Commerce | EaaS</span>
+                  <span className="sm:hidden">U-COMMERCE</span>
+                </span>
               </div>
             </div>
 
@@ -1085,11 +1099,10 @@ export function ProductExperienceModal({
                     type="button"
                     id={`btn-tab-${tab.id}`}
                     onClick={() => setActiveTab(tab.id as ModalTab)}
-                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-card-xs text-[10.5px] font-bold uppercase tracking-[0.12em] transition shrink-0 cursor-pointer focus-visible:ring-2 focus-visible:ring-royal focus-visible:outline-hidden ${
-                      isSelected
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-card-xs text-[10.5px] font-bold uppercase tracking-[0.12em] transition shrink-0 cursor-pointer focus-visible:ring-2 focus-visible:ring-royal focus-visible:outline-hidden ${isSelected
                         ? "bg-white text-royal border border-line shadow-2xs"
                         : "text-stone hover:text-graphite hover:bg-white/60"
-                    }`}
+                      }`}
                   >
                     <TabIcon className="w-3.5 h-3.5 text-royal" />
                     <span>{tab.label}</span>
@@ -1100,7 +1113,7 @@ export function ProductExperienceModal({
 
             {/* Left Pane Tab Content */}
             <div className="flex-1 overflow-y-auto p-6 space-y-5">
-              
+
               {/* TAB 1: OVERVIEW */}
               {activeTab === "overview" && (
                 <div
@@ -1109,7 +1122,7 @@ export function ProductExperienceModal({
                   aria-labelledby="btn-tab-overview"
                   className="space-y-5 animate-in fade-in duration-150"
                 >
-                  
+
                   {/* KICKER LINE + TITLE + ELEVATED COMPANY IDENTITY CARD (FIX 2) */}
                   <div className="space-y-2.5">
                     {/* Quiet Kicker Line above the offering title */}
@@ -1332,11 +1345,10 @@ export function ProductExperienceModal({
                             key={m.id}
                             type="button"
                             onClick={() => setActiveMediaIndex(idx)}
-                            className={`group relative w-20 h-14 rounded-card-xs overflow-hidden border transition shrink-0 cursor-pointer text-left focus-visible:ring-2 focus-visible:ring-royal focus-visible:outline-hidden ${
-                              isActive
+                            className={`group relative w-20 h-14 rounded-card-xs overflow-hidden border transition shrink-0 cursor-pointer text-left focus-visible:ring-2 focus-visible:ring-royal focus-visible:outline-hidden ${isActive
                                 ? "border-royal ring-2 ring-royal/40 shadow-sm scale-105"
                                 : "border-line opacity-75 hover:opacity-100 hover:border-slate-400"
-                            }`}
+                              }`}
                             title={m.title}
                             aria-label={`View thumbnail ${idx + 1} of ${mediaGallery.length}: ${m.title}`}
                           >
@@ -1359,9 +1371,8 @@ export function ProductExperienceModal({
 
                             <div className="absolute inset-0 bg-black/15 group-hover:bg-transparent transition" />
 
-                            <span className={`absolute bottom-0.5 left-0.5 px-1 py-0.2 rounded text-[7.5px] font-bold uppercase tracking-tighter ${
-                              isPdf ? "bg-rose-950/95 text-rose-300 border border-rose-800/60" : "bg-slate-950/90 text-white"
-                            }`}>
+                            <span className={`absolute bottom-0.5 left-0.5 px-1 py-0.2 rounded text-[7.5px] font-bold uppercase tracking-tighter ${isPdf ? "bg-rose-950/95 text-rose-300 border border-rose-800/60" : "bg-slate-950/90 text-white"
+                              }`}>
                               {isPdf ? "PDF" : m.type === "video" ? "VIDEO" : "PHOTO"}
                             </span>
                           </button>
@@ -1541,9 +1552,8 @@ export function ProductExperienceModal({
                           setLightboxIndex(idx);
                           setIsLightboxOpen(true);
                         }}
-                        className={`group relative rounded-card-md overflow-hidden border transition cursor-pointer focus-visible:ring-2 focus-visible:ring-royal focus-visible:outline-hidden ${
-                          activeMediaIndex === idx ? "border-royal ring-1 ring-royal/20" : "border-line hover:border-slate-400"
-                        }`}
+                        className={`group relative rounded-card-md overflow-hidden border transition cursor-pointer focus-visible:ring-2 focus-visible:ring-royal focus-visible:outline-hidden ${activeMediaIndex === idx ? "border-royal ring-1 ring-royal/20" : "border-line hover:border-slate-400"
+                          }`}
                       >
                         <div className="aspect-video relative bg-slate-900">
                           {!failedImages[m.url] ? (
@@ -1560,7 +1570,7 @@ export function ProductExperienceModal({
                             </div>
                           )}
                           <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-transparent" />
-                          
+
                           <span className="absolute top-2 left-2 px-2 py-0.5 rounded-card-xs text-[9px] font-bold bg-royal text-white uppercase tracking-wider">
                             {m.typeLabel}
                           </span>
@@ -1773,7 +1783,7 @@ export function ProductExperienceModal({
 
             {/* Conversation Area */}
             <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-canvas/30">
-              
+
               {/* Initial Clean Workspace with SINGLE UNIFIED Quick-Prompt Chips (Problem 3 Fix) */}
               {chatMessages.length === 0 && (
                 <div className="h-full flex flex-col justify-center items-center text-center p-2 sm:p-4 space-y-4 animate-in fade-in duration-200">
@@ -1819,7 +1829,7 @@ export function ProductExperienceModal({
               {/* Chat Message Stream */}
               {chatMessages.map((msg) => (
                 <div key={msg.id} className="space-y-1 animate-in fade-in duration-150">
-                  
+
                   {/* User Message */}
                   {msg.sender === "user" ? (
                     <div className="flex flex-col items-end">
@@ -1843,7 +1853,7 @@ export function ProductExperienceModal({
                       </div>
 
                       <div className="w-full rounded-card-md bg-white border border-line p-4 space-y-3 shadow-xs text-[12.5px] text-slate-800 leading-relaxed">
-                        
+
                         {/* Sealed Offer Box if applicable */}
                         {msg.isOfferSealed && msg.offerDetails ? (
                           <div className="space-y-3">
@@ -2088,11 +2098,10 @@ export function ProductExperienceModal({
                     setActiveOfferingRaw(item);
                     if (onSelectOffering) onSelectOffering(item);
                   }}
-                  className={`flex items-center gap-2 p-1.5 pr-3 rounded-card-sm border transition-all shrink-0 cursor-pointer text-left focus-visible:ring-2 focus-visible:ring-royal focus-visible:outline-hidden ${
-                    isCurrent
+                  className={`flex items-center gap-2 p-1.5 pr-3 rounded-card-sm border transition-all shrink-0 cursor-pointer text-left focus-visible:ring-2 focus-visible:ring-royal focus-visible:outline-hidden ${isCurrent
                       ? "bg-white border-royal ring-1 ring-royal/30 shadow-xs"
                       : "bg-white/80 border-line hover:border-slate-300 hover:bg-white"
-                  }`}
+                    }`}
                   aria-label={`View offering: ${item.name}`}
                 >
                   <div className="w-9 h-7 rounded-card-xs overflow-hidden bg-slate-100 border border-line flex items-center justify-center shrink-0">
@@ -2265,9 +2274,8 @@ export function ProductExperienceModal({
                       key={m.id}
                       type="button"
                       onClick={() => setLightboxIndex(idx)}
-                      className={`w-14 h-10 rounded-card-xs overflow-hidden border transition cursor-pointer shrink-0 relative focus-visible:ring-2 focus-visible:ring-royal focus-visible:outline-hidden ${
-                        lightboxIndex === idx ? "border-royal ring-2 ring-royal/30 shadow-xs" : "border-line opacity-60 hover:opacity-100"
-                      }`}
+                      className={`w-14 h-10 rounded-card-xs overflow-hidden border transition cursor-pointer shrink-0 relative focus-visible:ring-2 focus-visible:ring-royal focus-visible:outline-hidden ${lightboxIndex === idx ? "border-royal ring-2 ring-royal/30 shadow-xs" : "border-line opacity-60 hover:opacity-100"
+                        }`}
                       aria-label={`Jump to media ${idx + 1}: ${m.title}`}
                     >
                       {isPdf ? (
@@ -2442,7 +2450,7 @@ async function generateAdvisorAnswer(
   action?: { label: string; type: "DOWNLOAD_PDF" | "RFQ" | "SPECS" | "AVAILABILITY" };
 }> {
   const result = await answerOfferingAdvisorQueryAsync(offering, query, companyName, sectorCity);
-  
+
   let action: { label: string; type: "DOWNLOAD_PDF" | "RFQ" | "SPECS" | "AVAILABILITY" } | undefined;
   if (result.suggestedAction === "REQUEST_OFFER" || result.suggestedAction === "COMMERCIAL_RFQ") {
     action = { label: "Request official offer", type: "RFQ" };

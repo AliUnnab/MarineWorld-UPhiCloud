@@ -36,8 +36,8 @@ export function OfferingEntityHeader({
   onOpenRFQ,
 }: OfferingEntityHeaderProps) {
   const [copied, setCopied] = useState(false);
-  const isProduct = offering.type === "product";
-  const isService = offering.type === "service";
+  const isProduct = offering.type?.toLowerCase() === "product" || !offering.type;
+  const isService = offering.type?.toLowerCase() === "service";
   const TypeIcon = isProduct ? Package : isService ? Wrench : Layers;
 
   const companyDisplayName =
@@ -45,16 +45,21 @@ export function OfferingEntityHeader({
   const companySlug = (parentCompany as any).slug || parentCompany.id;
 
   const productRoute = isProduct
-    ? `/companies/${companySlug}/products?product=${offering.slug || offering.id}`
-    : `/companies/${companySlug}/services?service=${offering.slug || offering.id}`;
+    ? `/products/${offering.slug || offering.id}`
+    : `/services/${offering.slug || offering.id}`;
 
-  const publicShareableUrl =
-    typeof window !== "undefined" &&
-      (window.location.hostname === "localhost" ||
-        window.location.hostname === "127.0.0.1" ||
-        !window.location.hostname.includes("marineworld.city"))
-      ? `${window.location.origin}${productRoute}`
-      : canonicalUrl;
+  const currentHost =
+    typeof window !== "undefined" && window.location.host
+      ? window.location.host
+      : "marineworld.city";
+
+  const currentOrigin =
+    typeof window !== "undefined" && window.location.origin
+      ? window.location.origin
+      : "https://marineworld.city";
+
+  const publicShareableUrl = `${currentOrigin}${productRoute}`;
+  const displayCanonicalUrl = `${currentHost}${productRoute}`;
 
   const handleCopyLink = () => {
     navigator.clipboard.writeText(publicShareableUrl);
@@ -71,7 +76,7 @@ export function OfferingEntityHeader({
         <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3 text-[11px] font-mono text-stone">
           <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
             <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-royal/10 text-royal font-bold border border-royal/20 uppercase tracking-wider text-[10px]">
-              MARITIME DIGITAL RECORD
+              U-Commerce | EaaS
             </span>
             <span className="text-slate-300">/</span>
             <span className="font-semibold text-graphite uppercase">
@@ -104,7 +109,7 @@ export function OfferingEntityHeader({
             <div className="flex flex-wrap items-center gap-2">
               <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-canvas border border-line text-[11px] font-mono font-bold text-graphite uppercase tracking-wider">
                 <TypeIcon className="w-3.5 h-3.5 text-royal" />
-                {offering.type?.toUpperCase() || "OFFERING"}
+                {isProduct ? "INTERACTIVE SHOWROOM" : (offering.type?.toUpperCase() || "OFFERING")}
               </span>
 
               <span className="px-2.5 py-1 rounded-md bg-canvas border border-line text-[11px] font-mono text-stone">
@@ -149,7 +154,7 @@ export function OfferingEntityHeader({
                   className="font-semibold text-graphite hover:text-royal hover:underline transition inline-flex items-center gap-1 group"
                   title="Open canonical offering URL in new tab"
                 >
-                  <span>{canonicalUrl.replace("https://", "")}</span>
+                  <span>{displayCanonicalUrl}</span>
                   <ExternalLink className="w-3 h-3 text-slate-400 group-hover:text-royal transition-colors" />
                 </a>
                 <button

@@ -21,6 +21,7 @@ import {
   signInWithEmail,
   signOutCurrentUser,
   subscribeAuthState,
+  formatAuthErrorMessage,
   type AuthContext,
 } from "@/lib/services/securityService";
 import {
@@ -122,7 +123,7 @@ export function LoginPage({ onNavigate, onLoginSuccess }: LoginPageProps) {
         }
       }
     } catch (err: any) {
-      setLoginError(err?.message || "Failed to sign in. Please check your credentials.");
+      setLoginError(formatAuthErrorMessage(err, "Giriş başarısız oldu. Lütfen e-posta ve şifrenizi kontrol edin."));
     } finally {
       setIsSubmitting(false);
     }

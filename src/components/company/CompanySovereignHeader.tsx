@@ -195,8 +195,8 @@ export function CompanySovereignHeader({
       label: selectedProductName
         ? selectedProductName.toUpperCase()
         : selectedServiceName
-        ? selectedServiceName.toUpperCase()
-        : normalizedModule,
+          ? selectedServiceName.toUpperCase()
+          : normalizedModule,
       href: null,
     },
   ];
@@ -240,26 +240,26 @@ export function CompanySovereignHeader({
           ["ASSOCIATION", "CHAMBER", "FEDERATION", "INSTITUTION", "PUBLIC_ORGANIZATION"].includes(
             (activeOrg as any).organizationType
           ))) && (
-        <div className="bg-slate-900 text-white px-4 py-2 border-b border-slate-800 shadow-xs flex items-center justify-between font-sans z-50">
-          <div className="flex items-center gap-2 text-xs font-bold truncate">
-            <Building2 className="w-4 h-4 text-slate-300 shrink-0" />
-            <span className="text-slate-300">ECOSYSTEM MEMBER PREVIEW:</span>
-            <span className="text-white truncate">Viewing {displayName}</span>
-            <span className="text-slate-400 font-normal hidden sm:inline">
-              as {(activeOrg as any)?.organizationName || (activeOrg as any)?.displayName || enrolledOrg?.name || "Ecosystem Representative"}
-            </span>
-          </div>
+          <div className="bg-slate-900 text-white px-4 py-2 border-b border-slate-800 shadow-xs flex items-center justify-between font-sans z-50">
+            <div className="flex items-center gap-2 text-xs font-bold truncate">
+              <Building2 className="w-4 h-4 text-slate-300 shrink-0" />
+              <span className="text-slate-300">ECOSYSTEM MEMBER PREVIEW:</span>
+              <span className="text-white truncate">Viewing {displayName}</span>
+              <span className="text-slate-400 font-normal hidden sm:inline">
+                as {(activeOrg as any)?.organizationName || (activeOrg as any)?.displayName || enrolledOrg?.name || "Ecosystem Representative"}
+              </span>
+            </div>
 
-          <a
-            id="btn-top-return-to-ecosystem"
-            href={returnUrl}
-            className="px-3.5 py-1.5 rounded-lg bg-royal hover:bg-royal-light text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 shadow-2xs"
-          >
-            <ArrowLeft className="w-3.5 h-3.5" />
-            <span>Return to Ecosystem Hub ({returnTab})</span>
-          </a>
-        </div>
-      )}
+            <a
+              id="btn-top-return-to-ecosystem"
+              href={returnUrl}
+              className="px-3.5 py-1.5 rounded-lg bg-royal hover:bg-royal-light text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 shadow-2xs"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Return to Ecosystem Hub ({returnTab})</span>
+            </a>
+          </div>
+        )}
 
       {/* ========================================================================= */}
       {/* LAYER 1 — PLATFORM CHROME (TOP)                                           */}
@@ -268,7 +268,7 @@ export function CompanySovereignHeader({
       <div className="border-b border-slate-200/80 bg-slate-50/95 backdrop-blur-md">
         <DigiContainer>
           <div className="flex h-10 sm:h-11 items-center justify-between gap-3">
-            
+
             {/* Left: Back to City & Platform Network Provenance Breadcrumb */}
             <div className="flex items-center gap-2 sm:gap-3 overflow-hidden py-1">
               {(accessContext.contextType === "ECOSYSTEM_ORGANIZATION" ||
@@ -276,16 +276,16 @@ export function CompanySovereignHeader({
                   ["ASSOCIATION", "CHAMBER", "FEDERATION", "INSTITUTION", "PUBLIC_ORGANIZATION"].includes(
                     (activeOrg as any).organizationType
                   ))) && (
-                <a
-                  id="btn-sovereign-back-to-ecosystem"
-                  href="/ecosystem/dashboard?tab=members"
-                  className="inline-flex items-center gap-1 rounded-md border border-royal/30 bg-royal/5 hover:bg-royal/10 px-2.5 py-0.5 text-[10.5px] font-sans font-bold text-royal-dark transition shrink-0 shadow-2xs"
-                  title="Return to Ecosystem Hub Members"
-                >
-                  <ArrowLeft className="w-3 h-3 text-royal shrink-0" />
-                  <span>Return to Ecosystem Hub</span>
-                </a>
-              )}
+                  <a
+                    id="btn-sovereign-back-to-ecosystem"
+                    href="/ecosystem/dashboard?tab=members"
+                    className="inline-flex items-center gap-1 rounded-md border border-royal/30 bg-royal/5 hover:bg-royal/10 px-2.5 py-0.5 text-[10.5px] font-sans font-bold text-royal-dark transition shrink-0 shadow-2xs"
+                    title="Return to Ecosystem Hub Members"
+                  >
+                    <ArrowLeft className="w-3 h-3 text-royal shrink-0" />
+                    <span>Return to Ecosystem Hub</span>
+                  </a>
+                )}
 
               <a
                 id="btn-sovereign-back-to-city"
@@ -321,8 +321,19 @@ export function CompanySovereignHeader({
               </nav>
             </div>
 
-            {/* Right: Platform Controls (Sign In + Enter) */}
+            {/* Right: Platform Controls (Explore Companies + Sign In + Enter) */}
             <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+              <a
+                id="btn-sovereign-top-explore-companies"
+                href="/companies"
+                className="inline-flex h-7 sm:h-7.5 items-center justify-center gap-1 rounded-full border border-slate-200 bg-white hover:bg-slate-50 hover:border-royal/40 px-2.5 sm:px-3 text-[11px] font-semibold text-slate-700 shadow-2xs transition-all duration-200"
+                title="Explore Verified Maritime Companies"
+              >
+                <Building2 className="w-3 h-3 text-royal" />
+                <span className="hidden sm:inline">Explore Companies</span>
+                <span className="sm:hidden">Companies</span>
+              </a>
+
               {!isAuthenticated ? (
                 <div className="flex items-center gap-2">
                   <a
@@ -397,15 +408,15 @@ export function CompanySovereignHeader({
                             ["ASSOCIATION", "CHAMBER", "FEDERATION", "INSTITUTION", "PUBLIC_ORGANIZATION"].includes(
                               (activeOrg as any).organizationType
                             ))) && (
-                          <a
-                            href="/ecosystem/dashboard?tab=members"
-                            onClick={() => setDropdownOpen(false)}
-                            className="w-full text-left px-2.5 py-2 rounded-lg text-xs font-bold text-royal bg-royal/5 hover:bg-royal/10 flex items-center justify-between transition"
-                          >
-                            <span>Return to Ecosystem Hub</span>
-                            <ArrowRight className="w-3.5 h-3.5 text-royal" />
-                          </a>
-                        )}
+                            <a
+                              href="/ecosystem/dashboard?tab=members"
+                              onClick={() => setDropdownOpen(false)}
+                              className="w-full text-left px-2.5 py-2 rounded-lg text-xs font-bold text-royal bg-royal/5 hover:bg-royal/10 flex items-center justify-between transition"
+                            >
+                              <span>Return to Ecosystem Hub</span>
+                              <ArrowRight className="w-3.5 h-3.5 text-royal" />
+                            </a>
+                          )}
                         <a
                           href="/studio"
                           id="btn-open-studio-workspace"
@@ -530,16 +541,20 @@ export function CompanySovereignHeader({
       <div className="border-b border-line bg-canvas">
         <DigiContainer>
           <div className="py-4 sm:py-5">
-            
+
             {/* Block 1: Contained Identity Card */}
             <div className="rounded-card-lg border border-line bg-white p-4 sm:p-5 md:p-6 shadow-xs">
               <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 lg:gap-6">
-                
+
                 {/* Left Identity: Medallion Logo + Kicker + Name + Inline Verification + Metadata Line */}
                 <div className="flex items-start sm:items-center gap-3.5 sm:gap-4 md:gap-5 min-w-0 flex-1">
-                  
+
                   {/* 1. Medallion Verification Seal Logo Frame (Double Ring) */}
-                  <div className="relative flex h-14 w-14 sm:h-16 sm:w-16 md:h-[60px] md:w-[60px] shrink-0 items-center justify-center rounded-full border border-royal p-[2.5px] bg-white">
+                  <a
+                    href={companyHref}
+                    title={`View ${displayName} Profile`}
+                    className="relative flex h-14 w-14 sm:h-16 sm:w-16 md:h-[60px] md:w-[60px] shrink-0 items-center justify-center rounded-full border border-royal p-[2.5px] bg-white hover:opacity-95 hover:scale-105 transition-all group cursor-pointer"
+                  >
                     <div className="flex h-full w-full items-center justify-center rounded-full border border-line bg-canvas overflow-hidden font-sans text-sm sm:text-base font-bold text-graphite">
                       {logoSrc && !logoError ? (
                         <img
@@ -552,11 +567,11 @@ export function CompanySovereignHeader({
                         <span>{company.initials || displayName.slice(0, 2).toUpperCase()}</span>
                       )}
                     </div>
-                  </div>
+                  </a>
 
                   {/* 2. Dominant Formal Name + Kicker + Inline Seal Verification + Supporting Line */}
                   <div className="space-y-1 min-w-0 flex-1">
-                    
+
                     {/* Kicker line: Est. [Year] if present */}
                     {establishedYear ? (
                       <div className="text-[11px] font-bold uppercase tracking-wider text-stone flex items-center gap-1.5 whitespace-nowrap overflow-hidden text-ellipsis">
@@ -567,7 +582,13 @@ export function CompanySovereignHeader({
                     {/* Dominant Company Name & Inline Verification */}
                     <div className="flex flex-wrap items-baseline sm:items-center gap-x-2.5 gap-y-1">
                       <h1 className="text-xl sm:text-2xl md:text-[26px] font-semibold text-graphite tracking-tight leading-tight font-sans break-words">
-                        {displayName}
+                        <a
+                          href={companyHref}
+                          className="hover:text-royal hover:underline transition-colors"
+                          title={`View ${displayName} Profile`}
+                        >
+                          {displayName}
+                        </a>
                       </h1>
 
                       {isVerified ? (
@@ -628,6 +649,18 @@ export function CompanySovereignHeader({
                 <div className="flex flex-col lg:items-end justify-center gap-2.5 shrink-0 self-stretch lg:self-auto">
                   {/* Action Buttons Row */}
                   <div className="flex items-center gap-2 sm:gap-2.5 flex-wrap lg:flex-nowrap">
+                    {/* Explore Companies Action Button */}
+                    <a
+                      id="btn-header-explore-companies"
+                      href="/companies"
+                      className="inline-flex items-center justify-center gap-1.5 rounded-full border border-slate-200 bg-white hover:bg-slate-50 hover:border-royal/40 text-slate-800 px-3.5 sm:px-4 py-2 text-xs font-bold tracking-normal transition-all cursor-pointer font-sans min-h-[36px] shrink-0 shadow-2xs group"
+                      title="Explore Verified Maritime Companies"
+                    >
+                      <Building2 className="w-3.5 h-3.5 text-royal shrink-0" />
+                      <span>Explore Companies</span>
+                      <ArrowRight className="w-3 h-3 text-slate-400 group-hover:text-royal group-hover:translate-x-0.5 transition-all shrink-0" />
+                    </a>
+
                     {/* Prominent Explore Sector City Action */}
                     <button
                       type="button"
@@ -685,7 +718,7 @@ export function CompanySovereignHeader({
 
             {/* Divider & Company Tab Navigation */}
             {onSelectModule && (
-              <div className="border-b border-line pt-2">
+              <div className="border-b border-line pt-2 flex items-center justify-between gap-4">
                 <nav aria-label="Company Workspace Navigation" className="flex items-center gap-4 sm:gap-6 md:gap-8 overflow-x-auto no-scrollbar py-0.5">
                   {navItems.map((item) => {
                     const active = isModuleActive(item.id);
@@ -714,6 +747,13 @@ export function CompanySovereignHeader({
                     );
                   })}
                 </nav>
+
+                <div className="hidden sm:flex items-center shrink-0">
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-royal/10 text-royal font-mono font-bold text-[10.5px] border border-royal/20 uppercase tracking-wider">
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                    <span>U-Commerce | EaaS</span>
+                  </span>
+                </div>
               </div>
             )}
 

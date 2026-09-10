@@ -1,4 +1,5 @@
-import "dotenv/config";
+import dotenv from "dotenv";
+dotenv.config();
 import express from "express";
 import http from "http";
 import path from "path";
@@ -88,15 +89,23 @@ async function startServer() {
     }
   });
 
-  // Server-Side Gemini AI Proxy (bypasses browser CORS & client permission blocks)
+  // Server-Side Gemini AI Proxy (keeps API key strictly on server and prevents client leakage)
   app.post("/api/gemini/generate", async (req: express.Request, res: express.Response) => {
     try {
+      dotenv.config({ override: true });
       const { parts, systemInstruction, modelName } = req.body;
-      const model = modelName || "gemini-3.1-flash-lite";
-      const key =
-        process.env.VITE_GEMINI_API_KEY ||
+      const model = modelName && !modelName.includes("3.") ? modelName : "gemini-2.5-flash";
+      const rawKey =
         process.env.GEMINI_API_KEY ||
-        "AIzaSyCDTRhN3ZCPSOffyEEn2nNwHXGIbHJazRw";
+        process.env.VITE_GEMINI_API_KEY ||
+        "";
+      const key = rawKey.trim().replace(/^["']|["']$/g, "").trim();
+
+      if (!key) {
+        return res.status(503).json({
+          error: "Gemini API key is not configured. Please set GEMINI_API_KEY in your .env file.",
+        });
+      }
 
       const { GoogleGenAI } = await import("@google/genai");
       const ai = new GoogleGenAI({ apiKey: key });
@@ -105,11 +114,24 @@ async function startServer() {
         typeof p === "string" ? { text: p } : p
       );
 
-      const response = await ai.models.generateContent({
-        model,
-        contents: normalizedParts,
-        config: systemInstruction ? { systemInstruction } : undefined,
-      });
+      let response: any;
+      try {
+        response = await ai.models.generateContent({
+          model,
+          contents: normalizedParts,
+          config: systemInstruction ? { systemInstruction } : undefined,
+        });
+      } catch (genErr: any) {
+        if (model !== "gemini-3.1-flash-lite") {
+          response = await ai.models.generateContent({
+            model: "gemini-3.1-flash-lite",
+            contents: normalizedParts,
+            config: systemInstruction ? { systemInstruction } : undefined,
+          });
+        } else {
+          throw genErr;
+        }
+      }
 
       res.setHeader("Access-Control-Allow-Origin", "*");
       res.json({ text: response.text || "" });

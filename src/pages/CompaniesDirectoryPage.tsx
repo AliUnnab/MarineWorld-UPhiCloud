@@ -241,7 +241,7 @@ export function CompaniesDirectoryPage({ config }: { config: SectorConfig }) {
   };
 
   const breadcrumbs = [
-    { label: "MARINEWORLD", href: "/" },
+    { label: "U-Commerce | EaaS", href: "/" },
     { label: "SECTOR CITIES", href: "/cities" },
     { label: "AI-NATIVE ENTERPRISES" },
   ];
@@ -263,7 +263,7 @@ export function CompaniesDirectoryPage({ config }: { config: SectorConfig }) {
             <Reveal>
               <div className="flex flex-wrap items-center justify-between gap-4">
                 <div className="flex flex-wrap items-center gap-3">
-                  <DigiBadge variant="soft">ENTERPRISE</DigiBadge>
+                  <DigiBadge variant="soft">U-Commerce | EaaS</DigiBadge>
                   <span className="font-mono text-[10.5px] uppercase tracking-[0.16em] text-mute">
                     {totalCount} ENTERPRISES · {allCities.length} SECTOR CITIES · {domains.length} DOMAINS
                   </span>
@@ -303,11 +303,10 @@ export function CompaniesDirectoryPage({ config }: { config: SectorConfig }) {
               </span>
               <button
                 onClick={() => handleFilterChange(() => setSelectedDomain("All"))}
-                className={`px-3 py-1.5 rounded-full text-xs font-semibold shrink-0 transition ${
-                  selectedDomain === "All"
-                    ? "bg-royal text-white shadow-xs"
-                    : "bg-white border border-line text-stone hover:text-graphite hover:bg-slate-50"
-                }`}
+                className={`px-3 py-1.5 rounded-full text-xs font-semibold shrink-0 transition ${selectedDomain === "All"
+                  ? "bg-royal text-white shadow-xs"
+                  : "bg-white border border-line text-stone hover:text-graphite hover:bg-slate-50"
+                  }`}
               >
                 All Domains
               </button>
@@ -319,11 +318,10 @@ export function CompaniesDirectoryPage({ config }: { config: SectorConfig }) {
                   <button
                     key={dom.id}
                     onClick={() => handleFilterChange(() => setSelectedDomain(dom.name))}
-                    className={`px-3 py-1.5 rounded-full text-xs font-semibold shrink-0 transition ${
-                      isSelected
-                        ? "bg-royal text-white shadow-xs"
-                        : "bg-white border border-line text-stone hover:text-graphite hover:bg-slate-50"
-                    }`}
+                    className={`px-3 py-1.5 rounded-full text-xs font-semibold shrink-0 transition ${isSelected
+                      ? "bg-royal text-white shadow-xs"
+                      : "bg-white border border-line text-stone hover:text-graphite hover:bg-slate-50"
+                      }`}
                   >
                     {dom.name}
                   </button>
@@ -393,11 +391,10 @@ export function CompaniesDirectoryPage({ config }: { config: SectorConfig }) {
                 <div className="flex items-center border border-line rounded-xl bg-slate-50 p-0.5">
                   <button
                     onClick={() => setViewMode("cards")}
-                    className={`p-2 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 ${
-                      viewMode === "cards"
-                        ? "bg-white text-royal shadow-xs"
-                        : "text-stone hover:text-graphite"
-                    }`}
+                    className={`p-2 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 ${viewMode === "cards"
+                      ? "bg-white text-royal shadow-xs"
+                      : "text-stone hover:text-graphite"
+                      }`}
                     title="Card Grid View"
                   >
                     <LayoutGrid className="w-3.5 h-3.5" />
@@ -405,11 +402,10 @@ export function CompaniesDirectoryPage({ config }: { config: SectorConfig }) {
                   </button>
                   <button
                     onClick={() => setViewMode("table")}
-                    className={`p-2 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 ${
-                      viewMode === "table"
-                        ? "bg-white text-royal shadow-xs"
-                        : "text-stone hover:text-graphite"
-                    }`}
+                    className={`p-2 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 ${viewMode === "table"
+                      ? "bg-white text-royal shadow-xs"
+                      : "text-stone hover:text-graphite"
+                      }`}
                     title="Compact Table View"
                   >
                     <List className="w-3.5 h-3.5" />
@@ -417,11 +413,10 @@ export function CompaniesDirectoryPage({ config }: { config: SectorConfig }) {
                   </button>
                   <button
                     onClick={() => setViewMode("map")}
-                    className={`p-2 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 ${
-                      viewMode === "map"
-                        ? "bg-white text-royal shadow-xs"
-                        : "text-stone hover:text-graphite"
-                    }`}
+                    className={`p-2 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 ${viewMode === "map"
+                      ? "bg-white text-royal shadow-xs"
+                      : "text-stone hover:text-graphite"
+                      }`}
                     title="Geographic Hubs Map"
                   >
                     <Map className="w-3.5 h-3.5" />
@@ -531,9 +526,8 @@ export function CompaniesDirectoryPage({ config }: { config: SectorConfig }) {
             <div className="mt-6 grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
               {/* FACET FILTER SIDEBAR */}
               <aside
-                className={`lg:col-span-3 space-y-6 ${
-                  sidebarOpen ? "block" : "hidden lg:block"
-                }`}
+                className={`lg:col-span-3 space-y-6 ${sidebarOpen ? "block" : "hidden lg:block"
+                  }`}
               >
                 <div className="rounded-2xl border border-line bg-white p-5 shadow-xs space-y-6">
                   <div className="flex items-center justify-between border-b border-line pb-3">
@@ -578,11 +572,10 @@ export function CompaniesDirectoryPage({ config }: { config: SectorConfig }) {
                         <div className="max-h-48 overflow-y-auto space-y-1 pr-1 scrollbar-thin">
                           <button
                             onClick={() => handleFilterChange(() => setSelectedCity("All"))}
-                            className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-xs transition text-left ${
-                              selectedCity === "All"
-                                ? "bg-royal text-white font-bold"
-                                : "text-stone hover:bg-slate-50"
-                            }`}
+                            className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-xs transition text-left ${selectedCity === "All"
+                              ? "bg-royal text-white font-bold"
+                              : "text-stone hover:bg-slate-50"
+                              }`}
                           >
                             <span>All Cities</span>
                             <span className="text-[10px] opacity-80">{totalCount}</span>
@@ -612,12 +605,11 @@ export function CompaniesDirectoryPage({ config }: { config: SectorConfig }) {
                                 <button
                                   key={city.id}
                                   onClick={() => handleFilterChange(() => setSelectedCity(city.slug))}
-                                  className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-xs transition text-left ${
-                                    selectedCity.toLowerCase() === city.slug.toLowerCase() ||
+                                  className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-xs transition text-left ${selectedCity.toLowerCase() === city.slug.toLowerCase() ||
                                     selectedCity.toLowerCase() === city.id.toLowerCase()
-                                      ? "bg-royal text-white font-bold"
-                                      : "text-stone hover:bg-slate-50"
-                                  }`}
+                                    ? "bg-royal text-white font-bold"
+                                    : "text-stone hover:bg-slate-50"
+                                    }`}
                                 >
                                   <span className="truncate">{city.domain}</span>
                                   <span className="text-[10px] font-mono opacity-80">
@@ -648,11 +640,10 @@ export function CompaniesDirectoryPage({ config }: { config: SectorConfig }) {
                       <div className="space-y-1.5 pt-1 animate-in fade-in duration-150">
                         <button
                           onClick={() => handleFilterChange(() => setSelectedCountry("All"))}
-                          className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-xs transition text-left ${
-                            selectedCountry === "All"
-                              ? "bg-royal text-white font-bold"
-                              : "text-stone hover:bg-slate-50"
-                          }`}
+                          className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-xs transition text-left ${selectedCountry === "All"
+                            ? "bg-royal text-white font-bold"
+                            : "text-stone hover:bg-slate-50"
+                            }`}
                         >
                           <span>Global (All Countries)</span>
                           <span className="text-[10px] opacity-80">{totalCount}</span>
@@ -661,11 +652,10 @@ export function CompaniesDirectoryPage({ config }: { config: SectorConfig }) {
                           <button
                             key={cntry.name}
                             onClick={() => handleFilterChange(() => setSelectedCountry(cntry.name))}
-                            className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-xs transition text-left ${
-                              selectedCountry === cntry.name
-                                ? "bg-royal text-white font-bold"
-                                : "text-stone hover:bg-slate-50"
-                            }`}
+                            className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-xs transition text-left ${selectedCountry === cntry.name
+                              ? "bg-royal text-white font-bold"
+                              : "text-stone hover:bg-slate-50"
+                              }`}
                           >
                             <span className="truncate">{cntry.name}</span>
                             <span className="text-[10px] font-mono opacity-80">{cntry.count}</span>
@@ -696,21 +686,19 @@ export function CompaniesDirectoryPage({ config }: { config: SectorConfig }) {
                           <div className="grid grid-cols-2 gap-1.5">
                             <button
                               onClick={() => handleFilterChange(() => setVerificationFilter("all"))}
-                              className={`px-2 py-1 rounded-md text-[11px] font-medium border text-center transition ${
-                                verificationFilter === "all"
-                                  ? "bg-royal text-white border-royal"
-                                  : "border-line text-stone hover:bg-slate-50"
-                              }`}
+                              className={`px-2 py-1 rounded-md text-[11px] font-medium border text-center transition ${verificationFilter === "all"
+                                ? "bg-royal text-white border-royal"
+                                : "border-line text-stone hover:bg-slate-50"
+                                }`}
                             >
                               All ({totalCount})
                             </button>
                             <button
                               onClick={() => handleFilterChange(() => setVerificationFilter("verified"))}
-                              className={`px-2 py-1 rounded-md text-[11px] font-medium border text-center transition ${
-                                verificationFilter === "verified"
-                                  ? "bg-royal text-white border-royal"
-                                  : "border-line text-stone hover:bg-slate-50"
-                              }`}
+                              className={`px-2 py-1 rounded-md text-[11px] font-medium border text-center transition ${verificationFilter === "verified"
+                                ? "bg-royal text-white border-royal"
+                                : "border-line text-stone hover:bg-slate-50"
+                                }`}
                             >
                               Verified ({facets.verification.verified})
                             </button>
@@ -723,21 +711,19 @@ export function CompaniesDirectoryPage({ config }: { config: SectorConfig }) {
                           <div className="grid grid-cols-2 gap-1.5">
                             <button
                               onClick={() => handleFilterChange(() => setAiTwinFilter("all"))}
-                              className={`px-2 py-1 rounded-md text-[11px] font-medium border text-center transition ${
-                                aiTwinFilter === "all"
-                                  ? "bg-royal text-white border-royal"
-                                  : "border-line text-stone hover:bg-slate-50"
-                              }`}
+                              className={`px-2 py-1 rounded-md text-[11px] font-medium border text-center transition ${aiTwinFilter === "all"
+                                ? "bg-royal text-white border-royal"
+                                : "border-line text-stone hover:bg-slate-50"
+                                }`}
                             >
                               All ({totalCount})
                             </button>
                             <button
                               onClick={() => handleFilterChange(() => setAiTwinFilter("twin"))}
-                              className={`px-2 py-1 rounded-md text-[11px] font-medium border text-center transition ${
-                                aiTwinFilter === "twin"
-                                  ? "bg-emerald-600 text-white border-emerald-600 font-bold"
-                                  : "border-line text-stone hover:bg-slate-50"
-                              }`}
+                              className={`px-2 py-1 rounded-md text-[11px] font-medium border text-center transition ${aiTwinFilter === "twin"
+                                ? "bg-emerald-600 text-white border-emerald-600 font-bold"
+                                : "border-line text-stone hover:bg-slate-50"
+                                }`}
                             >
                               Twin Active ({facets.twins.twin})
                             </button>
@@ -750,31 +736,28 @@ export function CompaniesDirectoryPage({ config }: { config: SectorConfig }) {
                           <div className="grid grid-cols-3 gap-1">
                             <button
                               onClick={() => handleFilterChange(() => setTierFilter("all"))}
-                              className={`px-1.5 py-1 rounded text-[10px] font-medium border text-center transition ${
-                                tierFilter === "all"
-                                  ? "bg-royal text-white border-royal"
-                                  : "border-line text-stone hover:bg-slate-50"
-                              }`}
+                              className={`px-1.5 py-1 rounded text-[10px] font-medium border text-center transition ${tierFilter === "all"
+                                ? "bg-royal text-white border-royal"
+                                : "border-line text-stone hover:bg-slate-50"
+                                }`}
                             >
                               All ({totalCount})
                             </button>
                             <button
                               onClick={() => handleFilterChange(() => setTierFilter("FLAGSHIP"))}
-                              className={`px-1.5 py-1 rounded text-[10px] font-medium border text-center transition ${
-                                tierFilter === "FLAGSHIP"
-                                  ? "bg-amber-500 text-white border-amber-500 font-bold"
-                                  : "border-line text-stone hover:bg-slate-50"
-                              }`}
+                              className={`px-1.5 py-1 rounded text-[10px] font-medium border text-center transition ${tierFilter === "FLAGSHIP"
+                                ? "bg-amber-500 text-white border-amber-500 font-bold"
+                                : "border-line text-stone hover:bg-slate-50"
+                                }`}
                             >
                               Flagship ({facets.tiers.flagship})
                             </button>
                             <button
                               onClick={() => handleFilterChange(() => setTierFilter("ENTERPRISE"))}
-                              className={`px-1.5 py-1 rounded text-[10px] font-medium border text-center transition ${
-                                tierFilter === "ENTERPRISE"
-                                  ? "bg-royal text-white border-royal font-bold"
-                                  : "border-line text-stone hover:bg-slate-50"
-                              }`}
+                              className={`px-1.5 py-1 rounded text-[10px] font-medium border text-center transition ${tierFilter === "ENTERPRISE"
+                                ? "bg-royal text-white border-royal font-bold"
+                                : "border-line text-stone hover:bg-slate-50"
+                                }`}
                             >
                               Enterprise ({facets.tiers.enterprise})
                             </button>
@@ -1125,11 +1108,10 @@ export function CompaniesDirectoryPage({ config }: { config: SectorConfig }) {
                           <button
                             key={pageNum}
                             onClick={() => setCurrentPage(pageNum)}
-                            className={`w-8 h-8 rounded-lg text-xs font-bold transition ${
-                              currentPage === pageNum
-                                ? "bg-royal text-white shadow-xs"
-                                : "bg-white border border-line text-stone hover:text-graphite hover:bg-slate-50"
-                            }`}
+                            className={`w-8 h-8 rounded-lg text-xs font-bold transition ${currentPage === pageNum
+                              ? "bg-royal text-white shadow-xs"
+                              : "bg-white border border-line text-stone hover:text-graphite hover:bg-slate-50"
+                              }`}
                           >
                             {pageNum}
                           </button>

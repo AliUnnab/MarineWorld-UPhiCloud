@@ -336,7 +336,7 @@ export function SectorCityAdvisorDrawer({
 
       {/* Slide-over Drawer Panel */}
       <div className="fixed inset-y-0 right-0 z-50 w-full sm:w-[540px] md:w-[600px] lg:w-[660px] bg-white shadow-2xl border-l border-slate-200 flex flex-col h-full animate-in slide-in-from-right duration-300">
-        
+
         {/* ========================================================================= */}
         {/* CORPORATE DRAWER HEADER (LIGHT INSTITUTIONAL SURFACE)                     */}
         {/* ========================================================================= */}
@@ -373,7 +373,7 @@ export function SectorCityAdvisorDrawer({
           <div className="mt-4 pt-3 border-t border-line/80 flex items-center justify-between text-[11px] text-stone gap-2 flex-wrap font-mono">
             <div className="flex items-center gap-1.5 text-emerald-700">
               <ShieldCheck className="w-3.5 h-3.5" />
-              <span className="font-semibold">SOVEREIGN REGISTRY GROUNDED</span>
+              <span className="font-semibold">U-Commerce | EaaS</span>
             </div>
 
             <div className="flex items-center gap-2 flex-wrap">
@@ -402,11 +402,10 @@ export function SectorCityAdvisorDrawer({
           <div className="mt-4 flex items-center gap-1 bg-slate-100/80 p-1 rounded-xl border border-line text-xs font-semibold">
             <button
               onClick={() => setActiveTab("chat")}
-              className={`flex-1 py-2 px-3 rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                activeTab === "chat"
-                  ? "bg-white text-royal shadow-xs font-bold border border-line/60"
-                  : "text-stone hover:text-graphite hover:bg-white/60"
-              }`}
+              className={`flex-1 py-2 px-3 rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer ${activeTab === "chat"
+                ? "bg-white text-royal shadow-xs font-bold border border-line/60"
+                : "text-stone hover:text-graphite hover:bg-white/60"
+                }`}
             >
               <MessageSquare className="w-3.5 h-3.5" />
               <span>City AI Advisor</span>
@@ -414,11 +413,10 @@ export function SectorCityAdvisorDrawer({
 
             <button
               onClick={() => setActiveTab("directory")}
-              className={`flex-1 py-2 px-3 rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                activeTab === "directory"
-                  ? "bg-white text-royal shadow-xs font-bold border border-line/60"
-                  : "text-stone hover:text-graphite hover:bg-white/60"
-              }`}
+              className={`flex-1 py-2 px-3 rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer ${activeTab === "directory"
+                ? "bg-white text-royal shadow-xs font-bold border border-line/60"
+                : "text-stone hover:text-graphite hover:bg-white/60"
+                }`}
             >
               <Building2 className="w-3.5 h-3.5" />
               <span>Companies ({allCityCompanies.length})</span>
@@ -426,11 +424,10 @@ export function SectorCityAdvisorDrawer({
 
             <button
               onClick={() => setActiveTab("capabilities")}
-              className={`flex-1 py-2 px-3 rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                activeTab === "capabilities"
-                  ? "bg-white text-royal shadow-xs font-bold border border-line/60"
-                  : "text-stone hover:text-graphite hover:bg-white/60"
-              }`}
+              className={`flex-1 py-2 px-3 rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer ${activeTab === "capabilities"
+                ? "bg-white text-royal shadow-xs font-bold border border-line/60"
+                : "text-stone hover:text-graphite hover:bg-white/60"
+                }`}
             >
               <Zap className="w-3.5 h-3.5" />
               <span>Capabilities</span>
@@ -438,11 +435,10 @@ export function SectorCityAdvisorDrawer({
 
             <button
               onClick={() => setActiveTab("presence")}
-              className={`flex-1 py-2 px-3 rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                activeTab === "presence"
-                  ? "bg-white text-royal shadow-xs font-bold border border-line/60"
-                  : "text-stone hover:text-graphite hover:bg-white/60"
-              }`}
+              className={`flex-1 py-2 px-3 rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer ${activeTab === "presence"
+                ? "bg-white text-royal shadow-xs font-bold border border-line/60"
+                : "text-stone hover:text-graphite hover:bg-white/60"
+                }`}
             >
               <Award className="w-3.5 h-3.5" />
               <span>Participation Guide</span>
@@ -493,9 +489,8 @@ export function SectorCityAdvisorDrawer({
               {messages.map((msg) => (
                 <div
                   key={msg.id}
-                  className={`flex items-start gap-3.5 ${
-                    msg.sender === "user" ? "flex-row-reverse" : ""
-                  }`}
+                  className={`flex items-start gap-3.5 ${msg.sender === "user" ? "flex-row-reverse" : ""
+                    }`}
                 >
                   {/* Avatar */}
                   {msg.sender === "user" ? (
@@ -510,11 +505,10 @@ export function SectorCityAdvisorDrawer({
 
                   {/* Message Bubble */}
                   <div
-                    className={`max-w-[85%] sm:max-w-[80%] rounded-2xl p-4 text-sm leading-relaxed ${
-                      msg.sender === "user"
-                        ? "bg-slate-900 text-white rounded-tr-none shadow-xs"
-                        : "bg-white border border-slate-200 text-slate-800 rounded-tl-none shadow-2xs"
-                    }`}
+                    className={`max-w-[85%] sm:max-w-[80%] rounded-2xl p-4 text-sm leading-relaxed ${msg.sender === "user"
+                      ? "bg-slate-900 text-white rounded-tr-none shadow-xs"
+                      : "bg-white border border-slate-200 text-slate-800 rounded-tl-none shadow-2xs"
+                      }`}
                   >
                     {/* Formatting text */}
                     <div className="space-y-2 whitespace-pre-line">
@@ -675,11 +669,10 @@ export function SectorCityAdvisorDrawer({
               <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
                 <button
                   onClick={() => setCapabilityFilter(null)}
-                  className={`px-2.5 py-1 rounded-lg text-[11px] font-medium whitespace-nowrap cursor-pointer transition-colors ${
-                    !capabilityFilter
-                      ? "bg-slate-900 text-white font-bold"
-                      : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                  }`}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-medium whitespace-nowrap cursor-pointer transition-colors ${!capabilityFilter
+                    ? "bg-slate-900 text-white font-bold"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                    }`}
                 >
                   All ({allCityCompanies.length})
                 </button>
@@ -687,11 +680,10 @@ export function SectorCityAdvisorDrawer({
                   <button
                     key={cap}
                     onClick={() => setCapabilityFilter(capabilityFilter === cap ? null : cap)}
-                    className={`px-2.5 py-1 rounded-lg text-[11px] font-medium whitespace-nowrap cursor-pointer transition-colors ${
-                      capabilityFilter === cap
-                        ? "bg-royal text-white font-bold"
-                        : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                    }`}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-medium whitespace-nowrap cursor-pointer transition-colors ${capabilityFilter === cap
+                      ? "bg-royal text-white font-bold"
+                      : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                      }`}
                   >
                     {cap}
                   </button>

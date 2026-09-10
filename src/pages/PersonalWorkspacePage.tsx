@@ -21,11 +21,14 @@ import {
   Search,
   ChevronRight,
   ChevronDown,
+  ChevronLeft,
+  MoreHorizontal,
   User,
   Briefcase,
   X,
   Send,
   MessageSquare,
+  FileText,
 } from "lucide-react";
 import { MyInquiriesWorkspaceModule } from "@/components/workspace/MyInquiriesWorkspaceModule";
 import { getUserInquiries, subscribeToUserInquiries } from "@/services/inquiryService";
@@ -75,6 +78,8 @@ import {
   submitHumanVerification,
   subscribeToTrustState,
 } from "@/lib/services/personalTrustService";
+import { getCompanyById, getCompanyBySlug } from "@/lib/services/companyService";
+import { RequestOfferModal } from "@/components/offering/OfferingModals";
 import type {
   PersonalCollection,
   PersonalActivityRecord,
@@ -85,6 +90,7 @@ import type {
   GroundingSourceAttribution,
   UserTrustProfile,
   InquiryEntity,
+  CompanyOffering,
 } from "@/lib/types";
 
 interface PersonalWorkspacePageProps {
@@ -115,6 +121,18 @@ export function PersonalWorkspacePage({
   const [userInquiries, setUserInquiries] = useState<InquiryEntity[]>([]);
   const [collections, setCollections] = useState<PersonalCollection[]>([]);
   const [activities, setActivities] = useState<PersonalActivityRecord[]>([]);
+
+  // Saved Companies Search & Filter State
+  const [companySearchQuery, setCompanySearchQuery] = useState("");
+  const [companySortBy, setCompanySortBy] = useState<"recent" | "name" | "location">("recent");
+  const [openCompanyMenuId, setOpenCompanyMenuId] = useState<string | null>(null);
+
+  // Saved Products Search & Filter & Offer Modal State
+  const [productSearchQuery, setProductSearchQuery] = useState("");
+  const [productSortBy, setProductSortBy] = useState<"recent" | "name" | "company">("recent");
+  const [openProductMenuId, setOpenProductMenuId] = useState<string | null>(null);
+  const [offerModalOffering, setOfferModalOffering] = useState<CompanyOffering | null>(null);
+  const [offerModalCompany, setOfferModalCompany] = useState<CompanyProfile | CompanyEntity | null>(null);
 
   // User Dropdown state
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -176,6 +194,7 @@ export function PersonalWorkspacePage({
     text: string;
     confidence: "HIGH" | "MEDIUM" | "LOW";
     sources: GroundingSourceAttribution[];
+    suggestedAction?: string;
   } | null>(null);
   const [aiConnectSent, setAIConnectSent] = useState(false);
 
@@ -190,6 +209,7 @@ export function PersonalWorkspacePage({
     setActiveAIModal({ type, id, name, companyId, companyName, entity });
     setAIModalQuery("");
     setAIModalAnswer(null);
+    setAIModalLoading(false);
     setAIConnectSent(false);
   };
 
@@ -201,23 +221,29 @@ export function PersonalWorkspacePage({
         const res = await executePublicProductAI(
           activeAIModal.companyId,
           activeAIModal.id,
-          questionText
+          questionText,
+          undefined,
+          activeAIModal.entity
         );
         setAIModalAnswer({
           text: res.answer,
           confidence: res.confidence,
           sources: res.sources,
+          suggestedAction: res.suggestedAction,
         });
       } else if (activeAIModal.type === "SERVICE") {
         const res = await executePublicServiceAI(
           activeAIModal.companyId,
           activeAIModal.id,
-          questionText
+          questionText,
+          undefined,
+          activeAIModal.entity
         );
         setAIModalAnswer({
           text: res.answer,
           confidence: res.confidence,
           sources: res.sources,
+          suggestedAction: res.suggestedAction,
         });
       } else {
         const res = await executePublicCompanyAI(
@@ -228,6 +254,7 @@ export function PersonalWorkspacePage({
           text: res.answer,
           confidence: res.confidence,
           sources: res.sources,
+          suggestedAction: res.suggestedAction,
         });
       }
     } catch {
@@ -239,6 +266,36 @@ export function PersonalWorkspacePage({
     } finally {
       setAIModalLoading(false);
     }
+  };
+
+  const handleRequestOfferFromAI = () => {
+    if (!activeAIModal) return;
+    const comp = getCompanyById(activeAIModal.companyId) || getCompanyBySlug(activeAIModal.companyId);
+    const parentComp: any = comp || {
+      id: activeAIModal.companyId,
+      name: activeAIModal.companyName || "Shipyard",
+      displayName: activeAIModal.companyName || "Shipyard",
+      legalName: activeAIModal.companyName || "Shipyard",
+    };
+    const entity = activeAIModal.entity;
+    const offeringItem: CompanyOffering = {
+      id: entity?.id || activeAIModal.id,
+      offeringId: entity?.id || activeAIModal.id,
+      companyId: activeAIModal.companyId,
+      name: entity?.name || activeAIModal.name,
+      slug: entity?.slug || activeAIModal.id,
+      type: activeAIModal.type === "SERVICE" ? "SERVICE" : "PRODUCT",
+      category: entity?.category || "Maritime Offering",
+      shortDescription:
+        entity?.shortDescription ||
+        entity?.description ||
+        "Verified maritime offering specification.",
+      status: "AVAILABLE",
+      specifications: entity?.specifications || {},
+    };
+    setActiveAIModal(null);
+    setOfferModalOffering(offeringItem);
+    setOfferModalCompany(parentComp);
   };
 
   const handleSendPersonalConnectFromAI = async () => {
@@ -578,6 +635,33 @@ export function PersonalWorkspacePage({
     reloadData();
   };
 
+  const handleRequestOffer = (reference: any, entity: ProductEntity | null) => {
+    const comp = getCompanyById(reference.companyId) || getCompanyBySlug(reference.companyId);
+    const parentComp: any = comp || {
+      id: reference.companyId,
+      name: "ARGENTO MARINE",
+      displayName: "ARGENTO MARINE",
+      legalName: "ARGENTO MARINE S.P.A.",
+    };
+    const offeringItem: CompanyOffering = {
+      id: entity?.id || reference.productId,
+      offeringId: entity?.id || reference.productId,
+      companyId: reference.companyId,
+      name: entity?.name || reference.productId,
+      slug: entity?.slug || reference.productId,
+      type: "PRODUCT",
+      category: entity?.category || "Vessel / Marine Equipment",
+      shortDescription:
+        entity?.shortDescription ||
+        entity?.description ||
+        "Verified maritime offering specification.",
+      status: "AVAILABLE",
+      specifications: entity?.specifications || {},
+    };
+    setOfferModalOffering(offeringItem);
+    setOfferModalCompany(parentComp);
+  };
+
   const handleSignOut = async () => {
     await signOutCurrentUser();
     setUserMenuOpen(false);
@@ -746,7 +830,7 @@ export function PersonalWorkspacePage({
                     className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-semibold text-slate-800 hover:bg-slate-100 flex items-center gap-2 transition cursor-pointer"
                   >
                     <Compass className="w-3.5 h-3.5 text-royal" />
-                    <span>My Workspace</span>
+                    <span>MY MARINEWORLD</span>
                   </button>
                   <button
                     type="button"
@@ -759,7 +843,7 @@ export function PersonalWorkspacePage({
                     className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-700 hover:bg-slate-100 flex items-center gap-2 transition cursor-pointer"
                   >
                     <Building2 className="w-3.5 h-3.5 text-slate-500" />
-                    <span>Saved Companies</span>
+                    <span>My Companies</span>
                   </button>
                   <button
                     type="button"
@@ -772,7 +856,7 @@ export function PersonalWorkspacePage({
                     className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-700 hover:bg-slate-100 flex items-center gap-2 transition cursor-pointer"
                   >
                     <Package className="w-3.5 h-3.5 text-slate-500" />
-                    <span>Saved Products</span>
+                    <span>My Products</span>
                   </button>
                   <button
                     type="button"
@@ -785,7 +869,7 @@ export function PersonalWorkspacePage({
                     className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-700 hover:bg-slate-100 flex items-center gap-2 transition cursor-pointer"
                   >
                     <Layers className="w-3.5 h-3.5 text-slate-500" />
-                    <span>Saved Services</span>
+                    <span>My Services</span>
                   </button>
                   <button
                     type="button"
@@ -798,7 +882,7 @@ export function PersonalWorkspacePage({
                     className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-700 hover:bg-slate-100 flex items-center gap-2 transition cursor-pointer"
                   >
                     <Folder className="w-3.5 h-3.5 text-slate-500" />
-                    <span>Collections</span>
+                    <span>My Smart Curation</span>
                   </button>
                   <button
                     type="button"
@@ -824,36 +908,19 @@ export function PersonalWorkspacePage({
                     className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-700 hover:bg-slate-100 flex items-center gap-2 transition cursor-pointer"
                   >
                     <UserCheck className="w-3.5 h-3.5 text-slate-500" />
-                    <span>Account</span>
+                    <span>Account Settings</span>
                   </button>
                 </div>
 
-                {/* CTA: CREATE YOUR AI-NATIVE COMPANY */}
-                <div className="pt-1.5 border-t border-line/60">
+                <div className="p-1 border-t border-line">
                   <button
                     type="button"
-                    id="menu-item-create-company"
-                    onClick={() => {
-                      navigateTo("/company/onboarding");
-                      setUserMenuOpen(false);
-                    }}
-                    className="w-full text-left px-3 py-2 rounded-xl text-xs font-bold bg-royal text-white hover:bg-royal-dark flex items-center justify-between transition shadow-sm cursor-pointer"
-                  >
-                    <span>CREATE YOUR AI-NATIVE COMPANY</span>
-                    <ArrowRight className="w-3.5 h-3.5 text-sky-200" />
-                  </button>
-                </div>
-
-                {/* Sign Out */}
-                <div className="pt-1.5 border-t border-line/60">
-                  <button
-                    type="button"
-                    id="menu-item-signout"
+                    id="menu-item-logout"
                     onClick={handleSignOut}
-                    className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-semibold text-rose-600 hover:bg-rose-50 flex items-center justify-between transition cursor-pointer"
+                    className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-medium text-rose-600 hover:bg-rose-50 flex items-center gap-2 transition cursor-pointer"
                   >
-                    <span>Sign Out</span>
                     <LogOut className="w-3.5 h-3.5" />
+                    <span>Sign Out</span>
                   </button>
                 </div>
               </div>
@@ -862,17 +929,16 @@ export function PersonalWorkspacePage({
         </div>
       </header>
 
-      {/* Workspace Header Banner */}
       <div className="bg-white border-b border-line">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
             <div className="space-y-2">
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-100 border border-line text-slate-700 text-xs font-mono font-bold tracking-wide">
                 <Compass className="w-3.5 h-3.5 text-royal" />
-                <span>PERSONAL WORKSPACE</span>
+                <span>U-Commerce | EaaS</span>
               </div>
               <h1 id="workspace-header-title" className="text-2xl sm:text-3xl font-extrabold text-graphite tracking-tight uppercase">
-                MY WORKSPACE
+                MY MARINEWORLD
               </h1>
               <div className="flex items-center gap-3 text-xs text-stone">
                 <span id="workspace-user-name" className="font-semibold text-graphite">
@@ -890,7 +956,6 @@ export function PersonalWorkspacePage({
               </div>
             </div>
 
-            {/* Quick Actions */}
             <div className="flex items-center gap-3">
               <a
                 id="btn-workspace-create-company-cta"
@@ -907,13 +972,12 @@ export function PersonalWorkspacePage({
             </div>
           </div>
 
-          {/* Tab Navigation */}
           <div className="flex items-center gap-2 overflow-x-auto pt-6 border-t border-line/60 mt-6 scrollbar-none">
             {[
               { id: "overview", label: "Overview", icon: Compass, route: "/workspace" },
-              { id: "companies", label: `Saved Companies (${savedCompanies.length})`, icon: Building2, route: "/saved/companies" },
-              { id: "products", label: `Saved Products (${savedProducts.length})`, icon: Package, route: "/saved/products" },
-              { id: "services", label: `Saved Services (${savedServices.length})`, icon: Layers, route: "/saved/services" },
+              { id: "companies", label: `My Companies (${savedCompanies.length})`, icon: Building2, route: "/saved/companies" },
+              { id: "products", label: `My Products (${savedProducts.length})`, icon: Package, route: "/saved/products" },
+              { id: "services", label: `My Services (${savedServices.length})`, icon: Layers, route: "/saved/services" },
               {
                 id: "inquiries",
                 label: `My Inquiries (${userInquiries.length})`,
@@ -921,7 +985,7 @@ export function PersonalWorkspacePage({
                 route: "/workspace/inquiries",
                 unreadCount: userInquiries.filter((i) => i.status === "WAITING_FOR_REQUESTER").length,
               },
-              { id: "collections", label: `Collections (${collections.length})`, icon: Folder, route: "/collections" },
+              { id: "collections", label: `My Smart Curation (${collections.length})`, icon: Folder, route: "/collections" },
               { id: "activity", label: `Recent Activity (${activities.length})`, icon: Activity, route: "/activity" },
               { id: "account", label: "Account", icon: UserCheck, route: "/account" },
             ].map((tab) => {
@@ -953,12 +1017,10 @@ export function PersonalWorkspacePage({
         </div>
       </div>
 
-      {/* Main Workspace Body */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
         {/* TAB: OVERVIEW */}
         {activeTab === "overview" && (
           <div id="section-workspace-overview" className="space-y-8">
-            {/* Metric Summary Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
               <div
                 id="card-summary-companies"
@@ -969,7 +1031,7 @@ export function PersonalWorkspacePage({
                 className="bg-white border border-line rounded-2xl p-5 hover:border-slate-300 transition cursor-pointer space-y-2 shadow-xs"
               >
                 <div className="flex items-center justify-between text-stone">
-                  <span className="text-xs font-semibold uppercase tracking-wider">Saved Companies</span>
+                  <span className="text-xs font-semibold uppercase tracking-wider">My Companies</span>
                   <Building2 className="w-4 h-4 text-royal" />
                 </div>
                 <div className="text-3xl font-extrabold text-graphite">{savedCompanies.length}</div>
@@ -985,7 +1047,7 @@ export function PersonalWorkspacePage({
                 className="bg-white border border-line rounded-2xl p-5 hover:border-slate-300 transition cursor-pointer space-y-2 shadow-xs"
               >
                 <div className="flex items-center justify-between text-stone">
-                  <span className="text-xs font-semibold uppercase tracking-wider">Saved Products</span>
+                  <span className="text-xs font-semibold uppercase tracking-wider">My Products</span>
                   <Package className="w-4 h-4 text-royal" />
                 </div>
                 <div className="text-3xl font-extrabold text-graphite">{savedProducts.length}</div>
@@ -1001,7 +1063,7 @@ export function PersonalWorkspacePage({
                 className="bg-white border border-line rounded-2xl p-5 hover:border-slate-300 transition cursor-pointer space-y-2 shadow-xs"
               >
                 <div className="flex items-center justify-between text-stone">
-                  <span className="text-xs font-semibold uppercase tracking-wider">Saved Services</span>
+                  <span className="text-xs font-semibold uppercase tracking-wider">My Services</span>
                   <Layers className="w-4 h-4 text-royal" />
                 </div>
                 <div className="text-3xl font-extrabold text-graphite">{savedServices.length}</div>
@@ -1033,7 +1095,7 @@ export function PersonalWorkspacePage({
                 className="bg-white border border-line rounded-2xl p-5 hover:border-slate-300 transition cursor-pointer space-y-2 shadow-xs"
               >
                 <div className="flex items-center justify-between text-stone">
-                  <span className="text-xs font-semibold uppercase tracking-wider">Collections</span>
+                  <span className="text-xs font-semibold uppercase tracking-wider">My Smart Curation</span>
                   <Folder className="w-4 h-4 text-royal" />
                 </div>
                 <div className="text-3xl font-extrabold text-graphite">{collections.length}</div>
@@ -1041,12 +1103,10 @@ export function PersonalWorkspacePage({
               </div>
             </div>
 
-            {/* Quick Preview Sections */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-              {/* Recent Saved Companies */}
               <div className="bg-white border border-line rounded-2xl p-6 space-y-4">
                 <div className="flex items-center justify-between">
-                  <h2 className="text-sm font-bold uppercase tracking-wider text-graphite">Recent Saved Companies</h2>
+                  <h2 className="text-sm font-bold uppercase tracking-wider text-graphite">My Recent Companies</h2>
                   <button
                     onClick={() => {
                       setActiveTab("companies");
@@ -1169,25 +1229,52 @@ export function PersonalWorkspacePage({
 
         {/* TAB: COMPANIES */}
         {activeTab === "companies" && (
-          <div id="section-workspace-companies" className="space-y-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-lg font-bold text-graphite uppercase tracking-tight">Saved Companies</h2>
-                <p className="text-xs text-stone">Bookmarked maritime enterprises and supply chain leaders.</p>
+          <div id="section-workspace-companies" className="space-y-6 font-sans">
+            {/* Header: Title + Search & Sort */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-slate-100">
+              <div className="flex items-center gap-3.5">
+                <div className="w-11 h-11 rounded-2xl bg-sky-50 text-sky-600 border border-sky-100 flex items-center justify-center shrink-0">
+                  <Building2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-slate-900 tracking-tight">
+                    My Companies
+                  </h2>
+                  <p className="text-xs sm:text-sm text-slate-500 font-normal mt-0.5">
+                    Companies and shipyards you are following for future projects.
+                  </p>
+                </div>
               </div>
-              <a
-                href="/companies"
-                className="text-xs font-semibold text-royal hover:underline"
-              >
-                Explore AI-Native Companies →
-              </a>
+
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <div className="relative flex items-center">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={companySearchQuery}
+                    onChange={(e) => setCompanySearchQuery(e.target.value)}
+                    placeholder="Search your saved companies..."
+                    className="pl-9 pr-3.5 py-2 text-xs sm:text-sm bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-slate-400 w-48 sm:w-60 transition shadow-2xs"
+                  />
+                </div>
+
+                <select
+                  value={companySortBy}
+                  onChange={(e) => setCompanySortBy(e.target.value as any)}
+                  className="px-3 py-2 text-xs sm:text-sm bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-slate-400 text-slate-700 cursor-pointer shadow-2xs"
+                >
+                  <option value="recent">Sort by</option>
+                  <option value="name">Name (A-Z)</option>
+                  <option value="location">Location</option>
+                </select>
+              </div>
             </div>
 
             {savedCompanies.length === 0 ? (
               <div id="empty-saved-companies" className="bg-white border border-line rounded-2xl p-12 text-center space-y-4">
                 <Building2 className="w-12 h-12 text-stone/40 mx-auto" />
                 <div className="space-y-1">
-                  <h3 className="text-sm font-bold text-graphite uppercase">No Saved Companies</h3>
+                  <h3 className="text-sm font-bold text-graphite uppercase">No Companies in My List</h3>
                   <p className="text-xs text-stone max-w-sm mx-auto">
                     You haven&apos;t saved any companies yet. Explore verified shipyards, naval architects, and component suppliers.
                   </p>
@@ -1201,103 +1288,278 @@ export function PersonalWorkspacePage({
                 </a>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {savedCompanies.map(({ reference, entity, isAvailable }) => (
-                  <div
-                    key={reference.companyId}
-                    id={`card-saved-company-${reference.companyId}`}
-                    className="bg-white border border-line rounded-2xl p-6 space-y-4 hover:border-slate-300 transition flex flex-col justify-between shadow-xs"
-                  >
-                    <div className="space-y-3">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex flex-wrap items-center gap-1.5 font-mono text-[10px]">
-                          {(entity as any)?.sector || (entity as any)?.sectorCityId ? (
-                            <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-semibold uppercase">
-                              {(entity as any)?.sector || (entity as any)?.sectorCityId}
-                            </span>
-                          ) : (
-                            <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-semibold uppercase">
-                              Company
-                            </span>
-                          )}
-                          {(entity as any)?.verificationStatus === "verified" || (entity as any)?.verificationStatus === "VERIFIED" ? (
-                            <span className="px-2 py-0.5 rounded bg-soft text-royal font-bold">
-                              ✓ VERIFIED
-                            </span>
-                          ) : (
-                            <span className="px-2 py-0.5 rounded bg-canvas border border-line text-stone">
-                              PUBLIC NODE
-                            </span>
-                          )}
-                        </div>
-                        <button
-                          id={`btn-remove-saved-company-${reference.companyId}`}
-                          onClick={() => handleRemoveCompany(reference.companyId)}
-                          className="text-stone hover:text-rose-600 transition p-1 cursor-pointer"
-                          title="Remove bookmark"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
+              <div className="space-y-4">
+                {savedCompanies
+                  .filter(({ reference, entity }) => {
+                    if (!companySearchQuery.trim()) return true;
+                    const q = companySearchQuery.toLowerCase();
+                    const name = ((entity as any)?.displayName || (entity as any)?.name || reference.companyId || "").toLowerCase();
+                    const desc = ((entity as any)?.shortDescription || (entity as any)?.corporateDescription || (entity as any)?.summary || (entity as any)?.tagline || entity?.description || "").toLowerCase();
+                    const sector = ((entity as any)?.sector || (entity as any)?.primarySectorCategory || (entity as any)?.industry || (entity as any)?.sectorCityId || "").toLowerCase();
+                    const city = ((entity as any)?.city || (entity as any)?.headquartersCity || "").toLowerCase();
+                    const country = ((entity as any)?.country || (entity as any)?.registrationCountry || "").toLowerCase();
+                    const compId = (reference.businessId || reference.companyId || "").toLowerCase();
+                    return name.includes(q) || desc.includes(q) || sector.includes(q) || city.includes(q) || country.includes(q) || compId.includes(q);
+                  })
+                  .sort((a, b) => {
+                    if (companySortBy === "name") {
+                      const nameA = (a.entity as any)?.displayName || (a.entity as any)?.name || a.reference.companyId || "";
+                      const nameB = (b.entity as any)?.displayName || (b.entity as any)?.name || b.reference.companyId || "";
+                      return nameA.localeCompare(nameB);
+                    }
+                    if (companySortBy === "location") {
+                      const locA = (a.entity as any)?.city || (a.entity as any)?.country || "";
+                      const locB = (b.entity as any)?.city || (b.entity as any)?.country || "";
+                      return locA.localeCompare(locB);
+                    }
+                    return (b.reference.savedAt || "").localeCompare(a.reference.savedAt || "");
+                  })
+                  .map(({ reference, entity, isAvailable }) => {
+                    const companyName =
+                      (entity as any)?.displayName ||
+                      (entity as any)?.name ||
+                      (isAvailable ? reference.companyId : "Company no longer available");
 
-                      <div>
-                        <h3 className="font-bold text-base text-graphite">
-                          {(entity as any)?.displayName || (entity as any)?.name || (isAvailable ? reference.companyId : "Company no longer available")}
-                        </h3>
-                        <div className="font-mono text-[11px] text-mute mt-0.5">
-                          ID: {reference.businessId || reference.companyId.toUpperCase()}
-                        </div>
-                        <p className="text-xs text-stone line-clamp-2 mt-1.5">
-                          {(entity as any)?.summary || (entity as any)?.tagline || entity?.description || "Verified maritime ecosystem company profile."}
-                        </p>
-                      </div>
+                    const atHandle =
+                      (entity as any)?.legalName ||
+                      (entity as any)?.tradingName ||
+                      companyName;
 
-                      {(entity as any)?.city && (
-                        <div className="flex items-center gap-1.5 text-xs text-stone font-mono">
-                          <span className="text-[11px] text-mute">SECTOR CITY:</span>
-                          <span className="font-semibold text-graphite">{(entity as any).city}</span>
-                        </div>
-                      )}
-                    </div>
+                    const displayImage =
+                      (entity as any)?.coverImage ||
+                      (entity as any)?.logoUrl ||
+                      (entity as any)?.logo ||
+                      (entity as any)?.heroImage ||
+                      "https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&w=600&q=80";
 
-                    <div className="pt-4 border-t border-line/60 flex items-center justify-between gap-2">
-                      <button
-                        id={`btn-remove-saved-company-${reference.companyId}`}
-                        onClick={() => handleRemoveCompany(reference.companyId)}
-                        className="font-mono text-[11px] font-semibold text-rose-600 hover:underline cursor-pointer"
+                    const sectorLabel =
+                      (entity as any)?.sector ||
+                      (entity as any)?.primarySectorCategory ||
+                      (entity as any)?.industry ||
+                      (entity as any)?.sectorCityId ||
+                      "Shipyard & Marine";
+
+                    const locationParts = [
+                      (entity as any)?.city || (entity as any)?.headquartersCity,
+                      (entity as any)?.country || (entity as any)?.registrationCountry,
+                    ].filter(Boolean);
+                    const locationLabel =
+                      locationParts.length > 0
+                        ? locationParts.join(", ")
+                        : (entity as any)?.location || "Global Maritime Hub";
+
+                    const year =
+                      (entity as any)?.foundedYear ||
+                      (entity as any)?.yearEstablished ||
+                      (entity as any)?.establishedYear;
+                    const estYear = year
+                      ? (year.toString().startsWith("Est") ? year : `Est. ${year}`)
+                      : "Est. 2018";
+
+                    const shortDesc =
+                      (entity as any)?.shortDescription ||
+                      (entity as any)?.corporateDescription ||
+                      (entity as any)?.summary ||
+                      (entity as any)?.tagline ||
+                      entity?.description ||
+                      (!isAvailable
+                        ? "This company profile is no longer available in the active directory."
+                        : "Verified maritime ecosystem shipyard and commercial engineering enterprise.");
+
+                    const companyUrl = `/companies/${(entity as any)?.slug || reference.companyId}`;
+
+                    return (
+                      <div
+                        key={reference.companyId}
+                        id={`card-saved-company-${reference.companyId}`}
+                        className="bg-white border border-slate-200/90 rounded-2xl p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4 shadow-2xs hover:border-slate-300 transition"
                       >
-                        REMOVE SAVED
-                      </button>
-                      <div className="flex items-center gap-2">
-                        <button
-                          id={`btn-ask-ai-company-${reference.companyId}`}
-                          onClick={() =>
-                            handleOpenAIModal(
-                              "COMPANY",
-                              reference.companyId,
-                              (entity as any)?.displayName || (entity as any)?.name || reference.companyId,
-                              reference.companyId,
-                              (entity as any)?.displayName || (entity as any)?.name || reference.companyId,
-                              entity
-                            )
-                          }
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-soft text-royal text-[11px] font-bold uppercase tracking-wider hover:bg-royal/10 transition cursor-pointer"
-                        >
-                          <Cpu className="w-3 h-3" />
-                          <span>ASK AI</span>
-                        </button>
-                        <a
-                          id={`btn-explore-company-${reference.companyId}`}
-                          href={`/companies/${entity?.slug || reference.companyId}`}
-                          className="inline-flex items-center gap-1 px-3 py-1 rounded-lg bg-royal text-white text-[11px] font-bold uppercase tracking-wider hover:bg-royal-dark transition"
-                        >
-                          <span>EXPLORE</span>
-                          <ArrowRight className="w-3 h-3" />
-                        </a>
+                        {/* Left: Thumbnail & Info */}
+                        <div className="flex items-start sm:items-center gap-4 sm:gap-5 flex-1 min-w-0">
+                          <a
+                            href={companyUrl}
+                            className="w-28 sm:w-36 h-20 sm:h-24 rounded-xl overflow-hidden bg-slate-100 shrink-0 border border-slate-100 relative group/thumb block cursor-pointer"
+                            title={`Go to ${companyName} profile`}
+                          >
+                            <img
+                              src={displayImage}
+                              alt={companyName}
+                              className="w-full h-full object-cover group-hover/thumb:scale-105 transition-transform duration-300"
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).src =
+                                  "https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&w=600&q=80";
+                              }}
+                            />
+                          </a>
+
+                          <div className="space-y-1 min-w-0 flex-1">
+                            <h3 className="text-base sm:text-lg font-bold text-slate-900 truncate">
+                              <a
+                                href={companyUrl}
+                                className="hover:text-royal hover:underline transition-colors"
+                                title={`Go to ${companyName} profile`}
+                              >
+                                {companyName}
+                              </a>
+                            </h3>
+
+                            <a
+                              href={companyUrl}
+                              className="inline-flex items-center gap-1.5 text-xs text-slate-700 font-semibold hover:text-royal transition-colors group/handle"
+                              title={`Go to ${companyName} profile`}
+                            >
+                              <span className="text-slate-400 font-normal">@</span>
+                              <span className="uppercase tracking-wide group-hover/handle:underline">{atHandle}</span>
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 fill-emerald-50 shrink-0" />
+                            </a>
+
+                            <div className="text-xs text-slate-500 flex items-center gap-2 flex-wrap">
+                              <span>{sectorLabel}</span>
+                              <span>•</span>
+                              <span>{locationLabel}</span>
+                              <span>•</span>
+                              <span>{estYear}</span>
+                            </div>
+
+                            <p className="text-xs text-slate-500 line-clamp-1">
+                              {shortDesc}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Right: Verification Badge & Action Buttons */}
+                        <div className="flex flex-col sm:flex-row lg:flex-col items-start sm:items-center lg:items-end justify-between gap-3 shrink-0">
+                          <div>
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200/80 text-xs font-semibold">
+                              Verified Shipyard
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {/* Ask AI */}
+                            {isAvailable && (
+                              <button
+                                type="button"
+                                id={`btn-ask-ai-company-${reference.companyId}`}
+                                onClick={() =>
+                                  handleOpenAIModal(
+                                    "COMPANY",
+                                    reference.companyId,
+                                    companyName,
+                                    reference.companyId,
+                                    companyName,
+                                    entity
+                                  )
+                                }
+                                className="px-3.5 py-2 rounded-xl bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-800 text-xs sm:text-sm font-semibold flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
+                              >
+                                <Building2 className="w-4 h-4 text-slate-700" />
+                                <span>Ask AI</span>
+                              </button>
+                            )}
+
+                            {/* Explore */}
+                            {isAvailable && (
+                              <a
+                                id={`btn-explore-company-${reference.companyId}`}
+                                href={companyUrl}
+                                className="px-4 sm:px-5 py-2 rounded-xl bg-[#0B2545] hover:bg-[#071a30] text-white text-xs sm:text-sm font-semibold flex items-center gap-1.5 transition cursor-pointer shadow-xs"
+                              >
+                                <span>Explore</span>
+                              </a>
+                            )}
+
+                            {/* View */}
+                            {isAvailable ? (
+                              <a
+                                id={`link-open-company-${reference.companyId}`}
+                                href={companyUrl}
+                                className="px-4 py-2 rounded-xl bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 text-xs sm:text-sm font-semibold transition cursor-pointer shadow-2xs"
+                              >
+                                View
+                              </a>
+                            ) : (
+                              <span className="font-mono text-xs text-mute">UNAVAILABLE</span>
+                            )}
+
+                            {/* More Options (...) */}
+                            <div className="relative">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setOpenCompanyMenuId(
+                                    openCompanyMenuId === reference.companyId
+                                      ? null
+                                      : reference.companyId
+                                  )
+                                }
+                                className="p-2 rounded-xl bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-500 hover:text-slate-800 text-xs transition cursor-pointer shadow-2xs"
+                                title="More options"
+                              >
+                                <MoreHorizontal className="w-4 h-4" />
+                              </button>
+
+                              {openCompanyMenuId === reference.companyId && (
+                                <div className="absolute right-0 mt-1 w-44 bg-white border border-slate-200 rounded-xl shadow-lg py-1 z-30 animate-in fade-in">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      handleRemoveCompany(reference.companyId);
+                                      setOpenCompanyMenuId(null);
+                                    }}
+                                    className="w-full text-left px-3 py-2 text-xs text-rose-600 hover:bg-rose-50 flex items-center gap-2 cursor-pointer font-medium"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                    <span>Remove from Saved</span>
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
                       </div>
-                    </div>
+                    );
+                  })}
+
+                {/* Pagination bar matching products */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 text-xs text-slate-500">
+                  <span>
+                    Showing{" "}
+                    {
+                      savedCompanies.filter(({ reference, entity }) => {
+                        if (!companySearchQuery.trim()) return true;
+                        const q = companySearchQuery.toLowerCase();
+                        const name = ((entity as any)?.displayName || (entity as any)?.name || reference.companyId || "").toLowerCase();
+                        const desc = ((entity as any)?.shortDescription || (entity as any)?.corporateDescription || (entity as any)?.summary || (entity as any)?.tagline || entity?.description || "").toLowerCase();
+                        const sector = ((entity as any)?.sector || (entity as any)?.primarySectorCategory || (entity as any)?.industry || (entity as any)?.sectorCityId || "").toLowerCase();
+                        const city = ((entity as any)?.city || (entity as any)?.headquartersCity || "").toLowerCase();
+                        const country = ((entity as any)?.country || (entity as any)?.registrationCountry || "").toLowerCase();
+                        const compId = (reference.businessId || reference.companyId || "").toLowerCase();
+                        return name.includes(q) || desc.includes(q) || sector.includes(q) || city.includes(q) || country.includes(q) || compId.includes(q);
+                      }).length
+                    }{" "}
+                    saved companies
+                  </span>
+                  <div className="flex items-center gap-1.5 self-center">
+                    <button
+                      type="button"
+                      className="p-1.5 rounded-lg border border-slate-200 bg-white text-slate-400 disabled:opacity-40 cursor-not-allowed"
+                      disabled
+                    >
+                      <ChevronLeft className="w-3.5 h-3.5" />
+                    </button>
+                    <span className="w-7 h-7 rounded-lg bg-sky-50 text-sky-800 font-bold flex items-center justify-center border border-sky-100 text-xs">
+                      1
+                    </span>
+                    <button
+                      type="button"
+                      className="p-1.5 rounded-lg border border-slate-200 bg-white text-slate-400 disabled:opacity-40 cursor-not-allowed"
+                      disabled
+                    >
+                      <ChevronRight className="w-3.5 h-3.5" />
+                    </button>
                   </div>
-                ))}
+                </div>
               </div>
             )}
           </div>
@@ -1305,27 +1567,54 @@ export function PersonalWorkspacePage({
 
         {/* TAB: PRODUCTS */}
         {activeTab === "products" && (
-          <div id="section-workspace-products" className="space-y-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-lg font-bold text-graphite uppercase tracking-tight">Saved Products</h2>
-                <p className="text-xs text-stone">Bookmarked vessels, marine equipment, propulsion, and technical packages.</p>
+          <div id="section-workspace-products" className="space-y-6 font-sans">
+            {/* Header: Title + Search & Sort */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-slate-100">
+              <div className="flex items-center gap-3.5">
+                <div className="w-11 h-11 rounded-2xl bg-sky-50 text-sky-600 border border-sky-100 flex items-center justify-center shrink-0">
+                  <Package className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-slate-900 tracking-tight">
+                    My Products
+                  </h2>
+                  <p className="text-xs sm:text-sm text-slate-500 font-normal mt-0.5">
+                    Products you are following for future projects.
+                  </p>
+                </div>
               </div>
-              <a
-                href="/products"
-                className="text-xs font-semibold text-royal hover:underline"
-              >
-                Browse Products Catalog →
-              </a>
+
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <div className="relative flex items-center">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={productSearchQuery}
+                    onChange={(e) => setProductSearchQuery(e.target.value)}
+                    placeholder="Search your saved products..."
+                    className="pl-9 pr-3.5 py-2 text-xs sm:text-sm bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-slate-400 w-48 sm:w-60 transition shadow-2xs"
+                  />
+                </div>
+
+                <select
+                  value={productSortBy}
+                  onChange={(e) => setProductSortBy(e.target.value as any)}
+                  className="px-3 py-2 text-xs sm:text-sm bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-slate-400 text-slate-700 cursor-pointer shadow-2xs"
+                >
+                  <option value="recent">Sort by</option>
+                  <option value="name">Name (A-Z)</option>
+                  <option value="company">Company</option>
+                </select>
+              </div>
             </div>
 
             {savedProducts.length === 0 ? (
               <div id="empty-saved-products" className="bg-white border border-line rounded-2xl p-12 text-center space-y-4">
                 <Package className="w-12 h-12 text-stone/40 mx-auto" />
                 <div className="space-y-1">
-                  <h3 className="text-sm font-bold text-graphite uppercase">No Saved Products</h3>
+                  <h3 className="text-sm font-bold text-graphite uppercase">No Products in My List</h3>
                   <p className="text-xs text-stone max-w-sm mx-auto">
-                    You haven&apos;t bookmarked any products yet. Discover vessel designs, engines, and navigation systems.
+                    You haven&apos;t saved any products yet. Discover vessel designs, propulsion systems, and navigation hardware.
                   </p>
                 </div>
                 <a
@@ -1337,110 +1626,266 @@ export function PersonalWorkspacePage({
                 </a>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {savedProducts.map(({ reference, entity, isAvailable }) => (
-                  <div
-                    key={reference.productId}
-                    id={`card-saved-product-${reference.productId}`}
-                    className="bg-white border border-line rounded-2xl p-6 space-y-4 hover:border-slate-300 transition flex flex-col justify-between shadow-xs"
-                  >
-                    <div className="space-y-3">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex flex-wrap items-center gap-1.5 font-mono text-[10px]">
-                          {entity?.category ? (
-                            <span className="px-2 py-0.5 rounded bg-soft text-royal font-bold uppercase">
-                              {entity.category}
-                            </span>
-                          ) : (
-                            <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-semibold uppercase">
-                              Product
-                            </span>
-                          )}
-                          {!isAvailable ? (
-                            <span className="px-2 py-0.5 rounded bg-rose-50 text-rose-700 font-bold border border-rose-200">
-                              ITEM NO LONGER AVAILABLE
-                            </span>
-                          ) : (
-                            <span className="px-2 py-0.5 rounded bg-canvas border border-line text-stone">
-                              {entity?.availability || "AVAILABLE"}
-                            </span>
-                          )}
-                        </div>
-                        <button
-                          id={`btn-remove-saved-product-${reference.productId}`}
-                          onClick={() => handleRemoveProduct(reference.productId)}
-                          className="text-stone hover:text-rose-600 transition p-1 cursor-pointer"
-                          title="Remove bookmark"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
+              <div className="space-y-4">
+                {savedProducts
+                  .filter(({ reference, entity }) => {
+                    if (!productSearchQuery.trim()) return true;
+                    const q = productSearchQuery.toLowerCase();
+                    const name = (entity?.name || reference.productId || "").toLowerCase();
+                    const desc = (entity?.shortDescription || entity?.description || "").toLowerCase();
+                    const comp = (reference.companyId || reference.businessId || "").toLowerCase();
+                    const cat = (entity?.category || "").toLowerCase();
+                    return name.includes(q) || desc.includes(q) || comp.includes(q) || cat.includes(q);
+                  })
+                  .sort((a, b) => {
+                    if (productSortBy === "name") {
+                      const nameA = a.entity?.name || a.reference.productId || "";
+                      const nameB = b.entity?.name || b.reference.productId || "";
+                      return nameA.localeCompare(nameB);
+                    }
+                    if (productSortBy === "company") {
+                      const compA = a.reference.companyId || "";
+                      const compB = b.reference.companyId || "";
+                      return compA.localeCompare(compB);
+                    }
+                    return (b.reference.savedAt || "").localeCompare(a.reference.savedAt || "");
+                  })
+                  .map(({ reference, entity, isAvailable }) => {
+                    const comp = getCompanyById(reference.companyId) || getCompanyBySlug(reference.companyId);
+                    const companyName =
+                      comp?.displayName ||
+                      comp?.name ||
+                      comp?.legalName ||
+                      reference.businessId ||
+                      "ARGENTO MARINE";
 
-                      <div>
-                        <h3 className="font-bold text-base text-graphite">
-                          {entity?.name || (!isAvailable ? "ITEM NO LONGER AVAILABLE" : reference.productId)}
-                        </h3>
-                        {reference.businessId && (
-                          <div className="font-mono text-[11px] text-mute mt-0.5">
-                            REF: {reference.businessId}
-                          </div>
-                        )}
-                        <p className="text-xs text-stone line-clamp-2 mt-1.5">
-                          {entity?.shortDescription || entity?.description || (!isAvailable ? "This item is no longer available in the public catalog." : "Verified maritime product specification.")}
-                        </p>
-                      </div>
+                    const productName =
+                      entity?.name ||
+                      (!isAvailable ? "Item No Longer Available" : reference.productId);
 
-                      {entity?.category && isAvailable && (
-                        <div className="text-xs text-stone">
-                          Category: <span className="font-medium text-graphite">{entity.category}</span>
-                        </div>
-                      )}
-                    </div>
+                    const displayImage =
+                      entity?.primaryImage ||
+                      (entity as any)?.coverImage ||
+                      (entity as any)?.imageUrl ||
+                      entity?.images?.[0] ||
+                      "https://images.unsplash.com/photo-1569263979104-865ab7cd8d13?auto=format&fit=crop&w=600&q=80";
 
-                    <div className="pt-4 border-t border-line/60 flex items-center justify-between gap-2">
-                      <button
-                        id={`btn-remove-saved-product-${reference.productId}`}
-                        onClick={() => handleRemoveProduct(reference.productId)}
-                        className="font-mono text-[11px] font-semibold text-rose-600 hover:underline cursor-pointer"
+                    const lengthSpec =
+                      entity?.specifications?.["Length"] ||
+                      entity?.specifications?.["Overall Length"] ||
+                      entity?.specifications?.["LOA"] ||
+                      entity?.specifications?.["Length Overall"] ||
+                      entity?.specifications?.["Beam"] ||
+                      (entity as any)?.length ||
+                      "17.3 m";
+
+                    const yearSpec =
+                      entity?.specifications?.["Year"] ||
+                      entity?.specifications?.["Model Year"] ||
+                      (entity as any)?.year ||
+                      "2023";
+
+                    const category = entity?.category || entity?.productType || "Sport Yacht";
+                    const shortDesc =
+                      entity?.shortDescription ||
+                      entity?.description ||
+                      (!isAvailable
+                        ? "This item is no longer available in the active catalog."
+                        : "Avant-garde maritime performance with precision engineering.");
+
+                    const productUrl = `/companies/${reference.companyId}/products?product=${entity?.slug || reference.productId}`;
+
+                    return (
+                      <div
+                        key={reference.productId}
+                        id={`card-saved-product-${reference.productId}`}
+                        className="bg-white border border-slate-200/90 rounded-2xl p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4 shadow-2xs hover:border-slate-300 transition"
                       >
-                        REMOVE
-                      </button>
-                      <div className="flex items-center gap-2">
-                        {isAvailable && (
-                          <button
-                            id={`btn-ask-ai-product-${reference.productId}`}
-                            onClick={() =>
-                              handleOpenAIModal(
-                                "PRODUCT",
-                                reference.productId,
-                                entity?.name || reference.productId,
-                                reference.companyId,
-                                reference.companyId,
-                                entity
-                              )
-                            }
-                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-soft text-royal text-[11px] font-bold uppercase tracking-wider hover:bg-royal/10 transition cursor-pointer"
-                          >
-                            <Cpu className="w-3 h-3" />
-                            <span>ASK AI</span>
-                          </button>
-                        )}
-                        {isAvailable ? (
+                        {/* Left: Thumbnail & Info */}
+                        <div className="flex items-start sm:items-center gap-4 sm:gap-5 flex-1 min-w-0">
                           <a
-                            id={`link-open-product-${reference.productId}`}
-                            href={`/companies/${reference.companyId}/products?product=${entity?.slug || reference.productId}`}
-                            className="inline-flex items-center gap-1.5 text-xs font-bold text-royal hover:underline uppercase tracking-wide"
+                            href={productUrl}
+                            className="w-28 sm:w-36 h-20 sm:h-24 rounded-xl overflow-hidden bg-slate-100 shrink-0 border border-slate-100 relative group/thumb block cursor-pointer"
+                            title={`View ${productName}`}
                           >
-                            <span>OPEN PRODUCT</span>
-                            <ExternalLink className="w-3 h-3" />
+                            <img
+                              src={displayImage}
+                              alt={productName}
+                              className="w-full h-full object-cover group-hover/thumb:scale-105 transition-transform duration-300"
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).src =
+                                  "https://images.unsplash.com/photo-1569263979104-865ab7cd8d13?auto=format&fit=crop&w=600&q=80";
+                              }}
+                            />
                           </a>
-                        ) : (
-                          <span className="font-mono text-[11px] text-mute">UNAVAILABLE</span>
-                        )}
+
+                          <div className="space-y-1 min-w-0 flex-1">
+                            <h3 className="text-base sm:text-lg font-bold text-slate-900 truncate">
+                              <a
+                                href={productUrl}
+                                className="hover:text-royal hover:underline transition-colors"
+                                title={`View ${productName}`}
+                              >
+                                {productName}
+                              </a>
+                            </h3>
+
+                            <a
+                              href={`/companies/${comp?.slug || reference.companyId}`}
+                              className="inline-flex items-center gap-1.5 text-xs text-slate-700 font-semibold hover:text-royal transition-colors group/comp"
+                              title={`View ${companyName} profile`}
+                            >
+                              <span className="text-slate-400 font-normal">@</span>
+                              <span className="uppercase tracking-wide group-hover/comp:underline">{companyName}</span>
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 fill-emerald-50 shrink-0" />
+                            </a>
+
+                            <div className="text-xs text-slate-500 flex items-center gap-2 flex-wrap">
+                              <span>{category}</span>
+                              <span>•</span>
+                              <span>{lengthSpec}</span>
+                              <span>•</span>
+                              <span>{yearSpec}</span>
+                            </div>
+
+                            <p className="text-xs text-slate-500 line-clamp-1">
+                              {shortDesc}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Right: Availability Badge & Action Buttons */}
+                        <div className="flex flex-col sm:flex-row lg:flex-col items-start sm:items-center lg:items-end justify-between gap-3 shrink-0">
+                          <div>
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200/80 text-xs font-semibold">
+                              Available
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {/* Ask AI */}
+                            {isAvailable && (
+                              <button
+                                type="button"
+                                id={`btn-ask-ai-product-${reference.productId}`}
+                                onClick={() =>
+                                  handleOpenAIModal(
+                                    "PRODUCT",
+                                    reference.productId,
+                                    entity?.name || reference.productId,
+                                    reference.companyId,
+                                    reference.companyId,
+                                    entity
+                                  )
+                                }
+                                className="px-3.5 py-2 rounded-xl bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-800 text-xs sm:text-sm font-semibold flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
+                              >
+                                <Package className="w-4 h-4 text-slate-700" />
+                                <span>Ask AI</span>
+                              </button>
+                            )}
+
+                            {/* Request Offer */}
+                            {isAvailable && (
+                              <button
+                                type="button"
+                                id={`btn-request-offer-${reference.productId}`}
+                                onClick={() => handleRequestOffer(reference, entity)}
+                                className="px-4 sm:px-5 py-2 rounded-xl bg-[#0B2545] hover:bg-[#071a30] text-white text-xs sm:text-sm font-semibold flex items-center gap-1.5 transition cursor-pointer shadow-xs"
+                              >
+                                <span>Request Offer</span>
+                              </button>
+                            )}
+
+                            {/* View */}
+                            {isAvailable ? (
+                              <a
+                                id={`link-open-product-${reference.productId}`}
+                                href={productUrl}
+                                className="px-4 py-2 rounded-xl bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 text-xs sm:text-sm font-semibold transition cursor-pointer shadow-2xs"
+                              >
+                                View
+                              </a>
+                            ) : (
+                              <span className="font-mono text-xs text-mute">UNAVAILABLE</span>
+                            )}
+
+                            {/* More Options (...) */}
+                            <div className="relative">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setOpenProductMenuId(
+                                    openProductMenuId === reference.productId
+                                      ? null
+                                      : reference.productId
+                                  )
+                                }
+                                className="p-2 rounded-xl bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-500 hover:text-slate-800 text-xs transition cursor-pointer shadow-2xs"
+                                title="More options"
+                              >
+                                <MoreHorizontal className="w-4 h-4" />
+                              </button>
+
+                              {openProductMenuId === reference.productId && (
+                                <div className="absolute right-0 mt-1 w-44 bg-white border border-slate-200 rounded-xl shadow-lg py-1 z-30 animate-in fade-in">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      handleRemoveProduct(reference.productId);
+                                      setOpenProductMenuId(null);
+                                    }}
+                                    className="w-full text-left px-3 py-2 text-xs text-rose-600 hover:bg-rose-50 flex items-center gap-2 cursor-pointer font-medium"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                    <span>Remove from Saved</span>
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
                       </div>
-                    </div>
+                    );
+                  })}
+
+                {/* Pagination bar matching screenshot */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 text-xs text-slate-500">
+                  <span>
+                    Showing{" "}
+                    {
+                      savedProducts.filter(({ reference, entity }) => {
+                        if (!productSearchQuery.trim()) return true;
+                        const q = productSearchQuery.toLowerCase();
+                        const name = (entity?.name || reference.productId || "").toLowerCase();
+                        const desc = (entity?.shortDescription || entity?.description || "").toLowerCase();
+                        const comp = (reference.companyId || reference.businessId || "").toLowerCase();
+                        const cat = (entity?.category || "").toLowerCase();
+                        return name.includes(q) || desc.includes(q) || comp.includes(q) || cat.includes(q);
+                      }).length
+                    }{" "}
+                    saved products
+                  </span>
+                  <div className="flex items-center gap-1.5 self-center">
+                    <button
+                      type="button"
+                      className="p-1.5 rounded-lg border border-slate-200 bg-white text-slate-400 disabled:opacity-40 cursor-not-allowed"
+                      disabled
+                    >
+                      <ChevronLeft className="w-3.5 h-3.5" />
+                    </button>
+                    <span className="w-7 h-7 rounded-lg bg-sky-50 text-sky-800 font-bold flex items-center justify-center border border-sky-100 text-xs">
+                      1
+                    </span>
+                    <button
+                      type="button"
+                      className="p-1.5 rounded-lg border border-slate-200 bg-white text-slate-400 disabled:opacity-40 cursor-not-allowed"
+                      disabled
+                    >
+                      <ChevronRight className="w-3.5 h-3.5" />
+                    </button>
                   </div>
-                ))}
+                </div>
               </div>
             )}
           </div>
@@ -1451,14 +1896,14 @@ export function PersonalWorkspacePage({
           <div id="section-workspace-services" className="space-y-6">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-lg font-bold text-graphite uppercase tracking-tight">Saved Services</h2>
+                <h2 className="text-lg font-bold text-graphite uppercase tracking-tight">My Services</h2>
                 <p className="text-xs text-stone">Bookmarked naval engineering, survey, classification, and refit capabilities.</p>
               </div>
               <a
                 href="/services"
                 className="text-xs font-semibold text-royal hover:underline"
               >
-                Browse Services Directory →
+                Explore Services →
               </a>
             </div>
 
@@ -1466,7 +1911,7 @@ export function PersonalWorkspacePage({
               <div id="empty-saved-services" className="bg-white border border-line rounded-2xl p-12 text-center space-y-4">
                 <Layers className="w-12 h-12 text-stone/40 mx-auto" />
                 <div className="space-y-1">
-                  <h3 className="text-sm font-bold text-graphite uppercase">No Saved Services</h3>
+                  <h3 className="text-sm font-bold text-graphite uppercase">No Services in My List</h3>
                   <p className="text-xs text-stone max-w-sm mx-auto">
                     You haven&apos;t bookmarked any services yet. Find naval architecture, refit yards, and marine certification services.
                   </p>
@@ -1475,7 +1920,7 @@ export function PersonalWorkspacePage({
                   href="/services"
                   className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-royal text-white text-xs font-bold uppercase tracking-wide hover:bg-royal-dark transition"
                 >
-                  <span>Browse Services</span>
+                  <span>Explore Services</span>
                   <ArrowRight className="w-3.5 h-3.5" />
                 </a>
               </div>
@@ -1855,7 +2300,7 @@ export function PersonalWorkspacePage({
               <>
                 <div className="flex items-center justify-between">
                   <div>
-                    <h2 className="text-lg font-bold text-graphite uppercase tracking-tight">Curated Collections</h2>
+                    <h2 className="text-lg font-bold text-graphite uppercase tracking-tight">My Smart Curation</h2>
                     <p className="text-xs text-stone">Custom project portfolios and procurement packages.</p>
                   </div>
                   {!isCreatingCollection && (
@@ -1868,7 +2313,7 @@ export function PersonalWorkspacePage({
                       className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-royal text-white text-xs font-bold uppercase tracking-wide hover:bg-royal-dark transition cursor-pointer"
                     >
                       <Plus className="w-3.5 h-3.5" />
-                      <span>New Collection</span>
+                      <span>New Curation</span>
                     </button>
                   )}
                 </div>
@@ -1880,10 +2325,10 @@ export function PersonalWorkspacePage({
                     onSubmit={handleCreateCollection}
                     className="bg-white border-2 border-royal/30 rounded-2xl p-6 space-y-4 animate-in fade-in"
                   >
-                    <div className="font-bold text-sm text-graphite">Create New Curated Collection</div>
+                    <div className="font-bold text-sm text-graphite">Create New Smart Curation</div>
                     <div className="space-y-3">
                       <div>
-                        <label className="block text-xs font-semibold text-graphite mb-1">Collection Name *</label>
+                        <label className="block text-xs font-semibold text-graphite mb-1">Curation Name *</label>
                         <input
                           id="input-collection-name"
                           type="text"
@@ -1920,7 +2365,7 @@ export function PersonalWorkspacePage({
                         id="btn-submit-collection"
                         className="px-4 py-2 rounded-xl bg-royal text-white text-xs font-bold uppercase tracking-wide hover:bg-royal-dark transition cursor-pointer"
                       >
-                        Create Collection
+                        Create Curation
                       </button>
                     </div>
                   </form>
@@ -1930,7 +2375,7 @@ export function PersonalWorkspacePage({
                   <div id="empty-collections" className="bg-white border border-line rounded-2xl p-12 text-center space-y-4">
                     <Folder className="w-12 h-12 text-stone/40 mx-auto" />
                     <div className="space-y-1">
-                      <h3 className="text-sm font-bold text-graphite uppercase">No Collections Yet</h3>
+                      <h3 className="text-sm font-bold text-graphite uppercase">No Smart Curations Yet</h3>
                       <p className="text-xs text-stone max-w-sm mx-auto">
                         Create custom collections like &apos;2026 Yacht Refit&apos; or &apos;Green Shipping Suppliers&apos; to group your saved maritime assets.
                       </p>
@@ -2363,18 +2808,35 @@ export function PersonalWorkspacePage({
                   SUGGESTED QUESTIONS
                 </span>
                 <div className="flex flex-wrap gap-1.5">
-                  {[
-                    `What are the verified capabilities of ${activeAIModal.name}?`,
-                    `What specifications are publicly registered?`,
-                    `How can I submit an inquiry or RFQ?`,
-                  ].map((prompt, idx) => (
+                  {(
+                    activeAIModal.type === "PRODUCT"
+                      ? [
+                          `What are the verified technical specifications of ${activeAIModal.name}?`,
+                          `What certifications and class approvals does it hold?`,
+                          `What are the commercial terms and lead times?`,
+                          `What are the operational environments and marine applications?`,
+                        ]
+                      : activeAIModal.type === "SERVICE"
+                      ? [
+                          `What is the operational scope of ${activeAIModal.name}?`,
+                          `What class accreditations and compliance standards apply?`,
+                          `What are the mobilization lead times and commercial terms?`,
+                          `Which shipyard facilities or regions are supported?`,
+                        ]
+                      : [
+                          `What is the shipyard profile and facilities of ${activeAIModal.name}?`,
+                          `What are the key products and marine services offered?`,
+                          `What marine certifications and ISO standards are held?`,
+                          `How can I submit an RFQ or commercial inquiry?`,
+                        ]
+                  ).map((prompt, idx) => (
                     <button
                       key={idx}
                       onClick={() => {
                         setAIModalQuery(prompt);
                         handleAskAIModal(prompt);
                       }}
-                      className="px-2.5 py-1 rounded-lg border border-line bg-white hover:border-royal hover:text-royal text-[11px] font-medium text-graphite transition cursor-pointer"
+                      className="px-2.5 py-1 rounded-lg border border-line bg-white hover:border-royal hover:text-royal text-[11px] font-medium text-graphite transition cursor-pointer text-left"
                     >
                       {prompt}
                     </button>
@@ -2386,7 +2848,9 @@ export function PersonalWorkspacePage({
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
-                  handleAskAIModal(aiModalQuery);
+                  if (!aiModalLoading && aiModalQuery.trim()) {
+                    handleAskAIModal(aiModalQuery);
+                  }
                 }}
                 className="flex gap-2"
               >
@@ -2395,14 +2859,27 @@ export function PersonalWorkspacePage({
                   type="text"
                   value={aiModalQuery}
                   onChange={(e) => setAIModalQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      if (!aiModalLoading && aiModalQuery.trim()) {
+                        handleAskAIModal(aiModalQuery);
+                      }
+                    }
+                  }}
                   placeholder={`Ask public question about ${activeAIModal.name}...`}
                   className="flex-1 rounded-xl border border-line bg-canvas px-3.5 py-2 text-xs text-graphite placeholder:text-mute focus:outline-none focus:border-royal transition"
                 />
                 <button
-                  type="submit"
+                  type="button"
                   id="btn-submit-ai-modal-query"
+                  onClick={() => {
+                    if (!aiModalLoading && aiModalQuery.trim()) {
+                      handleAskAIModal(aiModalQuery);
+                    }
+                  }}
                   disabled={aiModalLoading || !aiModalQuery.trim()}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-royal text-white text-xs font-bold uppercase tracking-wider hover:bg-royal-dark transition disabled:opacity-50 cursor-pointer"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-royal text-white text-xs font-bold uppercase tracking-wider hover:bg-royal-dark transition disabled:opacity-50 cursor-pointer shadow-xs"
                 >
                   {aiModalLoading ? (
                     <span>Analyzing...</span>
@@ -2419,21 +2896,24 @@ export function PersonalWorkspacePage({
               {aiModalAnswer && (
                 <div
                   id="ai-modal-answer-card"
-                  className="rounded-xl border border-line bg-slate-50/70 p-4 space-y-3"
+                  className="rounded-xl border border-line bg-slate-50/80 p-4 space-y-3"
                 >
                   <div className="flex items-center justify-between text-xs border-b border-line/60 pb-2">
-                    <span className="font-semibold text-graphite">AI Response</span>
+                    <span className="font-semibold text-graphite flex items-center gap-1.5">
+                      <Cpu className="w-3.5 h-3.5 text-royal" />
+                      Verified AI Answer
+                    </span>
                     <span className="inline-flex items-center gap-1 font-mono text-[10.5px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
                       CONFIDENCE: {aiModalAnswer.confidence}
                     </span>
                   </div>
 
-                  <p className="text-xs text-graphite leading-relaxed">
+                  <div className="text-xs text-graphite leading-relaxed whitespace-pre-line bg-white p-3 rounded-lg border border-line/60 max-h-64 overflow-y-auto font-sans shadow-xs">
                     {aiModalAnswer.text}
-                  </p>
+                  </div>
 
                   {aiModalAnswer.sources && aiModalAnswer.sources.length > 0 && (
-                    <div className="pt-2 border-t border-line/60 space-y-1">
+                    <div className="pt-1 space-y-1">
                       <span className="font-mono text-[10px] text-mute uppercase font-semibold block">
                         PUBLIC GROUNDING SOURCES:
                       </span>
@@ -2450,12 +2930,24 @@ export function PersonalWorkspacePage({
                     </div>
                   )}
 
-                  {/* Commercial Connect / RFQ Trigger */}
-                  <div className="pt-2 border-t border-line/60 flex items-center justify-between">
+                  {/* Commercial Connect / RFQ Trigger / Offer Request */}
+                  <div className="pt-2 border-t border-line/60 flex flex-wrap items-center justify-between gap-2">
+                    {activeAIModal.type !== "COMPANY" && (
+                      <button
+                        type="button"
+                        id="btn-ai-modal-request-offer"
+                        onClick={handleRequestOfferFromAI}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-bold uppercase tracking-wider hover:bg-emerald-700 transition cursor-pointer shadow-xs"
+                      >
+                        <FileText className="w-3.5 h-3.5" />
+                        <span>Request Official Offer</span>
+                      </button>
+                    )}
+
                     {aiConnectSent ? (
                       <span
                         id="connect-sent-badge"
-                        className="text-xs font-bold text-emerald-700 flex items-center gap-1"
+                        className="text-xs font-bold text-emerald-700 flex items-center gap-1 ml-auto"
                       >
                         <CheckCircle2 className="w-3.5 h-3.5" />
                         Inquiry transmitted via Connect!
@@ -2465,7 +2957,7 @@ export function PersonalWorkspacePage({
                         type="button"
                         id="btn-ai-modal-connect"
                         onClick={handleSendPersonalConnectFromAI}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-royal text-white text-xs font-bold uppercase tracking-wider hover:bg-royal-dark transition cursor-pointer"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-royal text-white text-xs font-bold uppercase tracking-wider hover:bg-royal-dark transition cursor-pointer ml-auto shadow-xs"
                       >
                         <Send className="w-3 h-3" />
                         <span>Send Personal RFQ / Connect</span>
@@ -2569,6 +3061,18 @@ export function PersonalWorkspacePage({
               </div>
             </div>
           </div>
+        )}
+        {/* Request Offer Modal from Saved Products */}
+        {offerModalOffering && offerModalCompany && (
+          <RequestOfferModal
+            isOpen={!!offerModalOffering}
+            onClose={() => {
+              setOfferModalOffering(null);
+              setOfferModalCompany(null);
+            }}
+            offering={offerModalOffering}
+            parentCompany={offerModalCompany}
+          />
         )}
       </main>
 

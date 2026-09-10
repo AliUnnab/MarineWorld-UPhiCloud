@@ -27,7 +27,9 @@ export async function getCompanyById(id: string): Promise<CompanyEntity | null> 
   const docRef = doc(db, COLLECTION_NAME, id);
   const snapshot = await getDoc(docRef);
   if (snapshot.exists()) {
-    return { id: snapshot.id, ...snapshot.data() } as CompanyEntity;
+    const data = snapshot.data();
+    const name = data.name || data.displayName || data.brandName || data.legalName || snapshot.id;
+    return { id: snapshot.id, ...data, name } as CompanyEntity;
   }
   return null;
 }
@@ -41,7 +43,9 @@ export async function getCompanyBySlug(slug: string): Promise<CompanyEntity | nu
   const snapshot = await getDocs(q);
   if (!snapshot.empty) {
     const docSnap = snapshot.docs[0];
-    return { id: docSnap.id, ...docSnap.data() } as CompanyEntity;
+    const data = docSnap.data();
+    const name = data.name || data.displayName || data.brandName || data.legalName || slug;
+    return { id: docSnap.id, ...data, name } as CompanyEntity;
   }
   return null;
 }
@@ -59,6 +63,9 @@ export async function getCompanyWithFullDetails(idOrSlug: string): Promise<Compa
     comp = await getCompanyBySlug(idOrSlug);
   }
   if (!comp) return null;
+  if (!comp.name) {
+    comp.name = comp.displayName || (comp as any).brandName || comp.legalName || comp.id;
+  }
 
   const compId = comp.id;
 

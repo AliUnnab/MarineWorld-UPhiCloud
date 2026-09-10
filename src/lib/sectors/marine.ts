@@ -26,8 +26,9 @@ export const marineSector: SectorConfig = {
   ],
 
   hero: {
-    eyebrow: "AI-NATIVE INDUSTRY INFRASTRUCTURE",
+    eyebrow: "GLOBAL MARITIME AI-NATIVE BUSINESS NETWORK",
     statement: "THE AI-NATIVE BUSINESS CITY FOR THE GLOBAL MARITIME INDUSTRY.",
+    substatement: "TRANSFORM YOUR COMPANY FOR THE AI ECONOMY.",
     accentPhrase: "MARITIME",
     support:
       "Build your AI-Native Company, activate its intelligence, and connect with customers, products, services and industry intelligence across the global maritime ecosystem — one governed digital city.",
@@ -36,18 +37,33 @@ export const marineSector: SectorConfig = {
     trust: [
       {
         index: "01",
-        title: "BUILD YOUR AI-NATIVE COMPANY",
-        desc: "Create and operate your company's digital identity.",
+        title: "CREATE",
+        desc: "Create your AI-Native Company.",
       },
       {
         index: "02",
-        title: "ACTIVATE YOUR COMPANY AI",
-        desc: "Teach your Company Brain and activate its intelligence.",
+        title: "VERIFY",
+        desc: "Establish your verified business identity.",
       },
       {
         index: "03",
-        title: "CONNECT & TRADE GLOBALLY",
-        desc: "Publish, get discovered, receive RFQs and do business.",
+        title: "PUBLISH",
+        desc: "Publish your company, products, services and capabilities across the network.",
+      },
+      {
+        index: "04",
+        title: "CONNECT KNOWLEDGE",
+        desc: "Connect your company's authorized knowledge and business data.",
+      },
+      {
+        index: "05",
+        title: "ACTIVATE COMPANY AI",
+        desc: "Activate your Company Brain and make your business AI-operable.",
+      },
+      {
+        index: "06",
+        title: "ENTER THE GLOBAL NETWORK",
+        desc: "Get discovered, connect with buyers, receive RFQs and participate in global maritime commerce.",
       },
     ],
     visualMeta: {

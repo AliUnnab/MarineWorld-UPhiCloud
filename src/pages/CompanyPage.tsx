@@ -142,6 +142,7 @@ export function CompanyPage({
             enrollmentCode: `MW-${String(company.slug || company.id).slice(0, 4).toUpperCase()}-2026`,
             ecosystemHubId: `hub-${company.slug || company.id}`,
             country: company.country || "Netherlands",
+            registrationNumber: company.registrationNumber || (company as any).registrationNumber || "NL-89201144",
             officialWebsite: company.website || `https://www.${company.slug}.org`,
             principalAuthorityUserId: "usr-authority-lead",
             principalAuthorityName: "Executive Secretariat",
@@ -179,7 +180,7 @@ export function CompanyPage({
         recordServiceView(session.uid, company.id, serv.id, serv.name, company.businessId);
       }
     } else {
-      recordCompanyView(session.uid, company.id, company.name, company.businessId);
+      recordCompanyView(session.uid, company.id, company.displayName || company.name || company.legalName || "Company", company.businessId);
     }
   }, [company?.id, selectedProductSlug, selectedServiceSlug, effectiveIsInstitutional]);
 
@@ -228,6 +229,24 @@ export function CompanyPage({
     );
   }
 
+  if (isLoadingCompany && !company) {
+    const fallbackTitle = resolvedSlug
+      ? `${resolvedSlug.replace(/-/g, " ").replace(/\b\w/g, (l) => l.toUpperCase())} | MarineWorld.City`
+      : "Loading Company | MarineWorld.City";
+    return (
+      <div className="min-h-screen bg-canvas font-sans text-graphite py-20 flex items-center justify-center">
+        <PageMetadata
+          title={fallbackTitle}
+          description="Loading verified maritime enterprise operating environment..."
+        />
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-2 border-royal/30 border-t-royal rounded-full animate-spin" />
+          <div className="text-sm font-semibold text-slate-500">Loading company profile...</div>
+        </div>
+      </div>
+    );
+  }
+
   if (!company) {
     return (
       <div className="min-h-screen bg-canvas font-sans text-graphite py-20">
@@ -273,7 +292,14 @@ export function CompanyPage({
     window.history.pushState({}, "", newPath);
   };
 
-  const cityDomain = primaryCity?.domain ?? "SECTOR CITY";
+  const companyName =
+    company.displayName ||
+    company.name ||
+    (company as any).brandName ||
+    company.legalName ||
+    (resolvedSlug ? resolvedSlug.replace(/-/g, " ").replace(/\b\w/g, (l) => l.toUpperCase()) : "Company");
+
+  const cityDomain = primaryCity?.domain || (company.primarySectorCityId ? `${company.primarySectorCityId.toUpperCase()}.CITY` : "SECTOR CITY");
   const isProducts = activeModule === "products";
   const isServices = activeModule === "services";
   const isConnect = activeModule === "connect";
@@ -282,40 +308,40 @@ export function CompanyPage({
   const isGovernance = activeModule === "governance";
 
   const pageTitle = selectedProduct
-    ? `${selectedProduct.name} | ${company.name} Products | MarineWorld.City`
+    ? `${selectedProduct.name} | ${companyName} Products | MarineWorld.City`
     : selectedService
-    ? `${selectedService.name} — ${company.name} | MarineWorld.City`
+    ? `${selectedService.name} — ${companyName} | MarineWorld.City`
     : isConnect
-    ? `${company.name} — Connect | MarineWorld.City`
+    ? `${companyName} — Connect | MarineWorld.City`
     : isProducts
-    ? `${company.name} — Products Catalog | MarineWorld.City`
+    ? `${companyName} — Products Catalog | MarineWorld.City`
     : isServices
-    ? `${company.name} — Services | MarineWorld.City`
+    ? `${companyName} — Services | MarineWorld.City`
     : isGovernance
-    ? `${company.name} — Governance | MarineWorld.City`
+    ? `${companyName} — Governance | MarineWorld.City`
     : isCorporate
-    ? `${company.name} — Corporate | MarineWorld.City`
+    ? `${companyName} — Corporate | MarineWorld.City`
     : isPresence
-    ? `${company.name} — Presence | MarineWorld.City`
-    : `${company.name} | ${cityDomain} | MarineWorld.City`;
+    ? `${companyName} — Presence | MarineWorld.City`
+    : `${companyName} | ${cityDomain} | MarineWorld.City`;
 
   const pageDescription = selectedProduct
-    ? `${selectedProduct.shortDescription} — Product specifications and data sheets from ${company.name}.`
+    ? `${selectedProduct.shortDescription} — Product specifications and data sheets from ${companyName}.`
     : selectedService
-    ? `${selectedService.shortDescription} — Service specifications and capabilities from ${company.name}.`
+    ? `${selectedService.shortDescription} — Service specifications and capabilities from ${companyName}.`
     : isConnect
-    ? `Initiate verified business interaction, technical RFQ routing, or formal connection requests with ${company.name}.`
+    ? `Initiate verified business interaction, technical RFQ routing, or formal connection requests with ${companyName}.`
     : isProducts
-    ? `Canonical product catalog and technical specifications for ${company.name} within MarineWorld.City.`
+    ? `Canonical product catalog and technical specifications for ${companyName} within MarineWorld.City.`
     : isServices
-    ? `Explore the services provided by ${company.name} within MarineWorld.City.`
+    ? `Explore the services provided by ${companyName} within MarineWorld.City.`
     : isGovernance
-    ? `Verification, trust, security and data governance records for ${company.name} within MarineWorld.City.`
+    ? `Verification, trust, security and data governance records for ${companyName} within MarineWorld.City.`
     : isCorporate
-    ? `The structured corporate identity and business profile for ${company.name} within MarineWorld.City.`
+    ? `The structured corporate identity and business profile for ${companyName} within MarineWorld.City.`
     : isPresence
-    ? `Network presence and operational node mapping for ${company.name} across MarineWorld Sector Cities.`
-    : `${company.name} — ${company.industry} operating environment within ${cityDomain}.`;
+    ? `Network presence and operational node mapping for ${companyName} across MarineWorld Sector Cities.`
+    : `${companyName} — ${company.industry || "Marine & Maritime"} operating environment within ${cityDomain}.`;
 
   const companyCanonicalUrl = buildCanonicalCompanyUrl(company, canonicalSectorCity);
 

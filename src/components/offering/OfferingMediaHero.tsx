@@ -96,31 +96,33 @@ export function OfferingMediaHero({ offering, onOpenLightbox }: OfferingMediaHer
       </div>
 
       {/* Main View Area */}
-      <div className="relative bg-slate-950 aspect-[16/9] sm:aspect-[21/9] min-h-[320px] max-h-[500px] flex items-center justify-center overflow-hidden group">
+      <div
+        onClick={() => activeTab === "media" && onOpenLightbox(currentMedia)}
+        className={`relative bg-slate-950 aspect-[16/9] sm:aspect-[21/9] min-h-[320px] max-h-[500px] flex items-center justify-center overflow-hidden group ${
+          activeTab === "media" ? "cursor-pointer" : ""
+        }`}
+        title={activeTab === "media" ? "Click to enlarge image" : undefined}
+      >
         {activeTab === "media" ? (
           <>
             <img
               src={currentMedia.url}
               alt={currentMedia.title || offering.name}
-              className="w-full h-full object-cover transition duration-500 group-hover:scale-[1.01]"
+              className="w-full h-full object-cover transition duration-500 group-hover:scale-[1.02]"
             />
-            {/* Overlay gradient caption */}
-            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/90 via-slate-950/40 to-transparent p-4 sm:p-6 text-white flex items-end justify-between">
-              <div>
-                <span className="text-[10px] font-mono font-bold tracking-wider text-royal bg-white/90 px-2 py-0.5 rounded uppercase">
-                  {currentMedia.type?.toUpperCase() || "RECORD CAPTURE"}
-                </span>
-                <p className="text-xs sm:text-sm font-semibold mt-1 max-w-xl text-slate-100 drop-shadow-sm">
-                  {currentMedia.title || `${offering.name} — Operational Verification Deployment`}
-                </p>
-              </div>
+            {/* Corner Expand Button */}
+            <div className="absolute bottom-4 right-4 sm:bottom-5 sm:right-5 z-10">
               <button
                 type="button"
-                onClick={() => onOpenLightbox(currentMedia)}
-                className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 backdrop-blur-md text-white text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer border border-white/20"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onOpenLightbox(currentMedia);
+                }}
+                className="p-2 sm:p-2.5 rounded-lg bg-black/40 hover:bg-black/70 backdrop-blur-md text-white transition cursor-pointer border border-white/25 shadow-sm"
+                title="Expand Full Resolution Visual"
+                aria-label="Inspect High-Res"
               >
-                <Maximize2 className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Inspect High-Res</span>
+                <Maximize2 className="w-4 h-4" />
               </button>
             </div>
           </>

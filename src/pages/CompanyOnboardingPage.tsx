@@ -46,6 +46,11 @@ import {
   Mail,
   KeyRound,
   Sparkles,
+  Package,
+  Settings,
+  Users,
+  User,
+  Crown,
 } from "lucide-react";
 import { hashPassword } from "@/lib/crypto";
 import { createUserWithEmail, signInWithEmail } from "@/lib/services/securityService";
@@ -70,6 +75,7 @@ interface OnboardingDraft {
   officialEmail?: string;
   passwordDraft?: string;
   selectedPlanCode?: PlanCode;
+  billingCycle?: "MONTHLY" | "ANNUAL";
   enrollmentCodeInput?: string;
   updatedAt?: string;
 }
@@ -148,7 +154,8 @@ export function CompanyOnboardingPage({ config, onEnterStudio }: CompanyOnboardi
   const [officialEmail, setOfficialEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [selectedPlanCode, setSelectedPlanCode] = useState<PlanCode>("STARTER");
+  const [selectedPlanCode, setSelectedPlanCode] = useState<PlanCode>("FREE");
+  const [billingCycle, setBillingCycle] = useState<"MONTHLY" | "ANNUAL">("MONTHLY");
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState<boolean>(false);
 
   // Onboarding Entity State
@@ -195,7 +202,7 @@ export function CompanyOnboardingPage({ config, onEnterStudio }: CompanyOnboardi
     }
 
     const currentSub = sub || (comp.id ? getCompanySubscription(comp.id) : undefined);
-    const effectivePlanCode = (currentSub?.planCode || currentSub?.planId || comp.requestedPlanCode || "STARTER") as PlanCode;
+    const effectivePlanCode = (currentSub?.planCode || currentSub?.planId || comp.requestedPlanCode || "FREE") as PlanCode;
     const resolvedPlan = getPlanByCode(effectivePlanCode);
     if (resolvedPlan) {
       setSelectedPlanCode(resolvedPlan.code);
@@ -755,6 +762,24 @@ export function CompanyOnboardingPage({ config, onEnterStudio }: CompanyOnboardi
     goToStep(4); // PLAN
   };
 
+  // Step 4: Billing Cycle Change (Monthly / Annual) with Real-time Firebase Persistence
+  const handleBillingCycleChange = async (cycle: "MONTHLY" | "ANNUAL") => {
+    setBillingCycle(cycle);
+    if (activeCompanyId && companyEntity) {
+      const updatedComp: CompanyEntity = {
+        ...companyEntity,
+        billingCycle: cycle,
+        updatedAt: new Date().toISOString(),
+      };
+      setCompanyEntity(updatedComp);
+      try {
+        await saveCompanyRecord(updatedComp);
+      } catch (err) {
+        console.warn("[handleBillingCycleChange] Firestore save warning:", err);
+      }
+    }
+  };
+
   // Step 4: Plan Selection & Intent Creation & Modal Trigger
   const handleSelectPlan = async (code: PlanCode) => {
     setSelectedPlanCode(code);
@@ -770,13 +795,52 @@ export function CompanyOnboardingPage({ config, onEnterStudio }: CompanyOnboardi
     }
 
     const codeToPass = codeValidationState === "VALID" ? enrollmentCodeInput : companyEntity?.enrolledOrganizationCode;
-    const intent = createSubscriptionIntent(compId, code, codeToPass);
+    const intent = createSubscriptionIntent(compId, code, codeToPass, billingCycle);
     setSubscriptionIntent(intent);
 
+    if (code === "FREE") {
+      // Direct activation for FREE INITIAL ACTIVATION ($0) — no credit card needed!
+      const res = processPayment(intent.id, true, `free-activation-${Date.now()}`);
+      if (res.success) {
+        if (companyEntity) {
+          const updatedComp: CompanyEntity = {
+            ...companyEntity,
+            requestedPlanCode: "FREE" as const,
+            billingCycle: billingCycle,
+            onboardingStep: 5,
+            lifecycleStatus: (companyEntity.lifecycleStatus === "ACTIVE" ? "ACTIVE" : "PENDING_VERIFICATION") as any,
+            updatedAt: new Date().toISOString(),
+          };
+          setCompanyEntity(updatedComp);
+          await saveCompanyRecord(updatedComp);
+        }
+
+        saveOnboardingDraft({
+          activeCompanyId: compId,
+          currentStep: 5,
+          maxUnlockedStep: Math.max(maxUnlockedStep, 5),
+          legalName,
+          displayName,
+          slug,
+          primaryCityId,
+          officialWebsite,
+          officialEmail,
+          selectedPlanCode: "FREE",
+          billingCycle: billingCycle,
+          enrollmentCodeInput,
+        });
+
+        setSuccessMessage("FREE INITIAL ACTIVATION confirmed! Proceeding to subscription details.");
+        goToStep(5);
+        return;
+      }
+    }
+
     if (companyEntity) {
-      const updatedComp = {
+      const updatedComp: CompanyEntity = {
         ...companyEntity,
         requestedPlanCode: code,
+        billingCycle: billingCycle,
         onboardingStep: Math.max(companyEntity.onboardingStep || 1, 4),
         lifecycleStatus: (companyEntity.lifecycleStatus === "ACTIVE" ? "ACTIVE" : "PENDING_PAYMENT") as any,
         updatedAt: new Date().toISOString(),
@@ -796,6 +860,7 @@ export function CompanyOnboardingPage({ config, onEnterStudio }: CompanyOnboardi
       officialWebsite,
       officialEmail,
       selectedPlanCode: code,
+      billingCycle: billingCycle,
       enrollmentCodeInput,
     });
 
@@ -1964,20 +2029,59 @@ export function CompanyOnboardingPage({ config, onEnterStudio }: CompanyOnboardi
                 const activePlan = getPlanByCode(activePlanCode) || AVAILABLE_PLANS[activePlanCode] || AVAILABLE_PLANS.STARTER;
 
                 return (
-                <div className="bg-white border border-line rounded-2xl p-6 md:p-8 min-h-[560px] flex flex-col justify-between space-y-6 shadow-sm">
-                  <div className="space-y-3">
-                    <div className="text-xs font-mono text-royal font-bold uppercase tracking-wider">
-                      STEP 04 — SUBSCRIPTION PLAN
-                    </div>
-                    <div>
-                      <h2 className="text-xl font-bold text-graphite">
-                        {isPlanSubActive ? "Purchased Plan & Operational Tiers" : "Choose Your AI-Native Company Plan"}
-                      </h2>
-                      <p className="text-xs text-stone mt-0.5">
-                        {isPlanSubActive
-                          ? "Your company holds an active purchased tier. Plan selection is locked during onboarding."
-                          : "Select the operational tier that fits your fleet and digital twin requirements."}
-                      </p>
+                <div className="bg-white border border-slate-200/80 rounded-2xl p-6 md:p-8 min-h-[560px] flex flex-col justify-between space-y-6 shadow-sm">
+                  <div className="space-y-6">
+                    {/* Top Header Row with Monthly / Annual Toggle */}
+                    <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                      <div>
+                        <div className="text-xs font-mono text-blue-600 font-bold uppercase tracking-wider">
+                          STEP 04 — COMPANY PLAN
+                        </div>
+                        <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 mt-1">
+                          Choose Your AI-Native Company Plan
+                        </h2>
+                        <p className="text-xs sm:text-sm text-slate-500 mt-1">
+                          Start free, then choose the operational level that fits your company's AI, knowledge, customer and commercial requirements.
+                        </p>
+                      </div>
+
+                      {/* Monthly / Annual Toggle */}
+                      <div className="flex flex-col items-start sm:items-end gap-1 shrink-0">
+                        <div className="inline-flex items-center p-1 bg-slate-100 rounded-full border border-slate-200">
+                          <button
+                            type="button"
+                            onClick={() => handleBillingCycleChange("MONTHLY")}
+                            className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer ${
+                              billingCycle === "MONTHLY"
+                                ? "bg-[#0f4bb8] text-white shadow-xs"
+                                : "text-slate-600 hover:text-slate-900"
+                            }`}
+                          >
+                            Monthly
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleBillingCycleChange("ANNUAL")}
+                            className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
+                              billingCycle === "ANNUAL"
+                                ? "bg-[#0f4bb8] text-white shadow-xs"
+                                : "text-slate-600 hover:text-slate-900"
+                            }`}
+                          >
+                            <span>Annual</span>
+                            <span className={`text-[10.5px] font-semibold px-2 py-0.5 rounded-full ${
+                              billingCycle === "ANNUAL"
+                                ? "bg-white/20 text-white font-bold"
+                                : "text-blue-600 bg-white border border-blue-200"
+                            }`}>
+                              Save 2 Months
+                            </span>
+                          </button>
+                        </div>
+                        <span className="text-[11px] text-slate-500 font-normal mt-1 text-right max-w-[280px]">
+                          Annual plans include the equivalent of two months free compared to monthly billing.
+                        </span>
+                      </div>
                     </div>
 
                     {isPlanSubActive && (
@@ -1999,118 +2103,493 @@ export function CompanyOnboardingPage({ config, onEnterStudio }: CompanyOnboardi
                         </button>
                       </div>
                     )}
-                  </div>
 
-                  {/* 3 Pricing Tier Cards with Passive / Disabled State on Inactive Plans */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    {getAllPlans().map((plan) => {
-                      const isThisPlanActive = isPlanSubActive && (activePlanCode === plan.code || activePlanCode === plan.id);
-                      const isSelected = selectedPlanCode === plan.code || isThisPlanActive;
+                    {/* TOP FULL-WIDTH CARD: FREE INITIAL ACTIVATION */}
+                    <div
+                      onClick={() => {
+                        if (!isPlanSubActive) {
+                          setSelectedPlanCode("FREE");
+                        }
+                      }}
+                      className={`rounded-2xl border p-4 sm:p-5 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 transition cursor-pointer ${
+                        selectedPlanCode === "FREE"
+                          ? "border-blue-600 ring-2 ring-blue-600/30 bg-blue-50/40"
+                          : "border-blue-100 bg-blue-50/20 hover:border-blue-300"
+                      }`}
+                    >
+                      <div className="flex items-center gap-3.5 shrink-0">
+                        <span className="px-3 py-1.5 rounded-lg bg-[#d2f4e2] text-[#0f824e] font-extrabold text-xs tracking-wider">
+                          FREE
+                        </span>
+                        <div>
+                          <div className="flex items-center gap-2 font-bold text-slate-900 text-sm sm:text-base">
+                            <span>FREE INITIAL ACTIVATION. $0</span>
+                          </div>
+                          <p className="text-xs text-slate-500 mt-0.5">
+                            Create your company and start your AI-Native activation.
+                          </p>
+                        </div>
+                      </div>
 
-                      return (
-                        <div
-                          key={plan.code}
-                          title={isPlanSubActive && !isThisPlanActive ? "You already have an active purchased plan for your company workspace." : undefined}
-                          onClick={() => {
-                            if (!isPlanSubActive) {
-                              setSelectedPlanCode(plan.code);
-                            }
+                      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-slate-700 font-medium">
+                        <div className="flex items-center gap-1.5">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                          <span>Company Entity</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                          <span>Digital Identity</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                          <span>Company Studio</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                          <span>1 Product</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                          <span>1 Service</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                          <span>Company URL</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                          <span>Basic Showroom</span>
+                        </div>
+                      </div>
+
+                      <div className="shrink-0">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedPlanCode("FREE");
+                            handleSelectPlan("FREE");
                           }}
-                          className={`p-6 rounded-2xl border transition-all flex flex-col justify-between space-y-6 relative group ${
-                            isThisPlanActive
-                              ? "bg-emerald-50/70 border-emerald-400 ring-2 ring-emerald-400/50 shadow-md cursor-default"
-                              : isPlanSubActive
-                              ? "bg-slate-50/60 border-line/60 opacity-60 cursor-not-allowed hover:border-line"
-                              : isSelected
-                              ? "bg-royal/5 border-royal ring-1 ring-royal shadow-sm cursor-pointer"
-                              : "bg-white border-line hover:border-royal/50 cursor-pointer"
-                          }`}
+                          className="px-3.5 py-1.5 rounded-lg bg-emerald-50 border border-emerald-300 text-emerald-700 hover:bg-emerald-100 font-semibold text-xs flex items-center gap-1.5 transition cursor-pointer"
                         >
-                          <div className="space-y-4">
-                            <div className="flex items-center justify-between">
-                              <span className="text-xs font-mono font-bold text-royal uppercase tracking-wider">
-                                {plan.code}
-                              </span>
-                              {isThisPlanActive ? (
-                                <span className="px-2.5 py-0.5 rounded bg-emerald-600 text-white text-[10px] font-bold font-mono">
-                                  ACTIVE PLAN
-                                </span>
-                              ) : isSelected ? (
-                                <span className="px-2 py-0.5 rounded bg-royal text-white text-[10px] font-bold">
-                                  SELECTED
-                                </span>
-                              ) : null}
-                            </div>
+                          <span>START FREE →</span>
+                        </button>
+                      </div>
+                    </div>
 
-                            <div>
-                              <h3 className="text-lg font-bold text-graphite">{plan.name}</h3>
-                              <div className="mt-2 flex items-baseline gap-1">
-                                <span className="text-3xl font-extrabold text-graphite">${plan.price}</span>
-                                <span className="text-xs text-stone font-mono">/month</span>
-                              </div>
-                            </div>
+                    {/* SECTION DIVIDER */}
+                    <div className="relative my-6 text-center">
+                      <div className="absolute inset-0 flex items-center">
+                        <div className="w-full border-t border-slate-200" />
+                      </div>
+                      <div className="relative inline-block bg-white px-4">
+                        <div className="text-[11px] font-mono font-bold uppercase tracking-wider text-blue-700">
+                          CHOOSE YOUR OPERATIONAL SUBSCRIPTION
+                        </div>
+                        <div className="text-xs text-slate-500 mt-0.5">
+                          Upgrade anytime as your business grows.
+                        </div>
+                      </div>
+                    </div>
 
-                            <div className="space-y-2 pt-4 border-t border-line text-xs">
-                              <div className="text-stone font-semibold mb-1">Capabilities:</div>
-                              {plan.includedCapabilities.map((cap) => (
-                                <div key={cap} className="flex items-center gap-2 text-graphite">
-                                  <CheckCircle2 className={`w-3.5 h-3.5 shrink-0 ${isThisPlanActive ? "text-emerald-600" : "text-stone"}`} />
-                                  <span>{cap.replace(/_/g, " ")}</span>
-                                </div>
-                              ))}
-                            </div>
+                    {/* TWO OPERATIONAL PLANS SIDE-BY-SIDE */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                      {/* CARD 1: STARTER */}
+                      <div
+                        onClick={() => {
+                          if (!isPlanSubActive) {
+                            setSelectedPlanCode("STARTER");
+                          }
+                        }}
+                        className={`rounded-2xl border p-6 sm:p-7 flex flex-col justify-between transition-all bg-white relative cursor-pointer ${
+                          selectedPlanCode === "STARTER"
+                            ? "border-blue-600 ring-2 ring-blue-600/30 shadow-md"
+                            : "border-slate-200 hover:border-slate-300 shadow-xs"
+                        }`}
+                      >
+                        <div>
+                          {/* Badges Row */}
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="px-3 py-1 rounded-full bg-blue-100 text-blue-600 font-bold text-xs uppercase tracking-wider font-mono">
+                              STARTER
+                            </span>
+                            <span className="px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-600 border border-blue-200 text-xs font-semibold flex items-center gap-1.5">
+                              <Crown className="w-3.5 h-3.5 text-blue-600" />
+                              <span>Most Popular</span>
+                            </span>
                           </div>
 
-                          {/* Action Button & Hover Tooltip for Locked Plans */}
-                          <div className="relative">
-                            <button
-                              type="button"
-                              disabled={isPlanSubActive && !isThisPlanActive}
-                              title={isPlanSubActive && !isThisPlanActive ? "You already have an active purchased plan for your company workspace." : undefined}
-                              onClick={() => {
-                                if (isThisPlanActive) {
-                                  goToStep(5);
-                                } else if (!isPlanSubActive) {
-                                  handleSelectPlan(plan.code);
-                                }
-                              }}
-                              className={`w-full py-2.5 rounded-xl font-bold text-xs transition-all ${
-                                isThisPlanActive
-                                  ? "bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm cursor-pointer"
-                                  : isPlanSubActive
-                                  ? "bg-slate-200 text-slate-400 cursor-not-allowed border border-line"
-                                  : isSelected
-                                  ? "bg-royal text-white hover:bg-blue-600 shadow-sm cursor-pointer"
-                                  : "bg-slate-100 text-graphite hover:bg-slate-200 border border-line cursor-pointer"
-                              }`}
-                            >
-                              {isThisPlanActive
-                                ? "View Active Subscription"
-                                : isPlanSubActive
-                                ? "Plan Purchase Locked"
-                                : `Select ${plan.name} Plan`}
-                            </button>
+                          {/* Title */}
+                          <h3 className="text-xl sm:text-2xl font-bold text-slate-900 mt-4">
+                            AI-Native Starter
+                          </h3>
 
-                            {/* Floating tooltip on hover when plan is inactive & locked */}
-                            {isPlanSubActive && !isThisPlanActive && (
-                              <div className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block w-52 p-2 bg-slate-900 text-white text-[10px] text-center rounded-lg shadow-lg z-20 font-sans leading-tight">
-                                You already have an active purchased plan for your company workspace.
-                                <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-900" />
-                              </div>
+                          {/* Price */}
+                          <div className="flex items-baseline gap-1 mt-2">
+                            <span className="text-3xl sm:text-4xl font-black text-slate-900">
+                              {billingCycle === "ANNUAL" ? "$2,990" : "$299"}
+                            </span>
+                            <span className="text-xs sm:text-sm text-slate-500 font-medium">
+                              {billingCycle === "ANNUAL" ? "/ year" : "/ month"}
+                            </span>
+                            {billingCycle === "ANNUAL" && (
+                              <span className="text-[11px] text-emerald-600 font-semibold ml-2 font-mono">
+                                ($249/mo)
+                              </span>
                             )}
                           </div>
+
+                          {/* Description */}
+                          <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
+                            Build your verified AI-Native Company and establish your digital business presence
+                          </p>
+
+                          {/* Subheading */}
+                          <div className="text-xs font-bold text-slate-900 mt-6 mb-3">
+                            Core capabilities
+                          </div>
+
+                          {/* 2-Column Checklist */}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2.5 text-xs text-slate-700">
+                            <div className="space-y-2.5">
+                              <div className="flex items-center gap-2">
+                                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                                <span>Company Studio.</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                                <span>Company AI.</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                                <span>Interactive Showroom.</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                                <span>Direct Reach</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                                <span>EaaS(Ecosystem a-as-service )</span>
+                              </div>
+                            </div>
+                            <div className="space-y-2.5">
+                              <div className="flex items-center gap-2">
+                                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                                <span>Verified Digital Identity</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                                <span>Product &amp; Service Catalog</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                                <span>Knowledge &amp; Drive Connection</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                                <span>U-Commerce</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                                <span>Sector City Presence</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Metrics Box */}
+                          <div className="mt-6 p-4 rounded-xl border border-slate-200 bg-slate-50/60 text-xs text-slate-700 space-y-2.5">
+                            <div className="flex items-center justify-between gap-2 flex-wrap text-xs">
+                              <div className="flex items-center gap-1.5">
+                                <Package className="w-3.5 h-3.5 text-slate-600 shrink-0" />
+                                <span>12 Products</span>
+                              </div>
+                              <span className="text-slate-300">|</span>
+                              <div className="flex items-center gap-1.5">
+                                <Settings className="w-3.5 h-3.5 text-slate-600 shrink-0" />
+                                <span>12 Services</span>
+                              </div>
+                              <span className="text-slate-300">|</span>
+                              <div className="flex items-center gap-1.5">
+                                <FileText className="w-3.5 h-3.5 text-slate-600 shrink-0" />
+                                <span>12 Knowledge Sources</span>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-6 pt-1 text-xs">
+                              <div className="flex items-center gap-1.5">
+                                <Users className="w-3.5 h-3.5 text-slate-600 shrink-0" />
+                                <span>10 Customer Spaces</span>
+                              </div>
+                              <span className="text-slate-300">|</span>
+                              <div className="flex items-center gap-1.5">
+                                <User className="w-3.5 h-3.5 text-slate-600 shrink-0" />
+                                <span>3 Users</span>
+                              </div>
+                            </div>
+                          </div>
                         </div>
-                      );
-                    })}
+
+                        {/* Button */}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedPlanCode("STARTER");
+                            handleSelectPlan("STARTER");
+                          }}
+                          className={`mt-6 w-full py-3 px-4 rounded-xl font-semibold text-xs tracking-wider uppercase transition flex items-center justify-center gap-2 cursor-pointer shadow-xs ${
+                            selectedPlanCode === "STARTER"
+                              ? "bg-blue-600 text-white hover:bg-blue-700"
+                              : "bg-blue-600 text-white hover:bg-blue-700"
+                          }`}
+                        >
+                          <span>SELECT AI-NATIVE STARTER PLAN</span>
+                        </button>
+                      </div>
+
+                      {/* CARD 2: GROWTH */}
+                      <div
+                        onClick={() => {
+                          if (!isPlanSubActive) {
+                            setSelectedPlanCode("GROWTH");
+                          }
+                        }}
+                        className={`rounded-2xl border p-6 sm:p-7 flex flex-col justify-between transition-all bg-white relative cursor-pointer ${
+                          selectedPlanCode === "GROWTH"
+                            ? "border-blue-600 ring-2 ring-blue-600/30 shadow-md"
+                            : "border-slate-200 hover:border-slate-300 shadow-xs"
+                        }`}
+                      >
+                        <div>
+                          {/* Badge */}
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="px-3 py-1 rounded-full bg-blue-100 text-blue-600 font-bold text-xs uppercase tracking-wider font-mono">
+                              GROWTH
+                            </span>
+                          </div>
+
+                          {/* Title */}
+                          <h3 className="text-xl sm:text-2xl font-bold text-slate-900 mt-4">
+                            AI-Native Growth
+                          </h3>
+
+                          {/* Price */}
+                          <div className="flex items-baseline gap-1 mt-2">
+                            <span className="text-3xl sm:text-4xl font-black text-slate-900">
+                              {billingCycle === "ANNUAL" ? "$8,990" : "$899"}
+                            </span>
+                            <span className="text-xs sm:text-sm text-slate-500 font-medium">
+                              {billingCycle === "ANNUAL" ? "/ year" : "/ month"}
+                            </span>
+                            {billingCycle === "ANNUAL" && (
+                              <span className="text-[11px] text-emerald-600 font-semibold ml-2 font-mono">
+                                ($749/mo)
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Description */}
+                          <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
+                            Operate your company, manage customers, receive RFQs and grow through AI.
+                          </p>
+
+                          {/* Subheading */}
+                          <div className="text-xs font-bold text-slate-900 mt-6 mb-3">
+                            Everything in Starter, plus Capabilities
+                          </div>
+
+                          {/* 2-Column Checklist */}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2.5 text-xs text-slate-700">
+                            <div className="space-y-2.5">
+                              <div className="flex items-center gap-2">
+                                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                                <span>Advanced Company AI.</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                                <span>Advanced AI Analysis</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                                <span>RFQ &amp; Inquiry Management</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                                <span>Advanced U-Commerce.</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                                <span>Advanced Analytics</span>
+                              </div>
+                            </div>
+                            <div className="space-y-2.5">
+                              <div className="flex items-center gap-2">
+                                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                                <span>Business Twin</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                                <span>Advanced Knowledge</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                                <span>Offer Management</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                                <span>Advanced EaaS</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                                <span>Multi-City Network Presence</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Metrics Box */}
+                          <div className="mt-6 p-4 rounded-xl border border-slate-200 bg-slate-50/60 text-xs text-slate-700 space-y-2.5">
+                            <div className="flex items-center justify-between gap-2 flex-wrap text-xs">
+                              <div className="flex items-center gap-1.5">
+                                <Package className="w-3.5 h-3.5 text-slate-600 shrink-0" />
+                                <span>60 Products</span>
+                              </div>
+                              <span className="text-slate-300">|</span>
+                              <div className="flex items-center gap-1.5">
+                                <Settings className="w-3.5 h-3.5 text-slate-600 shrink-0" />
+                                <span>60 Services</span>
+                              </div>
+                              <span className="text-slate-300">|</span>
+                              <div className="flex items-center gap-1.5">
+                                <FileText className="w-3.5 h-3.5 text-slate-600 shrink-0" />
+                                <span>60 Knowledge Sources</span>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-6 pt-1 text-xs">
+                              <div className="flex items-center gap-1.5">
+                                <Users className="w-3.5 h-3.5 text-slate-600 shrink-0" />
+                                <span>Unlimited Customer Spaces</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Button */}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedPlanCode("GROWTH");
+                            handleSelectPlan("GROWTH");
+                          }}
+                          className={`mt-6 w-full py-3 px-4 rounded-xl font-semibold text-xs tracking-wider uppercase transition flex items-center justify-center gap-2 cursor-pointer ${
+                            selectedPlanCode === "GROWTH"
+                              ? "bg-blue-600 text-white hover:bg-blue-700 shadow-xs"
+                              : "bg-slate-100 text-slate-800 hover:bg-slate-200 border border-slate-200/80"
+                          }`}
+                        >
+                          <span>SELECT AI-NATIVE GROWTH PLAN</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* BOTTOM CARD: ORGANIZATION ACCESS */}
+                    <div className="mt-6 p-5 sm:p-6 rounded-2xl border border-slate-200 bg-slate-50/40 flex flex-col xl:flex-row items-start xl:items-center justify-between gap-6">
+                      <div className="shrink-0 max-w-md">
+                        <div className="flex items-center gap-2 font-bold text-slate-900 text-sm">
+                          <span className="px-2.5 py-0.5 rounded bg-[#d2f4e2] text-[#0f824e] font-extrabold text-[10px] tracking-wider uppercase">
+                            ORGANIZATION
+                          </span>
+                          <span>ORGANIZATION. Official Organization Access</span>
+                        </div>
+                        <p className="text-xs text-slate-600 mt-1">
+                          For chambers, associations, federations, authorities and verified industry organizations.
+                        </p>
+
+                        <div className="mt-3 pt-3 border-t border-slate-200/80">
+                          <div className="text-xs font-bold text-slate-900">Free</div>
+                          <p className="text-xs text-slate-700 font-medium mt-0.5">
+                            Build and manage your industry ecosystem inside MarineWorld.
+                          </p>
+                          <p className="text-[11.5px] text-slate-500 mt-0.5 leading-relaxed">
+                            Create your own sector ecosystem, manage your members, invite companies and establish your organization's verified presence across the MarineWorld network.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex-1 max-w-2xl">
+                        <div className="text-xs font-bold text-slate-900 mb-2">Capabilities</div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-5 gap-y-2 text-xs text-slate-700">
+                          <div className="space-y-1.5">
+                            <div className="flex items-center gap-1.5">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                              <span>Organization Workspace.</span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                              <span>Organization Profile &amp; Digital Identity.</span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                              <span>Member Management.</span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                              <span>Member Enrollment &amp; Invitations</span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                              <span>Sector Ecosystem Setup.</span>
+                            </div>
+                          </div>
+                          <div className="space-y-1.5">
+                            <div className="flex items-center gap-1.5">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                              <span>Ecosystem Presence.</span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                              <span>Institutional Verification.</span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                              <span>Sector &amp; City Network Access</span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                              <span>Ecosystem Insights &amp; Reports.</span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                              <span>EaaS Tools &amp; Services</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <p className="text-[11px] text-slate-500 mt-3 leading-relaxed">
+                          Create and operate your own industry ecosystem inside MarineWorld — manage members, invite companies, establish sector presence and connect your ecosystem to EaaS (Ecosystem a-as-service )tools and services.
+                        </p>
+                      </div>
+
+                      <div className="shrink-0 self-center">
+                        <a
+                          href="/ecosystem/dashboard"
+                          className="px-4 py-2.5 rounded-xl bg-[#d2f4e2] hover:bg-[#bcf0d5] text-[#0f824e] font-semibold text-xs flex items-center gap-1.5 transition border border-[#a8e8c8] cursor-pointer"
+                        >
+                          <span>ENTER ORGANIZATION →</span>
+                        </a>
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="flex justify-between pt-4 border-t border-line">
+                  {/* BOTTOM BUTTONS BAR */}
+                  <div className="flex items-center justify-between pt-6 border-t border-slate-200 mt-6">
                     <button
                       type="button"
                       onClick={() => goToStep(3)}
-                      className="px-4 py-2.5 rounded-xl bg-slate-100 text-stone hover:text-graphite text-xs font-semibold border border-line cursor-pointer"
+                      className="px-4 py-2.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
                     >
-                      Back
+                      <ArrowLeft className="w-3.5 h-3.5" />
+                      <span>Back</span>
                     </button>
 
                     <button
@@ -2119,13 +2598,13 @@ export function CompanyOnboardingPage({ config, onEnterStudio }: CompanyOnboardi
                         if (isPlanSubActive) {
                           goToStep(5);
                         } else {
-                          handleSelectPlan(selectedPlanCode);
+                          handleSelectPlan(selectedPlanCode || "STARTER");
                         }
                       }}
-                      className="px-6 py-3 rounded-xl bg-royal text-white font-bold text-xs hover:bg-blue-600 transition-all flex items-center gap-2 shadow-sm cursor-pointer"
+                      className="px-5 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold flex items-center gap-1.5 transition shadow-xs cursor-pointer"
                     >
-                      <span>{isPlanSubActive ? "CONTINUE TO SUBSCRIPTION DETAILS" : "CONFIRM PLAN & CONTINUE"}</span>
-                      <ArrowRight className="w-4 h-4" />
+                      <span>Confirm Plan &amp; Continue</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
                     </button>
                   </div>
                 </div>
@@ -2135,8 +2614,8 @@ export function CompanyOnboardingPage({ config, onEnterStudio }: CompanyOnboardi
               {/* STEP 05 — SUBSCRIPTION */}
               {currentStep === 5 && (() => {
                 const currentSub = activeCompanyId ? getCompanySubscription(activeCompanyId) : null;
-                const currentPlanCode: PlanCode = (currentSub?.planId as PlanCode) || (subscriptionIntent?.planCode || selectedPlanCode || (companyEntity?.requestedPlanCode as PlanCode) || "STARTER") as PlanCode;
-                const currentPlan = getPlanByCode(currentPlanCode) || AVAILABLE_PLANS[currentPlanCode] || AVAILABLE_PLANS.STARTER;
+                const currentPlanCode: PlanCode = (currentSub?.planId as PlanCode) || (subscriptionIntent?.planCode || selectedPlanCode || (companyEntity?.requestedPlanCode as PlanCode) || "FREE") as PlanCode;
+                const currentPlan = getPlanByCode(currentPlanCode) || AVAILABLE_PLANS[currentPlanCode] || AVAILABLE_PLANS.FREE;
 
                 return (
                 <div className="bg-white border border-line rounded-2xl p-6 md:p-8 min-h-[560px] flex flex-col justify-between space-y-6 shadow-sm">
@@ -2148,7 +2627,7 @@ export function CompanyOnboardingPage({ config, onEnterStudio }: CompanyOnboardi
                       Purchased Plan &amp; Commercial Entitlements
                     </h2>
                     <p className="text-xs text-stone mt-0.5">
-                      Your subscription payment was authorized in Step 04. Review your active plan details and proceed to company verification.
+                      Your subscription was activated in Step 04. Review your active plan details and proceed to company verification.
                     </p>
                   </div>
 
@@ -2161,10 +2640,12 @@ export function CompanyOnboardingPage({ config, onEnterStudio }: CompanyOnboardi
                         </div>
                         <div>
                           <div className="text-xs font-bold font-mono text-emerald-950 uppercase tracking-wider">
-                            ✓ PLAN PAYMENT COMPLETE &amp; SUBSCRIPTION ACTIVE
+                            ✓ {currentPlan.price === 0 ? "FREE INITIAL ACTIVATION ACTIVE" : "PLAN PAYMENT COMPLETE & SUBSCRIPTION ACTIVE"}
                           </div>
                           <div className="text-xs text-emerald-800 font-medium mt-0.5">
-                            Payment for <strong>{currentPlan.name}</strong> was successfully completed in Step 04 (Plan Selection).
+                            {currentPlan.price === 0
+                              ? `Free initial activation for ${currentPlan.name} is active. Verification and transformation ready.`
+                              : `Payment for ${currentPlan.name} was successfully completed in Step 04 (Plan Selection).`}
                           </div>
                         </div>
                       </div>
@@ -2180,7 +2661,9 @@ export function CompanyOnboardingPage({ config, onEnterStudio }: CompanyOnboardi
                         </div>
                         <div className="text-lg font-extrabold text-graphite mt-0.5 flex items-center gap-2">
                           <span>{currentPlan.name}</span>
-                          <span className="text-royal font-mono font-bold text-base">(${currentPlan.price} / {currentPlan.billingInterval.toLowerCase()})</span>
+                          <span className="text-royal font-mono font-bold text-base">
+                            ({currentPlan.price === 0 ? "$0 / Free Setup" : `$${currentPlan.price} / ${currentPlan.billingInterval.toLowerCase()}`})
+                          </span>
                         </div>
                         <div className="text-xs text-stone font-mono mt-1">
                           Company ID: <strong className="text-graphite">{activeCompanyId || companyEntity?.id || "argento-marine"}</strong> | Business ID: <code className="text-royal font-bold">{companyEntity?.businessId || "MW-BUS-ARGENTO-MARITIME"}</code>
@@ -2201,7 +2684,7 @@ export function CompanyOnboardingPage({ config, onEnterStudio }: CompanyOnboardi
                           Payment Settlement &amp; Route
                         </div>
                         <span className="px-2.5 py-0.5 rounded text-xs font-mono font-bold border bg-emerald-50 text-emerald-800 border-emerald-200">
-                          PAYMENT_CONFIRMED (STRIPE)
+                          {currentPlan.price === 0 ? "FREE_INITIAL_ACTIVATION ($0)" : "PAYMENT_CONFIRMED (STRIPE)"}
                         </span>
                       </div>
 
@@ -2216,7 +2699,9 @@ export function CompanyOnboardingPage({ config, onEnterStudio }: CompanyOnboardi
                         </div>
                         <div className="p-3 rounded-xl bg-slate-50 border border-line">
                           <span className="text-[10px] font-mono text-stone uppercase tracking-wider block">ENTITLEMENTS GRANTED</span>
-                          <span className="font-bold text-emerald-700 text-sm mt-0.5 block">{currentPlan.includedCapabilities.length} Active Modules</span>
+                          <span className="font-bold text-emerald-700 text-sm mt-0.5 block">
+                            {currentPlan.features?.length || currentPlan.includedCapabilities.length} Active Features
+                          </span>
                         </div>
                       </div>
 
@@ -2225,10 +2710,10 @@ export function CompanyOnboardingPage({ config, onEnterStudio }: CompanyOnboardi
                           Included Tier Capabilities:
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                          {currentPlan.includedCapabilities.map((cap) => (
-                            <div key={cap} className="flex items-center gap-2 p-2 rounded-lg bg-slate-50 border border-line/60 text-graphite">
+                          {(currentPlan.features || currentPlan.includedCapabilities.map(c => c.replace(/_/g, " "))).map((item) => (
+                            <div key={item} className="flex items-center gap-2 p-2 rounded-lg bg-slate-50 border border-line/60 text-graphite">
                               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                              <span className="font-medium">{cap.replace(/_/g, " ")}</span>
+                              <span className="font-medium text-[11.5px]">{item}</span>
                             </div>
                           ))}
                         </div>
@@ -2386,8 +2871,8 @@ export function CompanyOnboardingPage({ config, onEnterStudio }: CompanyOnboardi
 
                     {/* 3. Subscription Valid */}
                     {(() => {
-                      const exactPlanCode = (activeSub?.planCode || activeSub?.planId || subscriptionIntent?.planCode || selectedPlanCode || companyEntity?.requestedPlanCode || "STARTER") as PlanCode;
-                      const exactPlan = getPlanByCode(exactPlanCode) || AVAILABLE_PLANS[exactPlanCode] || AVAILABLE_PLANS.STARTER;
+                      const exactPlanCode = (activeSub?.planCode || activeSub?.planId || subscriptionIntent?.planCode || selectedPlanCode || companyEntity?.requestedPlanCode || "FREE") as PlanCode;
+                      const exactPlan = getPlanByCode(exactPlanCode) || AVAILABLE_PLANS[exactPlanCode] || AVAILABLE_PLANS.FREE;
 
                       return (
                         <div className="flex items-center justify-between p-3.5 rounded-xl bg-white border border-line shadow-xs">
@@ -2400,7 +2885,7 @@ export function CompanyOnboardingPage({ config, onEnterStudio }: CompanyOnboardi
                             <div>
                               <div className="font-bold text-graphite">3. Active Plan Subscription</div>
                               <div className="text-stone font-mono text-[11px]">
-                                Status: <strong className={isSubscriptionValid ? "text-emerald-700 font-bold" : "text-amber-700 font-bold"}>{isSubscriptionValid ? "ACTIVE" : "PENDING"}</strong> ({exactPlan.name} — ${exactPlan.price}/mo)
+                                Status: <strong className={isSubscriptionValid ? "text-emerald-700 font-bold" : "text-amber-700 font-bold"}>{isSubscriptionValid ? "ACTIVE" : "PENDING"}</strong> ({exactPlan.name} — {exactPlan.price === 0 ? "$0 / Free Tier" : `$${exactPlan.price}/mo`})
                               </div>
                             </div>
                           </div>
@@ -2424,7 +2909,7 @@ export function CompanyOnboardingPage({ config, onEnterStudio }: CompanyOnboardi
                         <div>
                           <div className="font-bold text-graphite">4. Commercial Entitlements</div>
                           <div className="text-stone font-mono text-[11px]">
-                            Capabilities Granted: {entitlements.length || (AVAILABLE_PLANS[selectedPlanCode || "STARTER"]?.includedCapabilities?.length) || 12} Active
+                            Capabilities Granted: {entitlements.length || (AVAILABLE_PLANS[selectedPlanCode || "FREE"]?.includedCapabilities?.length) || 6} Active
                           </div>
                         </div>
                       </div>
@@ -2506,7 +2991,7 @@ export function CompanyOnboardingPage({ config, onEnterStudio }: CompanyOnboardi
       <CommercialPaymentModal
         isOpen={isPaymentModalOpen}
         onClose={() => setIsPaymentModalOpen(false)}
-        selectedPlan={getPlanByCode((subscriptionIntent?.planCode || selectedPlanCode || (companyEntity?.requestedPlanCode as PlanCode) || "STARTER") as PlanCode) || AVAILABLE_PLANS.STARTER}
+        selectedPlan={getPlanByCode((subscriptionIntent?.planCode || selectedPlanCode || (companyEntity?.requestedPlanCode as PlanCode) || "FREE") as PlanCode) || AVAILABLE_PLANS.FREE}
         companyId={activeCompanyId || "argento-marine"}
         businessId={companyEntity?.businessId || "MW-BUS-ARGENTO-MARITIME"}
         legalName={legalName}

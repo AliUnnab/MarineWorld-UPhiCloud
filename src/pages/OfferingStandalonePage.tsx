@@ -79,6 +79,10 @@ export function OfferingStandalonePage({
   const [activeLightboxMedia, setActiveLightboxMedia] = useState<OfferingMediaItem | null>(null);
 
   useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+  }, [slug]);
+
+  useEffect(() => {
     let isMounted = true;
     const syncRes = resolveCanonicalOffering(slug, sectorCityHint, effectiveCompanyHint);
     if (syncRes) {
@@ -269,13 +273,13 @@ export function OfferingStandalonePage({
               <Building className="w-3.5 h-3.5 text-royal" />
               <span className="hidden sm:inline">Company Profile</span>
             </a>
-            <button
-              type="button"
-              onClick={() => setIsRequestOfferOpen(true)}
-              className="px-3.5 py-1.5 rounded-lg bg-royal hover:bg-blue-700 text-white text-xs font-bold transition shadow-xs cursor-pointer"
+            <a
+              href="/workspace"
+              id="btn-nav-my-marineworld"
+              className="px-3.5 py-1.5 rounded-lg bg-royal hover:bg-royal-dark text-white text-xs font-bold transition shadow-xs cursor-pointer flex items-center gap-1.5"
             >
-              Request Offer
-            </button>
+              <span>MY MARINEWORLD</span>
+            </a>
           </div>
         </div>
       </nav>

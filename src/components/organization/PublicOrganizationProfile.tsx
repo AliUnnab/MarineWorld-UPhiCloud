@@ -132,6 +132,52 @@ export function PublicOrganizationProfile({
     return getEcosystemMembers(organization.id);
   }, [organization.id]);
 
+  // Jurisdiction registration number
+  const registrationNumber = useMemo(() => {
+    if (organization.registrationNumber) return organization.registrationNumber;
+    if ((organization as any).jurisdictionNumber) return (organization as any).jurisdictionNumber;
+
+    const country = organization.country || "Netherlands";
+    const prefixMap: Record<string, string> = {
+      Netherlands: "NL",
+      "The Netherlands": "NL",
+      "United Kingdom": "UK",
+      UK: "UK",
+      Germany: "DE",
+      France: "FR",
+      Italy: "IT",
+      Spain: "ES",
+      Norway: "NO",
+      Denmark: "DK",
+      Sweden: "SE",
+      Finland: "FI",
+      Greece: "GR",
+      Turkey: "TR",
+      Türkiye: "TR",
+      Singapore: "SG",
+      USA: "US",
+      "United States": "US",
+      Japan: "JP",
+      Monaco: "MC",
+    };
+    const prefix = prefixMap[country] || country.slice(0, 2).toUpperCase();
+    let hash = 0;
+    const key = `${organization.id}-${organization.slug || organization.name}`;
+    for (let i = 0; i < key.length; i++) {
+      hash = (hash << 5) - hash + key.charCodeAt(i);
+      hash |= 0;
+    }
+    const num = Math.abs((hash % 8999999) + 1000000);
+    return `${prefix}-${num}`;
+  }, [
+    organization.registrationNumber,
+    (organization as any).jurisdictionNumber,
+    organization.country,
+    organization.id,
+    organization.slug,
+    organization.name,
+  ]);
+
   const filteredMembers = useMemo(() => {
     return members.filter((m) => {
       const matchesSearch =
@@ -327,7 +373,7 @@ export function PublicOrganizationProfile({
             <div className="flex flex-wrap items-center gap-2">
               <span className="px-2.5 py-1 rounded-lg bg-royal/10 border border-royal/20 text-royal font-mono text-[11px] font-bold tracking-wider uppercase flex items-center gap-1.5">
                 <Landmark className="w-3.5 h-3.5 text-royal" />
-                <span>INSTITUTIONAL REGISTRY RECORD</span>
+                <span>INSTITUTIONAL ORGANIZATION</span>
               </span>
               <span className="px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 font-mono text-[11px] font-bold tracking-wider uppercase flex items-center gap-1">
                 <CheckCircle2 className="w-3 h-3 text-emerald-600" />
@@ -337,7 +383,7 @@ export function PublicOrganizationProfile({
 
             <div className="flex items-center gap-2 text-stone text-xs font-mono">
               <ShieldCheck className="w-4 h-4 text-royal" />
-              <span>Sovereign Identity Ledger</span>
+              <span>U-Commerce | EaaS</span>
             </div>
           </div>
 
@@ -655,7 +701,13 @@ export function PublicOrganizationProfile({
 
                     <div className="flex items-center justify-between pb-2 border-b border-line">
                       <span className="text-stone">Jurisdiction:</span>
-                      <span className="font-bold text-graphite">{organization.country}</span>
+                      <div className="text-right flex items-center gap-1.5 font-bold">
+                        <span className="text-graphite">{organization.country || "Netherlands"}</span>
+                        <span className="text-stone font-normal">•</span>
+                        <span className="font-mono text-royal text-[11px] font-bold">
+                          {registrationNumber}
+                        </span>
+                      </div>
                     </div>
 
                     <div className="flex items-center justify-between pb-2 border-b border-line">

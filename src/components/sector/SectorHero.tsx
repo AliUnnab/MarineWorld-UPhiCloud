@@ -64,6 +64,12 @@ export function SectorHero({ config }: { config: SectorConfig }) {
                 {after}
               </h1>
 
+              {hero.substatement ? (
+                <div className="mt-2.5 text-xs sm:text-sm md:text-[14px] font-bold uppercase tracking-wider text-royal">
+                  {hero.substatement}
+                </div>
+              ) : null}
+
               <p className="text-lead mt-3.5 max-w-[560px] text-stone font-normal leading-relaxed">
                 {hero.support}
               </p>
@@ -75,32 +81,6 @@ export function SectorHero({ config }: { config: SectorConfig }) {
                 <DigiButton href="#explorer" variant="secondary" icon="arrowRight" id="btn-hero-explore">
                   EXPLORE MARINEWORLD
                 </DigiButton>
-              </div>
-            </Reveal>
-
-            <Reveal delay={140}>
-              <div className="mt-6 border-t border-line pt-4">
-                <div className="grid gap-4 sm:grid-cols-3">
-                  {hero.trust.map((item, i) => {
-                    const isObject = typeof item === "object" && item !== null;
-                    const indexStr: string = isObject ? item.index : String(i + 1).padStart(2, "0");
-                    const titleStr: string = isObject ? item.title : String(item);
-                    const descStr: string | null = isObject ? item.desc : null;
-
-                    return (
-                      <div key={i} className="flex flex-col space-y-1">
-                        <span className="font-sans text-[11.5px] font-bold uppercase tracking-wide text-royal/95">
-                          {indexStr} — {titleStr}
-                        </span>
-                        {descStr && (
-                          <p className="text-[12px] text-stone font-normal leading-snug">
-                            {descStr}
-                          </p>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
               </div>
             </Reveal>
           </div>
@@ -195,6 +175,40 @@ export function SectorHero({ config }: { config: SectorConfig }) {
             </Reveal>
           </div>
         </div>
+
+        {/* Six Network Progression Steps (placed below visual & narrative, full width across grid) */}
+        {hero.trust && hero.trust.length > 0 && (
+          <Reveal delay={140}>
+            <div className="mt-10 sm:mt-12 lg:mt-14 border-t border-line/80 pt-6 sm:pt-8">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3.5 sm:gap-4 lg:gap-4">
+                {hero.trust.map((item, i) => {
+                  const isObject = typeof item === "object" && item !== null;
+                  const indexStr: string = isObject ? item.index : String(i + 1).padStart(2, "0");
+                  const titleStr: string = isObject ? item.title : String(item);
+                  const descStr: string | null = isObject ? item.desc : null;
+
+                  return (
+                    <div
+                      key={i}
+                      className="group relative flex flex-col justify-start rounded-card-sm border border-line/70 bg-white/70 p-3.5 sm:p-4 backdrop-blur-xs transition-all duration-200 hover:border-royal/40 hover:bg-white hover:shadow-xs"
+                    >
+                      <div className="flex flex-col space-y-1.5">
+                        <span className="font-sans text-[11px] sm:text-[11.5px] font-bold uppercase tracking-wide text-royal">
+                          {indexStr} - {titleStr}
+                        </span>
+                        {descStr && (
+                          <p className="text-[11.5px] text-stone font-normal leading-relaxed">
+                            {descStr}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </Reveal>
+        )}
       </DigiContainer>
 
       {/* Demonstration activity feed */}

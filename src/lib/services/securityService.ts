@@ -290,6 +290,76 @@ export async function createUserWithEmail(email: string, password: string, displ
   throw new Error("Account creation is not supported by the active authentication provider.");
 }
 
+/**
+ * Translates raw Firebase Auth error codes/messages into user-friendly English descriptions.
+ */
+export function formatAuthErrorMessage(err: any, fallbackMessage: string = "An error occurred. Please try again."): string {
+  const code = String(err?.code || "").toLowerCase();
+  const rawMsg = String(err?.message || "").toLowerCase();
+
+  if (
+    code.includes("email-already-in-use") ||
+    rawMsg.includes("email-already-in-use") ||
+    rawMsg.includes("email_exists")
+  ) {
+    return "This email address is already registered. An account has already been created with this email. Please use the 'Sign In' tab to log in with your password.";
+  }
+
+  if (
+    code.includes("user-not-found") ||
+    rawMsg.includes("user-not-found") ||
+    rawMsg.includes("email_not_found")
+  ) {
+    return "No account found with this email address. Please verify your email or create a new account.";
+  }
+
+  if (
+    code.includes("wrong-password") ||
+    rawMsg.includes("wrong-password") ||
+    code.includes("invalid-credential") ||
+    rawMsg.includes("invalid-credential") ||
+    rawMsg.includes("invalid_password")
+  ) {
+    return "Incorrect email or password. Please verify your credentials and try again.";
+  }
+
+  if (code.includes("weak-password") || rawMsg.includes("weak-password")) {
+    return "Password is too weak. Please choose a stronger password with at least 6 characters.";
+  }
+
+  if (
+    code.includes("invalid-email") ||
+    rawMsg.includes("invalid-email") ||
+    rawMsg.includes("invalid_email")
+  ) {
+    return "Invalid email address format. Please enter a valid email address.";
+  }
+
+  if (code.includes("too-many-requests") || rawMsg.includes("too-many-requests")) {
+    return "Too many failed attempts. For your security, access has been temporarily paused. Please try again in a few minutes.";
+  }
+
+  if (code.includes("user-disabled") || rawMsg.includes("user-disabled")) {
+    return "This user account has been disabled. Please contact support.";
+  }
+
+  if (code.includes("operation-not-allowed") || rawMsg.includes("operation-not-allowed")) {
+    return "Email/Password sign-in or registration is currently disabled.";
+  }
+
+  if (code.includes("network-request-failed") || rawMsg.includes("network-request-failed")) {
+    return "Network connection error. Please check your internet connection and try again.";
+  }
+
+  // Strip raw "Firebase: Error (auth/...)" if present in raw message
+  if (rawMsg.startsWith("firebase: error (auth/")) {
+    const cleaned = String(err?.message || "").replace(/^Firebase:\s*Error\s*\(auth\/[^)]+\)\.?\s*/i, "").trim();
+    if (cleaned) return cleaned;
+  }
+
+  return err?.message || fallbackMessage;
+}
+
 export function isAuthInitialized(): boolean {
   if ("isAuthReady" in activeAuthProvider && typeof (activeAuthProvider as any).isAuthReady === "function") {
     return (activeAuthProvider as any).isAuthReady();

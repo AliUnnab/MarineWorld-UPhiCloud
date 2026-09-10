@@ -87,18 +87,7 @@ export function buildCanonicalOfferingUrl(
     .trim()
     .replace(/[^a-z0-9-]/g, "") || "offering";
 
-  const cleanCompany = String(companySlug || "unabil")
-    .toLowerCase()
-    .trim()
-    .replace(/\.shipyard|\.city|\.marineworld/g, "")
-    .replace(/[^a-z0-9-]/g, "") || "unabil";
-
-  const cleanSector = String(sectorCityId || "shipyard")
-    .toLowerCase()
-    .replace(/\.city$/i, "")
-    .replace(/[^a-z0-9-]/g, "") || "shipyard";
-
-  return `https://${cleanOffering}.${cleanCompany}.${cleanSector}.marineworld.city`;
+  return `https://marineworld.city/products/${cleanOffering}`;
 }
 
 /**
@@ -1350,12 +1339,40 @@ export function queryOfferingAIAdvisorStrict(
     return (oName.length > 3 && q.includes(oName)) || (oSlug.length > 3 && q.includes(oSlug));
   });
 
-  if (mentionsOtherProduct || q.includes("competitor") || q.includes("other product") || q.includes("another company") || q.includes("other service")) {
+  // Check for cross-offering or comparison queries
+  if (
+    mentionsOtherProduct ||
+    q.includes("competitor") ||
+    q.includes("other product") ||
+    q.includes("another company") ||
+    q.includes("other service") ||
+    q.includes("compare") ||
+    q.includes("similar")
+  ) {
+    const rawAnswer = `I am the dedicated AI Advisor strictly grounded in ${offering.name}, provided by ${companyName} in ${sectorCityName}.CITY (${domainName}). Under MarineWorld sovereign data isolation protocols, I cannot provide details or compare records for external offerings or third-party assets.\n\nPlease navigate directly to that entity's canonical record on MarineWorld or contact ${companyName} directly for catalog guidance.`;
     return {
-      answer: `I am the dedicated AI Advisor strictly grounded in **${offering.name}**, provided by **${companyName}** in **${sectorCityName}.CITY** (${domainName}). Under MarineWorld sovereign data isolation protocols, I cannot provide details or compare records for external offerings or third-party assets.\n\nPlease navigate directly to that entity's canonical record on MarineWorld or contact **${companyName}** directly for catalog guidance.`,
+      answer: rawAnswer.replace(/\*/g, ""),
       confidence: "HIGH",
       sourcesUsed: sources,
       suggestedAction: "CONNECT_COMPANY",
+      isGrounded: true,
+    };
+  }
+
+  // Available configurations / options / variants
+  if (
+    q.includes("config") ||
+    q.includes("variant") ||
+    q.includes("option") ||
+    q.includes("layout") ||
+    q.includes("version")
+  ) {
+    const rawAnswer = `${offering.name} is available in multiple engineered configurations and bespoke layouts certified by ${companyName}.\n\n• Standard and high-performance propulsion / power packages\n• Integrated bridge navigation and sensor options\n• Custom deck, cabin, and operational mission equipment\n• Full compliance with ${sectorCityName}.CITY maritime classification standards\n\nWould you like full technical specification sheets or to request a customized configuration offer?`;
+    return {
+      answer: rawAnswer.replace(/\*/g, ""),
+      confidence: "HIGH",
+      sourcesUsed: sources,
+      suggestedAction: "REQUEST_OFFER",
       isGrounded: true,
     };
   }
@@ -1372,9 +1389,10 @@ export function queryOfferingAIAdvisorStrict(
   ) {
     const apps = offering.applications || [];
     if (apps.length > 0) {
-      const appList = apps.map((a) => `• **${a}**`).join("\n");
+      const appList = apps.map((a) => `• ${a}`).join("\n");
+      const rawAnswer = `${offering.name} (Provided by ${companyName}) is engineered for the following verified operational applications and deployment environments:\n\n${appList}\n\n• Sector City: ${sectorCityName}.CITY\n• Industry Domain: ${domainName}\n• Parent Company: ${companyName}\n\nWould you like technical deployment guidelines or class approval details?`;
       return {
-        answer: `**${offering.name}** (Provided by **${companyName}**) is engineered for the following verified operational applications and deployment environments:\n\n${appList}\n\n• **Sector City**: ${sectorCityName}.CITY\n• **Industry Domain**: ${domainName}\n• **Parent Company**: ${companyName}\n\nWould you like technical deployment guidelines or class approval details?`,
+        answer: rawAnswer.replace(/\*/g, ""),
         confidence: "HIGH",
         sourcesUsed: sources,
         suggestedAction: "VIEW_SPECS",
@@ -1400,14 +1418,15 @@ export function queryOfferingAIAdvisorStrict(
   ) {
     const comm = offering.commercialInformation;
     const priceText = comm?.pricingGuidance || "Pricing is determined by engineering scope and verified project milestone requirements.";
-    const leadText = comm?.leadTime ? `\n• **Lead Time**: ${comm.leadTime}` : "\n• **Lead Time**: Standard manufacturing & mobilization schedule available on request (typical 3-6 weeks).";
-    const incotermsText = comm?.incoterms ? `\n• **Incoterms**: ${comm.incoterms}` : "";
-    const minQty = comm?.minOrderQty ? `\n• **Minimum Order / Scope**: ${comm.minOrderQty}` : "";
-    const warrantyText = comm?.warranty ? `\n• **Warranty & Guarantee**: ${comm.warranty}` : "\n• **Warranty & Guarantee**: 24-Month Marine Class Standard Warranty.";
-    const availText = comm?.availability ? `\n• **Availability State**: ${comm.availability}` : "\n• **Availability State**: Built to Order / Active Production Line";
+    const leadText = comm?.leadTime ? `\n• Lead Time: ${comm.leadTime}` : "\n• Lead Time: Standard manufacturing & mobilization schedule available on request (typical 3-6 weeks).";
+    const incotermsText = comm?.incoterms ? `\n• Incoterms: ${comm.incoterms}` : "";
+    const minQty = comm?.minOrderQty ? `\n• Minimum Order / Scope: ${comm.minOrderQty}` : "";
+    const warrantyText = comm?.warranty ? `\n• Warranty & Guarantee: ${comm.warranty}` : "\n• Warranty & Guarantee: 24-Month Marine Class Standard Warranty.";
+    const availText = comm?.availability ? `\n• Availability State: ${comm.availability}` : "\n• Availability State: Built to Order / Active Production Line";
 
+    const rawAnswer = `Here is the authorized commercial and lead time record for ${offering.name}, provided by ${companyName}:\n\n• Pricing Guidance: ${priceText}${leadText}${availText}${incotermsText}${minQty}${warrantyText}\n\nTo lock formal milestone terms or request formal pricing from ${companyName}, please use the REQUEST OFFICIAL OFFER action.`;
     return {
-      answer: `Here is the authorized commercial and lead time record for **${offering.name}**, provided by **${companyName}**:\n\n• **Pricing Guidance**: ${priceText}${leadText}${availText}${incotermsText}${minQty}${warrantyText}\n\nTo lock formal milestone terms or request formal pricing from ${companyName}, please use the **REQUEST OFFICIAL OFFER** action.`,
+      answer: rawAnswer.replace(/\*/g, ""),
       confidence: "HIGH",
       sourcesUsed: sources,
       suggestedAction: "REQUEST_OFFER",
@@ -1430,17 +1449,19 @@ export function queryOfferingAIAdvisorStrict(
   ) {
     const specEntries = Object.entries(specs);
     if (specEntries.length > 0) {
-      const specList = specEntries.map(([k, v]) => `• **${k}**: ${v}`).join("\n");
+      const specList = specEntries.map(([k, v]) => `• ${k}: ${v}`).join("\n");
+      const rawAnswer = `According to authorized technical documentation provided by ${companyName} for ${offering.name}, here are the verified specifications:\n\n${specList}\n\n• Verified Provider: ${companyName} (${sectorCityName}.CITY)`;
       return {
-        answer: `According to authorized technical documentation provided by **${companyName}** for **${offering.name}**, here are the verified specifications:\n\n${specList}\n\n• **Verified Provider**: ${companyName} (${sectorCityName}.CITY)`,
+        answer: rawAnswer.replace(/\*/g, ""),
         confidence: "HIGH",
         sourcesUsed: sources,
         suggestedAction: "VIEW_SPECS",
         isGrounded: true,
       };
     } else {
+      const rawAnswer = `I don't have verified information for that item in the active datasheet for ${offering.name}. Would you like to request full technical specifications directly from ${companyName} via RFQ?`;
       return {
-        answer: `I don't have verified information for that item in the active datasheet for **${offering.name}**. Would you like to request full technical specifications directly from **${companyName}** via RFQ?`,
+        answer: rawAnswer.replace(/\*/g, ""),
         confidence: "MEDIUM",
         sourcesUsed: sources,
         suggestedAction: "COMMERCIAL_RFQ",
@@ -1454,8 +1475,9 @@ export function queryOfferingAIAdvisorStrict(
     const certs = offering.certifications || [];
     const standards = offering.standards || [];
     if (certs.length > 0 || standards.length > 0) {
+      const rawAnswer = `Verified Compliance & Certifications for ${offering.name} (Issued to ${companyName}):\n\n• Class Approvals: ${certs.join(", ") || "Standard Marine Class"}\n• Standards: ${standards.join(", ") || "IMO / ISO 9001"}\n• Primary Sector City: ${sectorCityName}.CITY`;
       return {
-        answer: `**Verified Compliance & Certifications for ${offering.name}** (Issued to **${companyName}**):\n\n• **Class Approvals**: ${certs.join(", ") || "Standard Marine Class"}\n• **Standards**: ${standards.join(", ") || "IMO / ISO 9001"}\n• **Primary Sector City**: ${sectorCityName}.CITY`,
+        answer: rawAnswer.replace(/\*/g, ""),
         confidence: "HIGH",
         sourcesUsed: sources,
         suggestedAction: "CONNECT_COMPANY",
@@ -1465,8 +1487,9 @@ export function queryOfferingAIAdvisorStrict(
   }
 
   // If asking out-of-scope question
+  const defaultAnswer = `${offering.name} (${offering.category})\nProvided by ${companyName} in ${sectorCityName}.CITY\n\n${offering.detailedDescription || offering.shortDescription}\n\n• Catalog Code: ${offering.code || offering.sku || "MW-ACTIVE-01"}\n• Status: ${offering.status || "ACTIVE"}\n• Grounded Knowledge Sources: ${sources.length} verified technical documents on file.\n\nHow can I assist you with specific engineering parameters, commercial quotes, or class compliance?`;
   return {
-    answer: `**${offering.name}** (${offering.category})\nProvided by **${companyName}** in **${sectorCityName}.CITY**\n\n${offering.detailedDescription || offering.shortDescription}\n\n• **Catalog Code**: ${offering.code || offering.sku || "MW-ACTIVE-01"}\n• **Status**: ${offering.status || "ACTIVE"}\n• **Grounded Knowledge Sources**: ${sources.length} verified technical documents on file.\n\nHow can I assist you with specific engineering parameters, commercial quotes, or class compliance?`,
+    answer: defaultAnswer.replace(/\*/g, ""),
     confidence: "HIGH",
     sourcesUsed: sources,
     suggestedAction: "COMMERCIAL_RFQ",

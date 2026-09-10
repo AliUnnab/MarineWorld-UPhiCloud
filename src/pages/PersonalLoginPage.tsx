@@ -14,6 +14,7 @@ import {
   signInWithEmail,
   createUserWithEmail,
   getCurrentAuthSession,
+  formatAuthErrorMessage,
 } from "@/lib/services/securityService";
 import { setPersonalVisitorMode } from "@/lib/services/accessContextService";
 
@@ -79,7 +80,9 @@ export function PersonalLoginPage({
         }
       }, 400);
     } catch (err: any) {
-      setErrorMessage(err?.message || "Failed to sign in. Please check your credentials.");
+      setErrorMessage(
+        formatAuthErrorMessage(err, "Failed to sign in. Please verify your email and password.")
+      );
     } finally {
       setIsLoading(false);
     }
@@ -94,7 +97,7 @@ export function PersonalLoginPage({
     const trimmedName = displayName.trim();
 
     if (!trimmedEmail) {
-      setErrorMessage("Please enter an email address.");
+      setErrorMessage("Please enter a valid email address.");
       return;
     }
     if (!password || password.length < 6) {
@@ -115,7 +118,7 @@ export function PersonalLoginPage({
         setPersonalVisitorMode(auth.uid);
       }
 
-      setSuccessMessage(`Personal account created! Welcome, ${auth.displayName}!`);
+      setSuccessMessage(`Personal account created! Welcome, ${auth.displayName || trimmedName || "Personal Visitor"}!`);
 
       setTimeout(() => {
         if (onLoginSuccess) {
@@ -125,7 +128,9 @@ export function PersonalLoginPage({
         }
       }, 400);
     } catch (err: any) {
-      setErrorMessage(err?.message || "Failed to create personal account.");
+      setErrorMessage(
+        formatAuthErrorMessage(err, "Failed to create personal account. Please check your credentials.")
+      );
     } finally {
       setIsLoading(false);
     }
@@ -203,7 +208,25 @@ export function PersonalLoginPage({
                 className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-start gap-2.5"
               >
                 <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-                <div className="font-medium leading-relaxed">{errorMessage}</div>
+                <div className="font-medium leading-relaxed flex-1">
+                  <div>{errorMessage}</div>
+                  {(errorMessage.toLowerCase().includes("already registered") ||
+                    errorMessage.toLowerCase().includes("already in use") ||
+                    errorMessage.toLowerCase().includes("already exists") ||
+                    errorMessage.includes("zaten kayıtlı")) &&
+                    mode === "CREATE_ACCOUNT" && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMode("SIGN_IN");
+                          setErrorMessage(null);
+                        }}
+                        className="inline-flex items-center gap-1 mt-2 text-royal font-bold hover:underline cursor-pointer bg-white px-2.5 py-1 rounded border border-royal/30 shadow-2xs text-[11px]"
+                      >
+                        <span>→ Switch to 'Sign In' tab now</span>
+                      </button>
+                    )}
+                </div>
               </div>
             )}
 
